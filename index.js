@@ -22790,6 +22790,8 @@ var dateOnlyStringSchema = exports_external.string().regex(DATE_PATTERN, "Must b
   return date5.getFullYear() === year && date5.getMonth() === month - 1 && date5.getDate() === day;
 }, "Must be a valid calendar date");
 var GET_TRACE_LABELS_MAX_IDS = 100;
+var GET_TRACE_ASSERTIONS_MAX_IDS = 100;
+var MAX_ASSERTIONS_PER_REQUEST = 50;
 var GET_GRADER_LABELS_MAX_IDS = 100;
 var DEFAULT_GRADER_LABEL_LIMIT = 50;
 var MAX_GRADER_LABEL_LIMIT = 200;
@@ -22922,7 +22924,7 @@ var getTraces = {
 var getTraceLabels = {
   name: "get_trace_labels",
   title: "Get Trace Labels",
-  description: `Read just the labels for one or more traces by ID: returns each trace's pass/fail verdict, its annotation (the reviewer's reasoning), and whether the label is human-validated (a human authored or approved it). No span content, inputs, or outputs are loaded, so the response is small and one call accepts up to ${GET_TRACE_LABELS_MAX_IDS} IDs. Use this to load a whole dataset's verdicts into context in a single call (e.g. when building or confirming a dataset). When you need a trace's actual inputs/outputs/spans, use get_traces instead.`,
+  description: `Read just the labels for one or more traces by ID: returns each trace's pass/fail verdict, its annotation (the reviewer's reasoning), and whether the label is human-validated (a human authored or approved it). No span content, inputs, or outputs are loaded, so the response is small and one call accepts up to ${GET_TRACE_LABELS_MAX_IDS} IDs. Use this to load a whole dataset's verdicts into context in a single call (e.g. when building or confirming a dataset). When you need a trace's actual inputs/outputs/spans, use get_traces instead. This returns verdicts on runs that already happened; for what a trace SHOULD do on its next replay, use get_trace_assertions.`,
   inputSchema: {
     traceIds: exports_external.preprocess(parseJsonString, exports_external.array(exports_external.uuid()).min(1).max(GET_TRACE_LABELS_MAX_IDS)).describe(`Trace IDs to read labels for (1-${GET_TRACE_LABELS_MAX_IDS})`)
   }
@@ -22941,7 +22943,7 @@ var getSpanField = {
 var saveAgentLabels = {
   name: "save_agent_labels",
   title: "Save Agent Labels",
-  description: 'Set, skip, or archive the agent\'s pass/fail verdict on one or more traces (`labelSource="agent"`). Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `label` (true=PASS, false=FAIL) and `annotation` (your reasoning, shown to the human reviewer in the labeling UI). Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are - surfaced in the labeling UI so reviewers can prioritize low-confidence verdicts. To explicitly skip a trace you cannot decide on (instead of leaving it unlabeled), pass `skip: true` and omit label/annotation - this records an explicit skip so coverage checks know you intentionally did not verdict it. To clear a previously-set agent verdict (e.g., you changed your mind or labeled the wrong trace), pass `archive: true` and omit label/annotation. New verdicts start unapproved (`approvedAt=null`); once a human approves one, it joins the validated dataset (queryable via `search_traces` with `validated: true`). Archiving is non-destructive - the row is hidden from all reads but kept for audit, and you can immediately re-label the trace from scratch. For replay results, key each label by the replay item\'s `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `testRunId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item\'s `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective label line per updated trace, keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence.',
+  description: 'Set, skip, or archive the agent\'s pass/fail verdict on one or more traces (`labelSource="agent"`). Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `label` (true=PASS, false=FAIL) and `annotation` (your reasoning, shown to the human reviewer in the labeling UI). Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are - surfaced in the labeling UI so reviewers can prioritize low-confidence verdicts. To explicitly skip a trace you cannot decide on (instead of leaving it unlabeled), pass `skip: true` and omit label/annotation - this records an explicit skip so coverage checks know you intentionally did not verdict it. To clear a previously-set agent verdict (e.g., you changed your mind or labeled the wrong trace), pass `archive: true` and omit label/annotation. New verdicts start unapproved (`approvedAt=null`); once a human approves one, it joins the validated dataset (queryable via `search_traces` with `validated: true`). Archiving is non-destructive - the row is hidden from all reads but kept for audit, and you can immediately re-label the trace from scratch. For replay results, key each label by the replay item\'s `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `testRunId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item\'s `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective label line per updated trace, keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence. Before judging a replay, call get_trace_assertions on the original trace ids: an expectation says what the user asked this specific case to do, so the verdict is measured against that rather than a guess. When an expectation\'s target cannot be found on the trace you are judging, the check never ran, so pass `skip: true` for that trace rather than recording a FAIL.',
   inputSchema: {
     testRunId: exports_external.uuid().optional().describe("The replay test run id. Required when any label targets a trace by originalTraceId (replay verdicts); ignored otherwise."),
     labels: exports_external.preprocess(parseJsonString, exports_external.array(exports_external.object({
@@ -22960,7 +22962,7 @@ var saveAgentLabels = {
 var saveHumanLabels = {
   name: "save_human_labels",
   title: "Save Human Labels",
-  description: 'Record one or more human-authored pass/fail verdicts that are VALIDATED immediately (`labelSource="human"`, no approval step). Unlike save_agent_labels (which writes agent suggestions that start unapproved), labels set here join the validated dataset the instant they are written and satisfy `search_traces` with `validated: true`. Pass `label` (true=PASS, false=FAIL), `annotation` (the reasoning behind the verdict), and optionally `confidence` (`VeryLow|Low|Medium|High|VeryHigh`). USE ONLY when a human has explicitly decided the verdict, for example saving a known production bug as a test case. Do NOT use this for the agent\'s own first-pass guesses on traces awaiting human review; use save_agent_labels for those so they go through the normal approve/edit loop.',
+  description: 'Record one or more human-authored pass/fail verdicts that are VALIDATED immediately (`labelSource="human"`, no approval step). Unlike save_agent_labels (which writes agent suggestions that start unapproved), labels set here join the validated dataset the instant they are written and satisfy `search_traces` with `validated: true`. Pass `label` (true=PASS, false=FAIL), `annotation` (the reasoning behind the verdict), and optionally `confidence` (`VeryLow|Low|Medium|High|VeryHigh`). USE ONLY when a human has explicitly decided the verdict, for example saving a known production bug as a test case. This records a verdict on a run that already happened; to record what a trace should do on its next replay, use save_trace_assertions. Do NOT use this for the agent\'s own first-pass guesses on traces awaiting human review; use save_agent_labels for those so they go through the normal approve/edit loop.',
   inputSchema: {
     labels: exports_external.preprocess(parseJsonString, exports_external.array(exports_external.object({
       traceId: exports_external.uuid().describe("The trace ID to label"),
@@ -22968,6 +22970,41 @@ var saveHumanLabels = {
       annotation: exports_external.string().min(1).describe("The reasoning behind the verdict. Required."),
       confidence: exports_external.enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]).optional().describe("How confident the verdict is: VeryLow / Low / Medium / High / VeryHigh. Optional.")
     })).min(1).max(50)).describe("One verdict per trace (1-50)")
+  }
+};
+var assertionTargetShape = exports_external.discriminatedUnion("kind", [
+  exports_external.object({ kind: exports_external.literal("output") }).describe("Check only the trace's final output, ignoring everything that happened on the way there."),
+  exports_external.object({
+    kind: exports_external.literal("span"),
+    name: exports_external.string().min(1).describe(`The span's name as it appears on the trace being evaluated, e.g. "search_flights". Names only, never span ids: an id belongs to one trace, so an id read off the original resolves to nothing on its replay and the check would never run.`),
+    occurrence: exports_external.union([
+      exports_external.literal("first"),
+      exports_external.literal("last"),
+      exports_external.number().int().min(0)
+    ]).optional().describe('Which call to check when the trace runs that span more than once, e.g. a retry loop. "first", "last" (the default), or a 0-based index. Leave it off unless the repetition matters.')
+  }).describe("Check one span by name rather than the whole trace, e.g. that a particular tool call was made with the right arguments.")
+]).describe('SCOPE: what part of the trace under evaluation this assertion is checked against. OMIT IT for the whole trace, which is the common case and the right default when unsure. Pass { "kind": "output" } to check only the final output, or { "kind": "span", "name": "..." } to check one span. Scoping narrows what a judge looks at, so a wrong scope hides real failures. A target naming something the evaluated trace does not contain makes the check ERRORED, never passed, because a check that could not run must never look like a check that succeeded.');
+var saveTraceAssertions = {
+  name: "save_trace_assertions",
+  title: "Save Trace Expectations",
+  description: `Record what SHOULD happen when this trace is replayed. Bitfab stores two kinds of label on a trace. A VERDICT says how a run that already happened turned out, and that is save_agent_labels / save_human_labels. An EXPECTATION, which is what this tool writes, says what a correct run looks like for THIS specific input, carries no pass/fail of its own, and is checked against a later replay. A trace holds at most one verdict per author and any number of expectations. Call it when the user describes the right answer for a particular case, for example "this booking should have picked the 6am flight, not the 9am". This is not a verdict on a run that already happened, which is save_agent_labels, and it is not a check that applies to every trace of a function, which is save_grader. Pass \`assertion\` plus optional \`passCriteria\` / \`failCriteria\`, the same trio save_grader takes, so an expectation that proves out across many traces can later be promoted into a grader with no rewriting. Pass an entry's \`id\` to edit an existing expectation, or omit it to add a new one, so two callers adding different expectations to one trace never overwrite each other. Read them back with get_trace_assertions before judging a replay. Up to ${MAX_ASSERTIONS_PER_REQUEST} per call.`,
+  inputSchema: {
+    traceId: exports_external.uuid().describe("The ORIGINAL trace to attach expectations to, never a replay trace. A replay reads its original's expectations automatically, so writing them onto a replay trace pins them to one run instead of to the case."),
+    assertions: exports_external.preprocess(parseJsonString, exports_external.array(exports_external.object({
+      id: exports_external.uuid().optional().describe("Id of an existing expectation to edit, from a previous save or from get_trace_assertions. Omit to add a new one."),
+      assertion: exports_external.string().min(1).describe("The single thing that must hold, in one sentence, stated so a reader who has never seen this trace could check it, e.g. 'The itinerary returned lands before 9am local time'. One claim per expectation: if you are about to write 'and', write two expectations instead, so each can pass or fail on its own."),
+      passCriteria: exports_external.string().optional().describe("How a judge should recognise a pass, when the assertion alone leaves room to argue, e.g. 'arrival timestamp is strictly before 09:00 in the destination timezone'. Optional, and only worth writing when it removes real ambiguity. Same field save_grader takes, so an expectation that proves out across many traces is promoted into a grader by copying it. On an edit, omit to keep the current value and pass an empty string to clear it."),
+      failCriteria: exports_external.string().optional().describe("How a judge should recognise a failure, for cases the pass criteria do not obviously exclude, e.g. 'any leg departing after 09:00, including connections'. Optional. On an edit, omit to keep the current value and pass an empty string to clear it."),
+      targetOnEvaluatedTrace: assertionTargetShape.optional()
+    })).min(1).max(MAX_ASSERTIONS_PER_REQUEST)).describe(`One entry per expectation (1-${MAX_ASSERTIONS_PER_REQUEST})`)
+  }
+};
+var getTraceAssertions = {
+  name: "get_trace_assertions",
+  title: "Get Trace Expectations",
+  description: `Read what SHOULD happen when one or more traces are replayed: each trace's assertions, their pass/fail criteria, and what part of the evaluated trace each one checks. Call this before judging a replay so the verdict is measured against what the user actually asked for rather than a guess. No span content is loaded, so one call accepts up to ${GET_TRACE_ASSERTIONS_MAX_IDS} ids. Accepts original trace ids and replay trace ids alike: a replay with no expectations of its own reads its original's, and the response says which original they came from. An expectation whose target cannot be found on the trace being evaluated is errored, never passed, so record it with save_agent_labels \`skip\` rather than a FAIL.`,
+  inputSchema: {
+    traceIds: exports_external.preprocess(parseJsonString, exports_external.array(exports_external.uuid()).min(1).max(GET_TRACE_ASSERTIONS_MAX_IDS)).describe(`Original trace IDs to read expectations for (1-${GET_TRACE_ASSERTIONS_MAX_IDS})`)
   }
 };
 var saveGrader = {
@@ -23287,6 +23324,8 @@ var ALL_TOOL_CONTRACTS = [
   getSpanField,
   saveAgentLabels,
   saveHumanLabels,
+  saveTraceAssertions,
+  getTraceAssertions,
   saveGrader,
   listGraders,
   saveDataset,
