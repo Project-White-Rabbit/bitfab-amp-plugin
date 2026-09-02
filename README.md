@@ -15,7 +15,10 @@ What is **not** here yet, because it needs the native plugin:
 - The improvement loop (datasets, graders, experiments, trace labeling)
 - Studio review surfaces (trace plan review in the browser, Edit-with-agent)
 - Session log capture, which is keyed to a fixed set of hosts server-side
-- A bundled MCP server, so Bitfab MCP tools are not registered in Amp
+- Bitfab MCP tools in Amp itself, so you cannot ask Amp to query traces directly.
+  The setup flow still has the full tool set, because `bitfab-cli setup --v2`
+  runs its own Bitfab MCP server for the agent inside it
+- SDK updates from the CLI, since that flow launches an editor agent
 
 Run those in Claude Code, Cursor, or Codex. The native Amp plugin is planned and
 will replace this pack in place.
@@ -23,13 +26,23 @@ will replace this pack in place.
 ## Install
 
 ```bash
-amp skill add ./skills/bitfab-setup
-amp skill add ./skills/bitfab-analyze-repo
-amp skill add ./skills/bitfab-account
+npx bitfab-cli init --editor amp
 ```
 
-Each lands in the current project's `.agents/skills/`. Add `--global` to install
-for every project instead, which writes to `~/.config/agents/skills/`.
+That installs all three skills globally, signs you in to Bitfab, and runs setup
+in the same terminal. Use `npx bitfab-cli plugin-install --editor amp` to install
+the skills alone.
+
+By hand, which is what the CLI runs:
+
+```bash
+amp skill add Project-White-Rabbit/bitfab-amp-plugin/skills --global --overwrite
+```
+
+Drop `--global` to install into the current project's `.agents/skills/` instead.
+`--overwrite` is what makes a reinstall work. Without it Amp refuses every skill
+that already exists, and `amp skill add` exits 0 either way, so a failed
+reinstall looks like a successful one.
 
 Confirm they registered:
 
