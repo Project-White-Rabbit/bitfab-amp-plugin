@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/plugin.ts", "src/commands/*.ts"],
+  "project": ["src/**/*.ts"],
+  "ignoreBinaries": ["biome", "knip", "madge"],
+  "ignoreDependencies": ["bitfab-plugin-lib", "bitfab-lib"]
+}

@@ -1,27 +1,12 @@
-# bitfab-amp-plugin (Alpha)
+# bitfab-amp-plugin
 
-Bitfab skills for [Amp](https://ampcode.com). **Alpha.** This is a skill pack,
-not yet a native Amp plugin.
+Bitfab plugin for [Amp](https://ampcode.com): capture real runs of your AI
+features as traces, replay them against your current code, and verify the
+change helped, all from Amp.
 
-## What Alpha means
-
-The skills here dispatch into `bitfab-cli`'s terminal-native flow
-(`bitfab setup --v2`), which runs the full setup and maintenance workflow in the
-terminal with no editor handoff. That gives Amp users instrumentation, replay
-setup, diagnostics, database snapshots, and templates today.
-
-What is **not** here yet, because it needs the native plugin:
-
-- The improvement loop (datasets, graders, experiments, trace labeling)
-- Studio review surfaces (trace plan review in the browser, Edit-with-agent)
-- Session log capture, which is keyed to a fixed set of hosts server-side
-- Bitfab MCP tools in Amp itself, so you cannot ask Amp to query traces directly.
-  The setup flow still has the full tool set, because `bitfab-cli setup --v2`
-  runs its own Bitfab MCP server for the agent inside it
-- SDK updates from the CLI, since that flow launches an editor agent
-
-Run those in Claude Code, Cursor, or Codex. The native Amp plugin is planned and
-will replace this pack in place.
+The plugin registers three skills, the Bitfab tools, and the local commands the
+skills call. It is the same workflow the Claude Code, Cursor, and Codex plugins
+ship, built on Amp's plugin API.
 
 ## Install
 
@@ -29,49 +14,54 @@ will replace this pack in place.
 npx bitfab-cli init --editor amp
 ```
 
-That installs all three skills globally, signs you in to Bitfab, and runs setup
-in the same terminal. Use `npx bitfab-cli plugin-install --editor amp` to install
-the skills alone.
+That clones this repository into Amp's plugin directory
+(`~/.config/amp/plugins/bitfab`), signs you in to Bitfab, and starts Amp.
 
-By hand, which is what the CLI runs:
-
-```bash
-amp skill add Project-White-Rabbit/bitfab-amp-plugin/skills --global --overwrite
-```
-
-Drop `--global` to install into the current project's `.agents/skills/` instead.
-`--overwrite` is what makes a reinstall work. Without it Amp refuses every skill
-that already exists, and `amp skill add` exits 0 either way, so a failed
-reinstall looks like a successful one.
-
-Confirm they registered:
+To install without signing in:
 
 ```bash
-amp skill list | grep bitfab-
+npx bitfab-cli plugin-install --editor amp
 ```
 
-Amp discovers skills by their `name` and `description` and loads one when it is
-relevant. You can also invoke a skill directly through the command palette
-(`Ctrl-O` in the Amp CLI, `Cmd/Alt-Shift-A` in the editor extensions) with
-`skill: invoke`.
+By hand:
 
-## Requirements
+```bash
+git clone --depth 1 https://github.com/Project-White-Rabbit/bitfab-amp-plugin.git ~/.config/amp/plugins/bitfab
+```
 
-- Node 18 or newer
-- `ANTHROPIC_API_KEY`, or another cloud provider the Claude Agent SDK supports.
-  This is the credential the setup flow itself runs on
-- A Bitfab account. The flow opens a browser to sign in when it needs to, and
-  this is separate from the credential above
+Then run `plugins: reload` from Amp's command palette (Ctrl-O), or restart Amp.
+Confirm it loaded:
+
+```bash
+amp plugins list
+```
 
 ## Skills
 
 | Skill | What it does |
 |---|---|
-| `bitfab-setup` | Instrument workflows, modify existing traces, inspect, replay, database snapshots, templates |
-| `bitfab-analyze-repo` | Scan the repo and upload draft trace plans, no prompts, no edits |
-| `bitfab-account` | Sign in and out, switch organization, health check, session logs |
+| `bitfab:setup` | Instrument workflows, modify existing traces, inspect, replay, database snapshots, templates, analyze the repo |
+| `bitfab:assistant` | Improve a traced function: datasets, labeling, graders, experiments, replay, cost optimization |
+| `bitfab:update` | Update the plugin and the Bitfab SDK |
 
-## Feedback
+Ask Amp for a skill by name, e.g. `bitfab:setup instrument the checkout agent`,
+or invoke one from the command palette with `skill: invoke`.
 
-Amp support is early and we want the rough edges. File them at
-[bitfab.ai](https://bitfab.ai) or tell us directly.
+## Tools
+
+Every Bitfab tool the other plugins expose over MCP is registered directly with
+Amp under its bare name (`search_traces`, `get_traces`, `save_trace_plan`, ...),
+so you can ask Amp to query your traces without invoking a skill.
+
+## Update
+
+```bash
+npx bitfab-cli update --editor amp plugin
+```
+
+Or `git -C ~/.config/amp/plugins/bitfab pull`, then `plugins: reload`.
+
+## Requirements
+
+- Node 18 or newer (the plugin's local commands run under node)
+- A Bitfab account. The setup skill signs you in when it needs to.

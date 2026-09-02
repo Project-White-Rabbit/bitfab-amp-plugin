@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - '@ampcode/plugin@0.0.0-20260902001824-gcbd038f'
