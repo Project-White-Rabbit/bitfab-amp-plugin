@@ -22943,11 +22943,12 @@ var getSpanField = {
 var saveAgentLabels = {
   name: "save_agent_labels",
   title: "Save Agent Labels",
-  description: 'Set, skip, or archive the agent\'s pass/fail verdict on one or more traces (`labelSource="agent"`). Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `label` (true=PASS, false=FAIL) and `annotation` (your reasoning, shown to the human reviewer in the labeling UI). Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are - surfaced in the labeling UI so reviewers can prioritize low-confidence verdicts. To explicitly skip a trace you cannot decide on (instead of leaving it unlabeled), pass `skip: true` and omit label/annotation - this records an explicit skip so coverage checks know you intentionally did not verdict it. To clear a previously-set agent verdict (e.g., you changed your mind or labeled the wrong trace), pass `archive: true` and omit label/annotation. New verdicts start unapproved (`approvedAt=null`); once a human approves one, it joins the validated dataset (queryable via `search_traces` with `validated: true`). Archiving is non-destructive - the row is hidden from all reads but kept for audit, and you can immediately re-label the trace from scratch. For replay results, key each label by the replay item\'s `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `testRunId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item\'s `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective label line per updated trace, keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence. Before judging a replay, call get_trace_assertions on the original trace ids: an expectation says what the user asked this specific case to do, so the verdict is measured against that rather than a guess. When an expectation\'s target cannot be found on the trace you are judging, the check never ran, so pass `skip: true` for that trace rather than recording a FAIL.',
+  description: 'Set, skip, or archive the agent\'s pass/fail verdict on one or more traces (`labelSource="agent"`). Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `label` (true=PASS, false=FAIL) and `annotation` (your reasoning, shown to the human reviewer in the labeling UI). Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are - surfaced in the labeling UI so reviewers can prioritize low-confidence verdicts. To explicitly skip a trace you cannot decide on (instead of leaving it unlabeled), pass `skip: true` and omit label/annotation - this records an explicit skip so coverage checks know you intentionally did not verdict it. To clear a previously-set agent verdict (e.g., you changed your mind or labeled the wrong trace), pass `archive: true` and omit label/annotation. New verdicts start unapproved (`approvedAt=null`); once a human approves one, it joins the validated dataset (queryable via `search_traces` with `validated: true`). Archiving is non-destructive - the row is hidden from all reads but kept for audit, and you can immediately re-label the trace from scratch. For replay results, key each label by the replay item\'s `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `testRunId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item\'s `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective label line per updated trace, keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence. Before judging a replay, call get_trace_assertions on the original trace ids: an expectation says what the user asked this specific case to do, so the verdict is measured against that rather than a guess. When an expectation\'s target cannot be found on the trace you are judging, the check never ran, so pass `skip: true` for that trace rather than recording a FAIL. Pass `assertionId` to score ONE assertion on the trace (the `[ID: ...]` get_trace_assertions prints), one entry per assertion, all in the same call. Omit it for the trace\'s single whole-trace verdict. get_trace_labels reports the resulting passed and failed counts per trace.',
   inputSchema: {
     testRunId: exports_external.uuid().optional().describe("The replay test run id. Required when any label targets a trace by originalTraceId (replay verdicts); ignored otherwise."),
     labels: exports_external.preprocess(parseJsonString, exports_external.array(exports_external.object({
       traceId: exports_external.uuid().optional().describe("The trace ID to update. Provide this OR originalTraceId, not both."),
+      assertionId: exports_external.uuid().optional().describe("The assertion this verdict scores, taken from the `[ID: ...]` get_trace_assertions prints. Omit it to set the trace's whole-trace verdict, of which there is one. A replay may name an assertion it inherited from the original trace it was replayed from."),
       originalTraceId: exports_external.uuid().optional().describe("For replay verdicts: the original trace ID the replay item was replayed from (the replay item's originalTraceId). The server resolves it to the replay trace via lineage, so you never need a server replay trace id. Requires the top-level testRunId. Provide this OR traceId, not both."),
       sourceTraceId: exports_external.uuid().optional().meta({ deprecated: true }).describe("Deprecated alias for originalTraceId. Prefer originalTraceId; accepted for back-compat."),
       attempt: exports_external.number().int().min(0).optional().describe("For replay verdicts on an experiment that ran each trace more than once: which attempt of originalTraceId this verdict is for (0-based, the replay item's attempt). Defaults to 0, so single-attempt callers never need it."),
@@ -22956,20 +22957,21 @@ var saveAgentLabels = {
       label: exports_external.boolean().optional().describe("true for PASS, false for FAIL. Required when archive and skip are both false/omitted."),
       annotation: exports_external.string().min(1).optional().describe("Your reasoning for the verdict - shown to the human reviewer in the labeling UI. Required when archive and skip are both false/omitted."),
       confidence: exports_external.enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]).optional().describe("How confident you are in this verdict: VeryLow / Low / Medium / High / VeryHigh. Surfaced as a chip in the labeling UI; low-confidence labels are prioritized for human review. Optional; only meaningful when paired with a label.")
-    })).min(1).max(50)).describe("One update per trace (1-50)")
+    })).min(1).max(200)).describe("One entry per assertion on traces that have assertions, otherwise one whole-trace entry (1-200)")
   }
 };
 var saveHumanLabels = {
   name: "save_human_labels",
   title: "Save Human Labels",
-  description: 'Record one or more human-authored pass/fail verdicts that are VALIDATED immediately (`labelSource="human"`, no approval step). Unlike save_agent_labels (which writes agent suggestions that start unapproved), labels set here join the validated dataset the instant they are written and satisfy `search_traces` with `validated: true`. Pass `label` (true=PASS, false=FAIL), `annotation` (the reasoning behind the verdict), and optionally `confidence` (`VeryLow|Low|Medium|High|VeryHigh`). USE ONLY when a human has explicitly decided the verdict, for example saving a known production bug as a test case. This records a verdict on a run that already happened; to record what a trace should do on its next replay, use save_trace_assertions. Do NOT use this for the agent\'s own first-pass guesses on traces awaiting human review; use save_agent_labels for those so they go through the normal approve/edit loop.',
+  description: 'Record one or more human-authored pass/fail verdicts that are VALIDATED immediately (`labelSource="human"`, no approval step). Unlike save_agent_labels (which writes agent suggestions that start unapproved), labels set here join the validated dataset the instant they are written and satisfy `search_traces` with `validated: true`. Pass `label` (true=PASS, false=FAIL), `annotation` (the reasoning behind the verdict), and optionally `confidence` (`VeryLow|Low|Medium|High|VeryHigh`). USE ONLY when a human has explicitly decided the verdict, for example saving a known production bug as a test case. This records a verdict on a run that already happened; to record what a trace should do on its next replay, use save_trace_assertions. Do NOT use this for the agent\'s own first-pass guesses on traces awaiting human review; use save_agent_labels for those so they go through the normal approve/edit loop. Pass `assertionId` when the human judged ONE assertion (the `[ID: ...]` get_trace_assertions prints), one entry per assertion. Omit it for the trace\'s single whole-trace verdict. get_trace_labels reports the resulting passed and failed counts per trace.',
   inputSchema: {
     labels: exports_external.preprocess(parseJsonString, exports_external.array(exports_external.object({
       traceId: exports_external.uuid().describe("The trace ID to label"),
+      assertionId: exports_external.uuid().optional().describe("The assertion this verdict scores, taken from the `[ID: ...]` get_trace_assertions prints. Omit it to set the trace's whole-trace verdict, of which there is one."),
       label: exports_external.boolean().describe("true for PASS, false for FAIL. Required."),
       annotation: exports_external.string().min(1).describe("The reasoning behind the verdict. Required."),
       confidence: exports_external.enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]).optional().describe("How confident the verdict is: VeryLow / Low / Medium / High / VeryHigh. Optional.")
-    })).min(1).max(50)).describe("One verdict per trace (1-50)")
+    })).min(1).max(200)).describe("One entry per assertion on traces that have assertions, otherwise one whole-trace entry (1-200)")
   }
 };
 var assertionTargetShape = exports_external.discriminatedUnion("kind", [
@@ -23943,6 +23945,7 @@ var directFileSchema = exports_external.object({
   expectedTraceIds: exports_external.array(exports_external.uuid()).min(1),
   verdicts: exports_external.array(exports_external.unknown()).min(1)
 });
+var assertionIdSchema = exports_external.uuid();
 // ../bitfab-plugin-lib/dist/replayResultResolver.js
 var replayResultSchema = exports_external.object({
   items: exports_external.array(exports_external.unknown()),
@@ -25309,6 +25312,15 @@ var FAN_OUT_JUDGING = `{{#claude}}**Scale the judging with fan-out when there ar
 Make each subagent prompt fully self-contained: its batch's per-item payloads (each item carries its own artifacts, enumerated below), the fixed rubric, and any shared context you gathered once (so no subagent re-derives it or touches the repo). Tell it to return one verdict entry per item in the exact shape this step persists, and nothing else.
 
 **Then collect and persist once.** Wait for every batch, concatenate their verdict arrays into the single full set covering all items, and make the one batched persist call this step already describes, unchanged. Fan-out changes only how you produce the verdicts, never how they are stored or routed: same call, same shape, same buckets, same downstream steps.{{/claude}}{{^claude}}**Judge serially.** This editor doesn't use subagents for judging, so judge every item yourself, inline in this agent, as described above, regardless of how many there are.{{/claude}}`;
+var PER_ASSERTION_VERDICTS = `**Read each trace's assertions first, then write one verdict per assertion.** An assertion says what a correct run looks like for that one case, and it is checked against the trace under evaluation. That is what the {{tool:getTraceAssertions}} call in this step is for, and one call covers up to 100 trace IDs, so make it once and before you judge anything. Each assertion comes back on its own line under its trace as \`[ID: <uuid>] checks <target>: <assertion>\`, with its pass and fail criteria in parentheses when it has them. Hold that \`[ID: <uuid>]\` value, it is the \`assertionId\` every verdict on that assertion carries. A trace with no assertions comes back as "no expectations recorded", which is that tool's wording for the same thing.
+
+- **A trace that has assertions:** send one {{tool:saveAgentLabels}} entry per assertion, each carrying that assertion's \`assertionId\`, its own \`label\` (\`true\` for passed, \`false\` for failed), and its own \`annotation\`, which is the reasoning for that one assertion and nothing else. Judge each assertion on its own evidence. **Write no whole-trace verdict for that trace.** The trace verdict is derived from the per-assertion labels, so a whole-trace entry alongside them would compete with the rows it is derived from.
+- **A trace with no assertions:** nothing changes. Write the one whole-trace verdict this step has always written, \`{ traceId, label, annotation }\` with no \`assertionId\`.
+- **An assertion whose target cannot be resolved on the trace:** skip it, never fail it. Send \`{ traceId, assertionId, skip: true }\` and no \`label\`. A missing target means the check never ran, so recording passed or failed there is a lie the reviewer cannot see. Its sibling assertions on the same trace are still verdicted normally.
+
+**Never flatten the assertions into one entry.** No \`N/M assertion(s) passed\` tally, no \`[PASS]\` or \`[FAIL]\` lines inside an annotation, no paragraph standing in for the rows. One boolean cannot say which assertion failed, and prose cannot be filtered, counted, or trended. Each annotation covers exactly the assertion its entry names.
+
+Per-assertion entries and whole-trace verdicts travel together in the same {{tool:saveAgentLabels}} call, so batch them into as few calls as the tool's per-call limit allows.`;
 var REPLAY_SAFETY_CHECK = `**Mandatory pre-run replay safety check.** Complete this before executing the replay script for the first time, and re-run it whenever the script, replay root, span boundaries, dispatch model, or mock strategy changes. Do not discover unsafe coverage by running replay: a successful email, payment, queue publish, or database write has already caused the damage.
 
 1. Read the replay call and require an explicit recorded-output strategy: normally \`mock: "marked"\` / \`mock="marked"\`; \`all\` is allowed only when every matched recorded child is intentionally frozen. Never accept \`none\` for a path with unsafe external actions.
@@ -25378,6 +25390,7 @@ var assistantFlow = Flow.parse({
     searchTraces: { kind: "mcp", name: "search_traces" },
     getTraces: { kind: "mcp", name: "get_traces" },
     getTraceLabels: { kind: "mcp", name: "get_trace_labels" },
+    getTraceAssertions: { kind: "mcp", name: "get_trace_assertions" },
     saveAgentLabels: { kind: "mcp", name: "save_agent_labels" },
     saveHumanLabels: { kind: "mcp", name: "save_human_labels" },
     listDatasets: { kind: "mcp", name: "list_datasets" },
@@ -25395,9 +25408,9 @@ var assistantFlow = Flow.parse({
     getTemplate: { kind: "mcp", name: "get_template" },
     saveTemplate: { kind: "mcp", name: "save_template" }
   },
-  intro: `Use the local plugin MCP tools ({{tool:listFunctions}}, {{tool:searchTraces}}, {{tool:getTraces}}, {{tool:getTraceLabels}}, {{tool:saveAgentLabels}}, {{tool:listDatasets}}, {{tool:saveDataset}}, {{tool:addTracesToDataset}}, {{tool:removeTracesFromDataset}}, {{tool:listExperiments}}, {{tool:listExperimentTraces}}, {{tool:getReplayStatus}}) to find what's failing in a traced function, build a dataset of labeled traces, and iterate on the code/prompts using replay until pass rates improve.
+  intro: `Use the local plugin MCP tools ({{tool:listFunctions}}, {{tool:searchTraces}}, {{tool:getTraces}}, {{tool:getTraceLabels}}, {{tool:getTraceAssertions}}, {{tool:saveAgentLabels}}, {{tool:listDatasets}}, {{tool:saveDataset}}, {{tool:addTracesToDataset}}, {{tool:removeTracesFromDataset}}, {{tool:listExperiments}}, {{tool:listExperimentTraces}}, {{tool:getReplayStatus}}) to find what's failing in a traced function, build a dataset of labeled traces, and iterate on the code/prompts using replay until pass rates improve.
 
-**MCP tools:** This skill uses \`list_trace_functions\`, \`search_traces\`, \`get_traces\`, \`get_trace_labels\`, \`save_agent_labels\`, \`save_human_labels\`, \`list_datasets\`, \`save_dataset\`, \`add_traces_to_dataset\`, \`remove_traces_from_dataset\`, \`get_trace_plan\`, \`list_experiments\`, \`list_experiment_traces\`, and \`get_replay_status\` from the **local plugin MCP server** (bundled with this plugin){{#claude}}. Do NOT use the remote Bitfab MCP tools (\`mcp__Simforge__*\` or \`mcp__Bitfab__*\`), use only the \`mcp__plugin_bitfab_Bitfab__*\` variants.{{/claude}}{{^claude}}, exposed under the \`mcp__Bitfab__*\` prefix.{{/claude}}
+**MCP tools:** This skill uses \`list_trace_functions\`, \`search_traces\`, \`get_traces\`, \`get_trace_labels\`, \`get_trace_assertions\`, \`save_agent_labels\`, \`save_human_labels\`, \`list_datasets\`, \`save_dataset\`, \`add_traces_to_dataset\`, \`remove_traces_from_dataset\`, \`get_trace_plan\`, \`list_experiments\`, \`list_experiment_traces\`, and \`get_replay_status\` from the **local plugin MCP server** (bundled with this plugin){{#claude}}. Do NOT use the remote Bitfab MCP tools (\`mcp__Simforge__*\` or \`mcp__Bitfab__*\`), use only the \`mcp__plugin_bitfab_Bitfab__*\` variants.{{/claude}}{{^claude}}, exposed under the \`mcp__Bitfab__*\` prefix.{{/claude}}
 
 {{#ask-user-question}}**Always use** \`AskUserQuestion\` **when asking questions, reporting results, or presenting choices** (two exceptions, each a report with no decision to hand the user: the \`benchmark\` scorecard is printed as Markdown tables directly in chat, not via \`AskUserQuestion\`, since tables don't render inside that UI, see Phase Benchmark; and \`share-results\` reports the experiment outcome and then routes silently by the already-approved plan, see Phase 5, so it is a plain chat report and never an \`AskUserQuestion\`, using one there would re-introduce the post-experiment prompt this flow deliberately removed). Never print a question as text and wait. Rules:{{/ask-user-question}}{{^ask-user-question}}**When the flow branches with options for the user, always present them clearly and wait for the user's answer before proceeding.** Number or letter the options so the user can pick by reference. **Two steps are reports, not option branches, and must NOT wait:** the \`benchmark\` scorecard prints its tables directly in chat, and \`share-results\` reports the experiment outcome then routes silently by the already-approved plan (see Phase 5) via auto-evaluated \`when\` conditions with no options to present, waiting there would re-introduce the post-experiment prompt this flow removes. Rules:{{/ask-user-question}}
 
@@ -26438,21 +26451,29 @@ Recommend Option A, an agent first pass turns the labeling page into a quick app
         {
           id: "label-self",
           kind: "action",
-          toolCalls: ["bash", "read", "saveAgentLabels", "agent"],
+          toolCalls: [
+            "bash",
+            "read",
+            "getTraceAssertions",
+            "saveAgentLabels",
+            "agent"
+          ],
           commandCalls: ["readTracesBatched"],
           title: "Agent first pass: label them yourself before opening the labeling page",
           emit: "Labeling traces",
-          body: `**Agent first pass: label them yourself before opening the labeling page**: Reachable only when the user picked Option A in the previous step. **You** label the approved candidate traces so the labeling page becomes an approve/edit review instead of a blank labeling session. Run \`{{command:readTracesBatched}} <trace-id...> --scope full\` **once** with all the approved trace IDs. It fans the reads out in parallel batches of 10 and writes the combined result to a temp file; the command prints \`{"status":"ok","outputFile":"..."}\` as JSON, so \`Read\` that \`outputFile\`. **Use this command here, not the \`get_traces\` MCP tool directly:** \`get_traces\` caps at 10 IDs, so calling it for the approved set would re-introduce the serial per-batch fan-out \`readTracesBatched\` exists to replace. Read each trace's inputs / output / spans yourself, and decide for each one whether it looks like a PASS or a FAIL. **Ground your judgment in the codebase, not just the trace text.** Before you start labeling, read the instrumented function in the user's source (located in Phase 2 in \`wizard\` mode, or via the grep step in this phase's intro in \`dataset\` mode) and any nearby code that explains intent, comments, docstrings, README sections, related tests, BAML files, so you know what the function is *supposed* to do and what "good" looks like for it. Apply the same context to every trace: does this output achieve the function's goal as expressed in the code? Does it match the patterns in the already-validated traces? **{{#claude}}First decide how you'll produce the verdicts, judge serially yourself or fan the judging out per the fan-out block immediately below, based on how many candidates there are. Do not persist yet.{{/claude}}{{^claude}}Judge each candidate as the block immediately below describes. Do not persist yet.{{/claude}}** However you produce them, the verdicts then land in a single {{tool:saveAgentLabels}} call with an array of \`{ traceId, label, annotation }\` objects, **both \`label\` (true for pass, false for fail) and \`annotation\` (a one-or-two-sentence explanation written for the human reviewer, ideally referencing what the code is trying to do) are required for every trace**. Commit to a verdict, if you genuinely cannot decide, you didn't read the trace or the code carefully enough. The labels you save here start unapproved; they only become part of the validated dataset once a human approves them in the labeling page.
+          body: `**Agent first pass: label them yourself before opening the labeling page**: Reachable only when the user picked Option A in the previous step. **You** label the approved candidate traces so the labeling page becomes an approve/edit review instead of a blank labeling session. Run \`{{command:readTracesBatched}} <trace-id...> --scope full\` **once** with all the approved trace IDs. It fans the reads out in parallel batches of 10 and writes the combined result to a temp file; the command prints \`{"status":"ok","outputFile":"..."}\` as JSON, so \`Read\` that \`outputFile\`. **Use this command here, not the \`get_traces\` MCP tool directly:** \`get_traces\` caps at 10 IDs, so calling it for the approved set would re-introduce the serial per-batch fan-out \`readTracesBatched\` exists to replace. Then call {{tool:getTraceAssertions}} with the same trace IDs, so you know what each trace was asked to do before you judge it. Read each trace's inputs / output / spans yourself, and decide whether it passed or failed, one decision per assertion on a trace that has assertions and one whole-trace decision on a trace that has none (the per-assertion block below fixes both shapes). **Ground your judgment in the codebase, not just the trace text.** Before you start labeling, read the instrumented function in the user's source (located in Phase 2 in \`wizard\` mode, or via the grep step in this phase's intro in \`dataset\` mode) and any nearby code that explains intent, comments, docstrings, README sections, related tests, BAML files, so you know what the function is *supposed* to do and what "good" looks like for it. Apply the same context to every trace: does this output achieve the function's goal as expressed in the code? Does it match the patterns in the already-validated traces? **{{#claude}}First decide how you'll produce the verdicts, judge serially yourself or fan the judging out per the fan-out block immediately below, based on how many candidates there are. Do not persist yet.{{/claude}}{{^claude}}Judge each candidate as the block immediately below describes. Do not persist yet.{{/claude}}** However you produce them, the verdicts then land in a single {{tool:saveAgentLabels}} call, one entry per assertion on the traces that have assertions and one whole-trace entry on the traces that have none, in the shapes the per-assertion block below fixes. **Every entry carries its own \`label\` (true for passed, false for failed) and its own \`annotation\` (a one-or-two-sentence explanation written for the human reviewer, ideally referencing what the code is trying to do).** Commit to a verdict, if you genuinely cannot decide, you didn't read the trace or the code carefully enough. The labels you save here start unapproved; they only become part of the validated dataset once a human approves them in the labeling page.
+
+${PER_ASSERTION_VERDICTS}
 
 ${FAN_OUT_JUDGING}
 
-**Per-item inputs for this step (however you produce the verdicts):** each candidate trace's own artifacts, its input and output (from the \`{{command:readTracesBatched}} --scope full\` load above), judged against the shared context, what the function is supposed to do and what "good" looks like for it (the instrumented function and the nearby intent you read above, plus the patterns from the already-validated traces). The verdict for each trace is PASS or FAIL plus the one-or-two-sentence annotation, the \`{ traceId, label, annotation }\` shape {{tool:saveAgentLabels}} takes. {{#claude}}When you fan out, each subagent's prompt carries its batch's trace inputs/outputs plus that shared context and returns its batch's \`{ traceId, label, annotation }\` array, which you concatenate across batches. {{/claude}}However the verdicts are produced, you make the single {{tool:saveAgentLabels}} call (one array, all traces) just as described above. The labels still land unapproved for human review in the labeling page no matter how they were produced.
+**Per-item inputs for this step (however you produce the verdicts):** each candidate trace's own artifacts, its input and output (from the \`{{command:readTracesBatched}} --scope full\` load above), its assertions with their ids (from the {{tool:getTraceAssertions}} call above), judged against the shared context, what the function is supposed to do and what "good" looks like for it (the instrumented function and the nearby intent you read above, plus the patterns from the already-validated traces). Each verdict is passed or failed plus its one-or-two-sentence annotation, in the \`{ traceId, assertionId, label, annotation }\` shape for a trace's assertions or the \`{ traceId, label, annotation }\` shape for a trace with none. {{#claude}}When you fan out, each subagent's prompt carries its batch's trace inputs/outputs and that batch's assertions plus that shared context, and returns its batch's entries in those same shapes, one per assertion wherever the trace has assertions, which you concatenate across batches. {{/claude}}However the verdicts are produced, you make the single {{tool:saveAgentLabels}} call (one array, all traces) just as described above. The labels still land unapproved for human review in the labeling page no matter how they were produced.
 
 **The cross-trace failure-pattern synthesis stays separate.** Phase 4 (\`understand-failures\`) is a deliberate join: it reads all the labels at once so the holistic "these N traces fail the same way" view is never lost. Per-trace labeling here is mechanical and independent, {{#claude}}and when you fan out, each subagent sees only its own batch, so {{/claude}}do not fold cross-trace synthesis into the labeling, that recognition is Phase 4's job on the full set.
 
 > \uD83D\uDEA8 **HARD RULE, DO NOT SKIP (agent-first mode only):** When the user picked Option A, you MUST call {{tool:saveAgentLabels}} with verdicts for every approved trace BEFORE navigating Studio to the labeling page. Sending the user into an agent-first review with no pre-labeled verdicts is a process violation. (In manual mode this step is unreachable, and the rule does not apply.)
 
-> **Made a mistake?** If you realize a verdict was wrong (e.g., you mislabeled a trace or want to re-evaluate), call {{tool:saveAgentLabels}} again with \`{ traceId, archive: true }\` for those traces. The previous label is hidden (kept for audit), and you can re-label the trace from scratch with another \`save_agent_labels\` call.`,
+> **Made a mistake?** If you realize a verdict was wrong (e.g., you mislabeled a trace or want to re-evaluate), call {{tool:saveAgentLabels}} again with \`{ traceId, archive: true }\` for those traces, or \`{ traceId, assertionId, archive: true }\` to archive one assertion's verdict without touching its siblings. The previous label is hidden (kept for audit), and you can re-label the trace from scratch with another \`save_agent_labels\` call.`,
           next: "dataset/attach-to-dataset"
         },
         {
@@ -27338,7 +27359,7 @@ Hold the verdicts in working context for the final report, the \`share-results\`
         {
           id: "evaluate-results",
           kind: "action",
-          toolCalls: ["read", "write", "bash", "agent"],
+          toolCalls: ["read", "write", "bash", "agent", "getTraceAssertions"],
           commandCalls: ["persistReplayLabels", "readTracesBatched"],
           title: "Evaluate against labels & annotations",
           emit: "Evaluating results",
@@ -27415,7 +27436,30 @@ ${FAN_OUT_JUDGING}
 }
 \`\`\`
 
-In lineage keying, \`testRunId\` is this replay run's id (from the progress rows or the final \`ReplayResult\`); the server uses it to resolve each original trace to its replay trace within this run. The \`expected*\` list MUST be the full set of ids covered by this call's batch (and across all batches, every completed \`item.error\`-unset replay item must be persisted exactly once, no fewer, per the mandatory-coverage rule above). For the final end-of-run call, use only the ids not already successfully persisted by an earlier batch. \`verdicts\` MUST have one entry per id, either a \`{label, annotation, confidence?}\` verdict or a \`{skip: true}\` explicit skip (skips allowed only for the three enumerated skip cases above, never for an environmental doubt), keyed by the same id field as the \`expected*\` list. \`confidence\` is optional but recommended (\`VeryLow|Low|Medium|High|VeryHigh\`); it surfaces in the labeling UI so reviewers can prioritize low-confidence verdicts. If verdict counts don't match the \`expected*\` list, the script returns \`status: "missing-coverage"\` and the verify step routes you back to fill the gaps.
+In lineage keying, \`testRunId\` is this replay run's id (from the progress rows or the final \`ReplayResult\`). The server uses it to resolve each original trace to its replay trace within this run. The \`expected*\` list MUST be the full set of ids covered by this call's batch (and across all batches, every completed \`item.error\`-unset replay item must be persisted exactly once, no fewer, per the mandatory-coverage rule above). For the final end-of-run call, use only the ids not already successfully persisted by an earlier batch. \`verdicts\` MUST cover every id in the \`expected*\` list, keyed by the same id field as that list. A trace with no assertions gets exactly one entry, either a \`{label, annotation, confidence?}\` verdict or a \`{skip: true}\` explicit skip (skips allowed only for the three enumerated skip cases above, never for an environmental doubt). A trace that has assertions gets one entry per assertion instead, in the shapes the per-assertion block below fixes. \`confidence\` is optional but recommended (\`VeryLow|Low|Medium|High|VeryHigh\`). It surfaces in the labeling UI so reviewers can prioritize low-confidence verdicts. If any expected id gets no entry at all, the script returns \`status: "missing-coverage"\` and the verify step routes you back to fill the gaps.
+
+**A replay inherits the original trace's assertions, so score them one at a time.** Before you judge this batch, call {{tool:getTraceAssertions}} once with the batch's **original** trace ids (one call covers up to 100 ids, so make it once and before you judge anything). Each assertion comes back under its trace as \`[ID: <uuid>] checks <target>: <assertion>\`, and that \`[ID: <uuid>]\` value is the \`assertionId\` its verdict carries. A trace that comes back "no expectations recorded" has none.
+
+- **The original had assertions:** write one entry per assertion, each carrying that assertion's \`assertionId\`, its own \`label\`, and its own \`annotation\` covering that one assertion and nothing else. **Write no whole-trace entry for that trace.** The trace verdict is derived from the per-assertion rows, so an entry beside them contradicts the rows it comes from, and the script rejects the whole file with \`status: "invalid-input"\`.
+- **The original had none:** nothing changes. Write the single whole-trace entry with no \`assertionId\`, exactly as before.
+- **An assertion whose target cannot be found on the trace you are judging:** \`{ "assertionId": "<uuid>", "skip": true }\` alongside the id key, never a FAIL. A missing target means the check never ran. Its sibling assertions on the same trace are still verdicted normally.
+
+Per-assertion and whole-trace entries travel in the same file and the same call, so a mixed batch is one \`verdicts\` array. Lineage keying, one trace with assertions and one without:
+
+\`\`\`json
+{
+  "testRunId": "<testRunId>",
+  "expectedOriginalTraceIds": ["<originalTraceId1>", "<originalTraceId2>"],
+  "verdicts": [
+    { "originalTraceId": "<originalTraceId1>", "assertionId": "<assertionId1>", "label": true, "annotation": "The rebooked leg now names the carrier this assertion asks for.", "confidence": "High" },
+    { "originalTraceId": "<originalTraceId1>", "assertionId": "<assertionId2>", "label": false, "annotation": "The seat preference is still dropped." },
+    { "originalTraceId": "<originalTraceId1>", "assertionId": "<assertionId3>", "skip": true },
+    { "originalTraceId": "<originalTraceId2>", "label": true, "annotation": "No assertions on this trace, and the output addresses the original annotation." }
+  ]
+}
+\`\`\`
+
+**The script's coverage check is per trace, not per assertion.** It cannot see which traces have assertions, so it accepts either shape and only reports a trace that got no entry at all. That makes the per-assertion count yours to hold. A trace with six assertions and one entry clears the script's check and still loses five verdicts. Count the assertions you read from {{tool:getTraceAssertions}} against the entries you wrote for that trace before you run the script.
 
 3. Run the script:
 
@@ -27874,7 +27918,7 @@ This is a single-trace, in-chat path: run the replay directly, no progress-bar w
         {
           id: "verdict",
           kind: "branch",
-          toolCalls: ["ask", "read", "write", "bash"],
+          toolCalls: ["ask", "read", "write", "bash", "getTraceAssertions"],
           commandCalls: ["persistReplayLabels"],
           title: "Compare, report, and persist the verdict",
           emit: "Evaluating result",
@@ -27889,7 +27933,9 @@ This is a single-trace, in-chat path: run the replay directly, no progress-bar w
 
 There is no verdict to persist for an errored item. Offer a retry only after the diagnosed cause is addressed, or offer to stop.
 
-**If the replay completed**, compare the new output against the original trace's label and annotation, then report one line:
+**If the replay completed**, call {{tool:getTraceAssertions}} with the ORIGINAL trace id first. An assertion says what the user asked this one case to do, and the replay inherits the original's assertions, so it is what the new output is measured against. Each one comes back as \`[ID: <uuid>] checks <target>: <assertion>\`, and that \`[ID: <uuid>]\` value is the \`assertionId\` its verdict carries. "no expectations recorded" means the trace has none, and everything below reads exactly as it always has.
+
+Then compare the new output against the original trace's assertions, label, and annotation, and report one line:
 
 - Original was **fail** with an annotation: does the new output address it? \u2192 "**Pass**: the fix addresses the original failure ('<annotation summary>')." vs "**Still failing**: <what's still wrong>."
 - Original was **pass**: preserved \u2192 "**Pass**: output unchanged in quality." regressed \u2192 "**Regressed**: was passing, now <what broke>."
@@ -27908,13 +27954,25 @@ There is no verdict to persist for an errored item. Offer a retry only after the
   }
   \`\`\`
 
+  **If the original had assertions**, that one entry becomes one entry per assertion instead, each carrying its \`assertionId\`, its own \`label\`, and its own \`annotation\` for that assertion alone, and the file carries **no** whole-trace entry for the trace. The trace verdict is derived from the per-assertion rows, so sending both makes the script reject the file with \`status: "invalid-input"\`. An assertion whose target cannot be found on the replay trace gets \`{ "traceId": "<server-trace-id>", "assertionId": "<uuid>", "skip": true }\`, never a FAIL, and its siblings are still verdicted:
+
+  \`\`\`json
+  {
+    "expectedTraceIds": ["<server-trace-id>"],
+    "verdicts": [
+      { "traceId": "<server-trace-id>", "assertionId": "<assertionId1>", "label": true, "annotation": "<why this one assertion passed>", "confidence": "High" },
+      { "traceId": "<server-trace-id>", "assertionId": "<assertionId2>", "label": false, "annotation": "<why this one assertion failed>" }
+    ]
+  }
+  \`\`\`
+
   \`\`\`bash
   {{command:persistReplayLabels}} <repoRoot>/.bitfab/tmp/verdicts-<test-run-id>.json
   \`\`\`
 
   \`label\` is \`true\` for Pass, \`false\` for Still-failing / Regressed. Read the script's single JSON status line: \`ok\` means the verdict is now on the replay trace, add "\xB7 saved" to your one-line report.
 - **If the completed item's trace id is \`null\`** (old server/SDK that returns no server-trace-id mapping, from the \`run\` step's note): persistence is impossible. Keep the verdict in-chat only and tell the user once: "This replay didn't return a server trace ID, so the verdict can't be saved. Upgrade the SDK/server and run \`{{cmd}}setup replay\` to regenerate the script." Don't block the flow on it.
-- **No-label original** (you showed a before/after diff, no pass/fail): there's no verdict to persist, just report the diff.
+- **No-label original with no assertions either** (you showed a before/after diff, no pass/fail): there's no verdict to persist, just report the diff. An unlabeled original that HAS assertions is not this case, the assertions are the criteria, so score them one per assertion and persist them.
 
 {{branches}}`,
           branches: [
