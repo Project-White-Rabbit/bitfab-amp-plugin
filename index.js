@@ -14085,6 +14085,27 @@ var getGraderLabels = {
     limit: preprocess(parseJsonString, number2().int().min(1).max(MAX_GRADER_LABEL_LIMIT)).optional().describe(`Max labels to return when reading by grader alone (default ${DEFAULT_GRADER_LABEL_LIMIT}, max ${MAX_GRADER_LABEL_LIMIT}). Ignored when traceIds is given.`)
   }
 };
+var getSimPlan = {
+  name: "get_sim_plan",
+  title: "Get Sim Plan",
+  description: "Read one trace function's sim plan: its span nodes overlaid from recent traces, each with its span type, call count, how many traces it appears in, and whether its content (inputs and outputs) is captured. Call it to learn the exact node names before save_sim_plan, or to answer what a workflow records today.",
+  inputSchema: {
+    traceFunctionKey: string2().min(1).describe("Trace function key, as list_trace_functions prints it."),
+    limit: preprocess(parseJsonString, number2().int().min(1).max(100)).optional().describe("Recent traces to overlay (1-100). Defaults to 20.")
+  }
+};
+var saveSimPlan = {
+  name: "save_sim_plan",
+  title: "Save Sim Plan",
+  description: "Turn content capture (inputs and outputs) off or on for span nodes of one trace function. The span itself, its name, type, timing, and errors are always recorded; content off strips only inputs and outputs. Call it when the user wants a span to stop recording its payloads, or to record them again. A node is its span name inside the trace function key, exactly as get_sim_plan lists it. Returns the updated sim plan.",
+  inputSchema: {
+    traceFunctionKey: string2().min(1).describe("Trace function key, as list_trace_functions prints it."),
+    nodes: preprocess(parseJsonString, array(object({
+      name: string2().min(1),
+      captureContent: preprocess(parseJsonString, boolean2())
+    })).min(1).max(500)).describe("Nodes to change (1-500). `name` is the span name; `captureContent` false stops recording that span's inputs and outputs, true records them again.")
+  }
+};
 var ALL_TOOL_CONTRACTS = [
   getGraderLabels,
   getExperiment,
@@ -14130,7 +14151,9 @@ var ALL_TOOL_CONTRACTS = [
   confirmTracePlan,
   getTracePlan,
   listTracePlans,
-  cancelTracePlan
+  cancelTracePlan,
+  getSimPlan,
+  saveSimPlan
 ];
 var TOOL_NAMES = ALL_TOOL_CONTRACTS.map((contract) => contract.name).sort();
 
