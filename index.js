@@ -13754,6 +13754,34 @@ var assertionTargetShape = discriminatedUnion("kind", [
     ]).optional().describe('Which call to check when the trace runs that span more than once, e.g. a retry loop. "first", "last" (the default), or a 0-based index. Leave it off unless the repetition matters.')
   }).describe("Check one span by name rather than the whole trace, e.g. that a particular tool call was made with the right arguments.")
 ]).describe('SCOPE: what part of the trace under evaluation this assertion is checked against. OMIT IT for the whole trace, which is the common case and the right default when unsure. Pass { "kind": "output" } to check only the final output, or { "kind": "span", "name": "..." } to check one span. Scoping narrows what a judge looks at, so a wrong scope hides real failures. A target naming something the evaluated trace does not contain makes the check ERRORED, never passed, because a check that could not run must never look like a check that succeeded.');
+var saveAssertionCategory = {
+  name: "save_assertion_category",
+  title: "Save Assertion Category",
+  description: "Create or edit an assertion category shared within this organization. Returns its ID for category_assertion_id in save_trace_assertions. Omit id to create. Pass an existing id to edit. Omit description on an edit to preserve it. Pass an empty description to clear it.",
+  inputSchema: {
+    id: uuid2().optional().describe("Existing category ID to edit. Omit to create a category."),
+    title: string2().trim().min(1).describe("The category title."),
+    description: string2().optional().describe("What assertions in this category have in common. Omit on an edit to preserve it. Pass an empty string to clear it.")
+  }
+};
+var listAssertionCategories = {
+  name: "list_assertion_categories",
+  title: "List Assertion Categories",
+  description: "List assertion categories in this organization with their IDs, titles, and descriptions. Use the returned ID as category_assertion_id in save_trace_assertions.",
+  inputSchema: {}
+};
+var getAssertionCategory = {
+  name: "get_assertion_category",
+  title: "Get Assertion Category",
+  description: "Read one assertion category in this organization by ID, including its title and description.",
+  inputSchema: { id: uuid2().describe("ID of the category to read.") }
+};
+var deleteAssertionCategory = {
+  name: "delete_assertion_category",
+  title: "Delete Assertion Category",
+  description: "Delete an assertion category from this organization. Its assertions are kept and become uncategorized. Their existing verdicts are kept.",
+  inputSchema: { id: uuid2().describe("ID of the category to delete.") }
+};
 var saveTraceAssertions = {
   name: "save_trace_assertions",
   title: "Save Trace Assertions",
@@ -13762,6 +13790,7 @@ var saveTraceAssertions = {
     traceId: uuid2().describe("The ORIGINAL trace to attach assertions to. A replay trace id is refused, and the error names the original to retry with, because a replay reads its original's assertions automatically."),
     assertions: preprocess(parseJsonString, array(object({
       id: uuid2().optional().describe("Id of an existing assertion to edit, from a previous save or from get_trace_assertions. Omit to add a new one."),
+      category_assertion_id: uuid2().nullish().describe("Category ID from save_assertion_category or list_assertion_categories. Omit on an edit to preserve the category. Pass null to remove it."),
       assertion: string2().min(1).describe("The single thing that must hold, in one sentence, stated so a reader who has never seen this trace could check it, e.g. 'The itinerary returned lands before 9am local time'. One claim per assertion: if you are about to write 'and', write two assertions instead, so each can pass or fail on its own."),
       passCriteria: string2().optional().describe("How a judge should recognise a pass, when the assertion alone leaves room to argue, e.g. 'arrival timestamp is strictly before 09:00 in the destination timezone'. Optional, and only worth writing when it removes real ambiguity. Same field save_grader takes, so an assertion that proves out across many traces is promoted into a grader by copying it. On an edit, omit to keep the current value and pass an empty string to clear it."),
       failCriteria: string2().optional().describe("How a judge should recognise a failure, for cases the pass criteria do not obviously exclude, e.g. 'any leg departing after 09:00, including connections'. Optional. On an edit, omit to keep the current value and pass an empty string to clear it."),
@@ -13772,7 +13801,7 @@ var saveTraceAssertions = {
 var getTraceAssertions = {
   name: "get_trace_assertions",
   title: "Get Trace Assertions",
-  description: `Read what SHOULD happen when one or more traces are replayed: each trace's assertions, their pass/fail criteria, and what part of the evaluated trace each one checks. Call this before judging a replay so the verdict is measured against what the user actually asked for rather than a guess, and before save_trace_assertions to find the assertion to edit or to avoid creating a duplicate. No span content is loaded, so one call accepts up to ${GET_TRACE_ASSERTIONS_MAX_IDS} ids. Accepts original trace ids and replay trace ids alike: a replay with no assertions of its own reads its original's, and the response says which original they came from. An assertion whose target cannot be found on the trace being evaluated is errored, never passed, so record it with save_agent_labels \`skip\` rather than a FAIL.`,
+  description: `Read what SHOULD happen when one or more traces are replayed: each trace's assertions, their pass/fail criteria, and what part of the evaluated trace each one checks. Categorized assertions include category_assertion_id and the category's id, title, and description. Call this before judging a replay so the verdict is measured against what the user actually asked for rather than a guess, and before save_trace_assertions to find the assertion to edit or to avoid creating a duplicate. No span content is loaded, so one call accepts up to ${GET_TRACE_ASSERTIONS_MAX_IDS} ids. Accepts original trace ids and replay trace ids alike: a replay with no assertions of its own reads its original's, and the response says which original they came from. An assertion whose target cannot be found on the trace being evaluated is errored, never passed, so record it with save_agent_labels \`skip\` rather than a FAIL.`,
   inputSchema: {
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_TRACE_ASSERTIONS_MAX_IDS)).describe(`Original trace IDs to read assertions for (1-${GET_TRACE_ASSERTIONS_MAX_IDS})`)
   }
@@ -14124,6 +14153,10 @@ var ALL_TOOL_CONTRACTS = [
   getSpanField,
   saveAgentLabels,
   saveHumanLabels,
+  saveAssertionCategory,
+  listAssertionCategories,
+  getAssertionCategory,
+  deleteAssertionCategory,
   saveTraceAssertions,
   getTraceAssertions,
   archiveTraceAssertions,
