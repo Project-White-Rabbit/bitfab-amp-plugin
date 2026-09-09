@@ -14854,14 +14854,17 @@ var renderClaudeSkillFrontmatter = ({ flowId, description, model, allowedTools }
   return lines.join(`
 `);
 };
-function renderNamedFrontmatter(name, description, usage) {
-  return [
+function renderNamedFrontmatter(name, description, usage, usageInBody = false) {
+  const frontmatter = [
     "---",
     `name: ${name}`,
-    `description: "${description}${usage}"`,
+    `description: "${description}${usageInBody ? "" : usage}"`,
     "---"
   ].join(`
 `);
+  return usageInBody && usage !== "" ? `${frontmatter}
+
+${usage.slice(2)}` : frontmatter;
 }
 var renderCursorFrontmatter = ({ flowId, description, argumentHint }) => {
   const usage = argumentHint !== undefined ? `. Usage: /bitfab-${flowId} ${argumentHint}` : "";
@@ -14877,15 +14880,15 @@ var renderAmpFrontmatter = ({ flowId, description, argumentHint }) => {
 };
 var renderCursorDevFrontmatter = ({ flowId, description, argumentHint }) => {
   const usage = argumentHint !== undefined ? `. Usage: /bitfab-dev-${flowId} ${argumentHint}` : "";
-  return renderNamedFrontmatter(`bitfab-dev-${flowId}`, description, usage);
+  return renderNamedFrontmatter(`bitfab-dev-${flowId}`, description, usage, true);
 };
 var renderCodexDevFrontmatter = ({ flowId, description, argumentHint }) => {
   const usage = argumentHint !== undefined ? `. Invoke with $bitfab-dev:${flowId} ${argumentHint}.` : "";
-  return renderNamedFrontmatter(flowId, description, usage);
+  return renderNamedFrontmatter(flowId, description, usage, true);
 };
 var renderAmpDevFrontmatter = ({ flowId, description, argumentHint }) => {
   const usage = argumentHint !== undefined ? `. Invoke as bitfab-dev:${flowId} ${argumentHint}.` : "";
-  return renderNamedFrontmatter(flowId, description, usage);
+  return renderNamedFrontmatter(flowId, description, usage, true);
 };
 var ASK_USER_QUESTION_TOKENS = {
   askUser: "with `AskUserQuestion` ",
