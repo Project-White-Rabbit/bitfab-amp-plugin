@@ -50,7 +50,7 @@ or invoke one from the command palette with `skill: invoke`.
 ## Tools
 
 Every Bitfab tool the other plugins expose over MCP is registered directly with
-Amp under its bare name (`search_traces`, `get_traces`, `save_trace_plan`, ...),
+Amp under its bare name (`search_traces`, `get_traces`, `save_dataset`, ...),
 so you can ask Amp to query your traces without invoking a skill.
 
 ## Update

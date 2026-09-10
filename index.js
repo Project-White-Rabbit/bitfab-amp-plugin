@@ -8463,29 +8463,9 @@ var require_dist = __commonJS(function(exports, module) {
 });
 
 // src/plugin.ts
-import fs4 from "fs";
-import path9 from "path";
+import fs2 from "fs";
+import path2 from "path";
 
-// ../bitfab-plugin-lib/dist/agentSessionChannel.js
-async function pushAgentSessionEvent(client, event) {
-  const url = `${client.serviceUrl}/api/studio/events`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${client.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      session: client.sessionId,
-      type: event.type,
-      data: event.data
-    })
-  });
-  if (!res.ok) {
-    throw new Error(`pushAgentSessionEvent failed (${res.status}): ${await res.text()}`);
-  }
-  return await res.json();
-}
 // ../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
 var _a;
 function $constructor(name, initializer, params) {
@@ -13573,59 +13553,6 @@ function parseJsonString(val) {
     return val;
   }
 }
-var LEGACY_CLASSIFICATION = {
-  mock_boundary: "model_call",
-  live_side_effect: "side_effect"
-};
-var traceNodeAnalysisShape = object({
-  classification: preprocess((value) => typeof value === "string" ? LEGACY_CLASSIFICATION[value] ?? value : value, _enum(["pure", "model_call", "external_read", "side_effect"])),
-  mockable: boolean2().optional(),
-  unmockableReason: string2().min(1).optional(),
-  inputSerializable: boolean2().optional(),
-  outputSerializable: boolean2().optional(),
-  innerCall: object({ name: string2().min(1) }).optional(),
-  sideEffectKind: _enum([
-    "db_write",
-    "http_outbound",
-    "queue",
-    "email",
-    "filesystem",
-    "vector_write"
-  ]).optional(),
-  readKind: _enum([
-    "db_read",
-    "http_read",
-    "vector_search",
-    "cache_read",
-    "filesystem_read"
-  ]).optional()
-});
-var traceNodeShape = object({
-  id: string2().min(1),
-  name: string2().min(1),
-  kind: _enum(["manual", "auto", "pure"]),
-  file: string2().min(1),
-  line: number2().int().min(0),
-  signature: string2().nullable(),
-  parentId: string2().nullable(),
-  childIds: array(string2()),
-  framework: string2().optional(),
-  fields: array(object({
-    name: string2().min(1),
-    type: string2().min(1),
-    sample: unknown().optional()
-  })).optional(),
-  sampleInput: unknown().optional(),
-  sampleOutput: unknown().optional(),
-  source: string2().optional(),
-  analysis: traceNodeAnalysisShape.optional(),
-  alreadyTraced: boolean2().optional(),
-  alreadyMocked: boolean2().optional()
-});
-var tracePlanTreeShape = object({
-  rootId: string2().min(1),
-  nodes: record(string2(), traceNodeShape)
-});
 var getBitfabApiKey = {
   name: "get_bitfab_api_key",
   title: "Get Bitfab API Key",
@@ -13635,7 +13562,7 @@ var getBitfabApiKey = {
 var getApiKeyContext = {
   name: "get_api_key_context",
   title: "Get API Key Context",
-  description: "Returns which Bitfab org this API key reads from and writes to (it can differ from the org open in the user's Studio tab). Call before the first MCP write of a session, and whenever the user says data you just wrote isn't visible in their Studio: the `Organization:` field is the answer to 'which org should I switch the Studio to?'.",
+  description: "Returns which Bitfab org this API key reads from and writes to (it can differ from the org open in the user's Bitfab tab). Call before the first MCP write of a session, and whenever the user says data you just wrote isn't visible in their Bitfab: the `Organization:` field is the answer to 'which org should I switch the Bitfab to?'.",
   inputSchema: {}
 };
 var listOrganizations = {
@@ -14003,62 +13930,6 @@ var saveTemplate = {
     description: string2().optional().describe("Optional description. Pass an empty string to clear an existing description.")
   }
 };
-var saveTracePlan = {
-  name: "save_trace_plan",
-  title: "Save Trace Plan",
-  description: 'Create or update a tracing instrumentation plan. CREATE: omit `planId` and send `language`, the full `tree`, `capturedNodeIds`, and usually `traceFunctionKey`; this creates a reviewable plan and returns its id, Studio URL, initial capture count, and expiry. UPDATE: pass `planId`; use targeted `capture` / `uncapture` and/or `mockOnReplayByNodeId` changes without restating the tree, or send `tree` plus `capturedNodeIds` together for a structural replacement. A structural replacement may change `tree.rootId` when the trace boundary moves or is replaced. Targeted changes preserve status; a structural change to a confirmed plan reopens it to `awaiting`. Never create a second plan when one already exists for the work in hand: save it by `planId` instead, and find that id with `list_trace_plans({ traceFunctionKey, status: "awaiting" })` when you do not already hold it (get_trace_plan by key answers only for confirmed plans, so its miss does not mean the key is free). A cancelled plan is the one thing you cannot save onto: create fresh. An expired one needs no special handling, saving it revives it. The captured set must stay one connected sub-tree with exactly one entry point, and that entry point always re-runs live and can never be mocked. Updates return the current plan summary, including the final captured set and replay/mock decisions.',
-  inputSchema: {
-    planId: string2().optional().describe("Existing trace plan id to update. Omit to create a new plan. Do not send creation-only fields `language`, `source`, or `agentRunId` when this is supplied."),
-    language: _enum(["python", "typescript", "ruby", "go"]).optional().describe("CREATE mode. Source language of the user's code. Required when `planId` is omitted."),
-    tree: preprocess(parseJsonString, tracePlanTreeShape).optional().describe("TracePlanTree: { rootId, nodes: { [id]: TraceNode } }. Each TraceNode has id, name, kind ('manual' | 'auto' | 'pure'), file, line, signature, parentId, childIds, plus optional framework, fields, sampleInput, sampleOutput. Every node, including uncaptured context nodes, must carry `analysis` describing WHAT THAT NODE DOES: { classification, sideEffectKind?, readKind?, innerCall?, mockable?, unmockableReason?, inputSerializable?, outputSerializable? }. Set `mockable` mechanically from the node's `kind`: `kind: 'manual'` (a hand-written `withSpan`/`@span`) is mockable, omit `mockable`; `kind: 'auto'` (captured by a framework handler/processor/stream/collector) gets `mockable: false` + `unmockableReason`, the ONE exception being Vercel AI SDK model spans (its `wrapLanguageModel` middleware routes the call through `withSpan`), which are mockable, omit; the root gets omit (never mockable). Rationale: mocking returns a span's recorded output instead of running the call, which only works when the call goes through a `withSpan` wrapper; `auto` framework spans are observed, not wrapped. Key hazard: an `auto` `external_read`/`side_effect` (a framework tool hitting a DB/HTTP) left mockable promises a mock replay can't deliver; its fix is a manual `withSpan` around that call or a db-snapshot, never a mock. Serializability is two raw facts, distinct from `mockable`: set `outputSerializable: false` when the recorded OUTPUT does not round-trip through serialization, and set `inputSerializable: false` when the recorded INPUT does not (its arguments hold a DB client, an open stream, a callback, or a class instance with no JSON form); omit either when it serializes (the default). Two rules follow. (1) Do NOT choose a root whose input is not serializable: replay re-runs the root against its recorded input, so a non-serializable-input root is not replayable, promote the root to a caller that takes a serializable input instead. (2) Do NOT mock a node whose output is not serializable (replay has no recorded value to return); the server enforces this by forcing any `outputSerializable: false` node unmockable, so you don't need to also set `mockable` for that reason. classification is 'pure' (deterministic local compute), 'model_call' (the span that IS the actual LLM/model call; a wrapper/orchestrator whose model call is represented by a child node, e.g. a LangChain chain.invoke or the root, is 'pure', not 'model_call'; never bubble a child's model_call up to its parent), 'external_read' (reads external mutable state: DB SELECT, outbound GET, vector search, cache read; set readKind), or 'side_effect' (mutates external state: DB write, outbound POST/PUT/DELETE, email, queue, payment, filesystem; set sideEffectKind). The server derives the replay disposition (`mockOnReplay`) and the whole validation summary from this classification and mockability, so do NOT send them. Include ~10 surrounding callees below each leaf as `pure` (uncaptured) context nodes so the user can see what's adjacent in the codebase when they edit in the UI. Every node MUST be a descendant of `rootId`: the plan tree renders downward from the root, so a node above the root or on a side branch off one of those ancestors is stored and counted but never drawn. Never send callers above the root."),
-    capturedNodeIds: preprocess(parseJsonString, array(string2())).optional().describe("CREATE or STRUCTURAL update mode. Absolute captured set for `tree`. Required with `tree`; must reference ids in the tree and form one connected sub-tree."),
-    capture: preprocess(parseJsonString, array(string2())).optional().describe("TARGETED update mode. Node ids to add to the existing captured set, each one pulling in every span above it so the captured set stays one connected sub-tree. Requires `planId`; cannot be combined with `tree` / `capturedNodeIds`."),
-    uncapture: preprocess(parseJsonString, array(string2())).optional().describe("TARGETED update mode. Node ids to remove from the existing captured set, each one also dropping every span beneath it. Requires `planId`; cannot be combined with `tree` / `capturedNodeIds`."),
-    mockOnReplayByNodeId: preprocess(parseJsonString, record(string2(), boolean2())).optional().describe("UPDATE mode. Per-node replay/mock overrides. Only listed nodes change. The replay entry point and framework-observed spans cannot be mocked."),
-    stats: preprocess(parseJsonString, unknown()).optional().describe("Optional sample-run stats: { durationMs?, tokens?, cost? }"),
-    traceFunctionKey: string2().min(1).optional().describe("Trace function key. Recommended when creating; when updating, pass only to rename a key that was wrong or changed."),
-    source: _enum(["interactive", "analyze_repo"]).optional().describe("CREATE mode. How this plan was produced. Omit for a normal interactive plan; set 'analyze_repo' only from analyze-repo batch mode."),
-    agentRunId: uuid2().optional()
-  }
-};
-var confirmTracePlan = {
-  name: "confirm_trace_plan",
-  title: "Confirm Trace Plan",
-  description: "Confirm a trace plan WITHOUT the browser, for the continue path where the user accepted the ASCII plan in chat, or left the Studio plan page without saving. Persists the plan as the latest *confirmed* plan for its traceFunctionKey (so later get_trace_plan by key, setup view, and setup modify can find it) and returns the final captured set plus per-node replay/mock decisions, exactly like get_trace_plan. Studio's Close/Update button does this for the browser path; call this only when the user continues without Studio, or leaves the plan page without saving. Pass the recommended capturedNodeIds; omit mockOnReplayByNodeId to accept the analysis-derived replay decisions (only pass it to override specific nodes the way a Studio toggle would).",
-  inputSchema: {
-    planId: string2().describe("The trace plan id returned by save_trace_plan."),
-    capturedNodeIds: preprocess(parseJsonString, array(string2()).min(1)).describe("The captured set to confirm. Must reference ids present in the plan's tree and form a single connected sub-tree with one entry point (its top-most captured span). The entry point does NOT have to be the plan's tree root: untracing the tree root and rooting at a captured descendant is honored and persisted as-is."),
-    mockOnReplayByNodeId: preprocess(parseJsonString, record(string2(), boolean2())).optional().describe("Optional per-node overrides of the replay/mock decision (the equivalent of a Studio toggle). Omit to accept the server's analysis-derived defaults. The replay entry point (the top-most captured span) always re-runs live and cannot be mocked.")
-  }
-};
-var getTracePlan = {
-  name: "get_trace_plan",
-  title: "Get Trace Plan",
-  description: 'Read a trace plan. Two modes: pass `planId` to read a specific plan (use this after save_trace_plan + browser confirmation to learn whether the user confirmed, cancelled, or is still pending); or pass `traceFunctionKey` to fetch the latest *confirmed* plan for that key. A key lookup that reports no plan has ruled out a confirmed one only: unconfirmed plans for that key (an analyze-repo draft, or one whose confirmation never landed) are found with `list_trace_plans({ traceFunctionKey, status: "awaiting" })`, and saving onto one of those beats creating a rival plan for the same key. At the start of a Modify cycle, treat that confirmed plan as historical intent and reconcile its tree and captured nodes with current code; never assume the stored snapshot proves current instrumentation or use it to skip rereading code. Returns the full plan including the tree as JSON.',
-  inputSchema: {
-    planId: string2().optional().describe("The trace plan id returned by save_trace_plan."),
-    traceFunctionKey: string2().optional().describe("Trace function key. Returns the latest confirmed plan for this key in the caller's organization, or a 'no prior plan' message if none exists.")
-  }
-};
-var listTracePlans = {
-  name: "list_trace_plans",
-  title: "List Trace Plans",
-  description: 'List existing trace plans for this organization, newest first. Two main uses. (1) Surfacing the unconfirmed draft plans an earlier `analyze-repo` run uploaded (pass `source: "analyze_repo"`, `status: "awaiting"`) so an Instrument cycle can reuse them instead of re-scanning the codebase and re-drafting. (2) Finding the plan that already exists for a trace function you are about to save (pass `traceFunctionKey`, and `status: "awaiting"` for the unconfirmed ones get_trace_plan by key does not return), so you update it by `planId` instead of creating a competing plan for the same key. Each entry includes the plan id (pass it to get_trace_plan / save_trace_plan / openTracePlan), the trace function key, the root name and file, language, the recommended captured-node count, status, source, and age. Expired plans are omitted. Use this before asking the user what to instrument.',
-  inputSchema: {
-    traceFunctionKey: string2().min(1).optional().describe("Filter to plans saved under this exact trace function key. Omit for every key."),
-    source: _enum(["interactive", "analyze_repo"]).optional().describe("Filter by how the plan was produced. 'analyze_repo' returns the non-interactive batch drafts; 'interactive' returns plans from a normal Instrument/Modify cycle. Omit for both."),
-    status: _enum(["awaiting", "confirmed", "cancelled"]).optional().describe("Filter by plan status. 'awaiting' is an unconfirmed draft (the reusable ones), 'confirmed' has been accepted in Studio, 'cancelled' was dropped. Omit for any."),
-    limit: preprocess(parseJsonString, number2().min(1).max(50)).optional().describe("Max plans to return (default 20, max 50)")
-  }
-};
-var cancelTracePlan = {
-  name: "cancel_trace_plan",
-  title: "Cancel Trace Plan",
-  description: "Retire an `awaiting` trace plan nobody will act on, so it stops coming back from list_trace_plans as a reusable draft. Use it when a draft is moot: its workflow is already instrumented under that key, or the user declined it. Only an awaiting plan can be cancelled, and cancelling is final (a cancelled plan cannot be updated or revived; re-plan the same work with a fresh save_trace_plan). A confirmed plan is the record of what the code captures and is never cancelled. When the draft is worth keeping but wrong, update it with save_trace_plan and its `planId` instead of cancelling and recreating.",
-  inputSchema: {
-    planId: string2().describe("The trace plan id to cancel. Must still be `awaiting`.")
-  }
-};
 var saveExperimentGroup = {
   name: "save_experiment_group",
   title: "Save Experiment Group",
@@ -14127,7 +13998,7 @@ var getSimPlan = {
 var saveSimPlan = {
   name: "save_sim_plan",
   title: "Save Sim Plan",
-  description: "Turn content capture (inputs and outputs) off or on for span nodes of one trace function. The span itself, its name, type, timing, and errors are always recorded; content off strips only inputs and outputs. Call it when the user wants a span to stop recording its payloads, or to record them again. A node is its span name inside the trace function key, exactly as get_sim_plan lists it. A node recorded by a framework integration (OpenAI Agents, LangGraph, Claude Agent SDK, Vercel AI SDK), a node that is the root of its traces, a node imported from another platform, or a node named by Bitfab rather than the SDK keeps its content; asking to turn it off is refused with the reason. Turning a node off also turns content off for every node beneath it in the sim plan, the way untracing a span in a trace plan drops the spans under it; a node beneath it that keeps its content stays on, and a node you name in the same call keeps the value you give it. Turning a node back on leaves the nodes beneath it as they are, so turn those on by name. Returns the updated sim plan.",
+  description: "Turn content capture (inputs and outputs) off or on for span nodes of one trace function. The span itself, its name, type, timing, and errors are always recorded; content off strips only inputs and outputs. Call it when the user wants a span to stop recording its payloads, or to record them again. A node is its span name inside the trace function key, exactly as get_sim_plan lists it. A node recorded by a framework integration (OpenAI Agents, LangGraph, Claude Agent SDK, Vercel AI SDK), a node that is the root of its traces, a node imported from another platform, or a node named by Bitfab rather than the SDK keeps its content; asking to turn it off is refused with the reason. Turning a node off also turns content off for every node beneath it in the sim plan; a node beneath it that keeps its content stays on, and a node you name in the same call keeps the value you give it. Turning a node back on leaves the nodes beneath it as they are, so turn those on by name. Returns the updated sim plan.",
   inputSchema: {
     traceFunctionKey: string2().min(1).describe("Trace function key, as list_trace_functions prints it."),
     nodes: preprocess(parseJsonString, array(object({
@@ -14181,88 +14052,26 @@ var ALL_TOOL_CONTRACTS = [
   getTemplateReference,
   getTemplate,
   saveTemplate,
-  saveTracePlan,
-  confirmTracePlan,
-  getTracePlan,
-  listTracePlans,
-  cancelTracePlan,
   getSimPlan,
   saveSimPlan
 ];
 var TOOL_NAMES = ALL_TOOL_CONTRACTS.map((contract) => contract.name).sort();
 
-// ../bitfab-plugin-lib/dist/activePreviewSession.js
-import fs from "fs";
-import os from "os";
-import path from "path";
-var FILE_PATH = path.join(os.homedir(), ".config", "bitfab", "active-preview-session.json");
-function processIsAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code !== "ESRCH";
-  }
-}
-function readActivePreviewSessionRaw() {
-  try {
-    const raw = fs.readFileSync(FILE_PATH, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.sessionId === "string" && typeof parsed.serviceUrl === "string" && typeof parsed.pid === "number" && typeof parsed.startedAt === "string") {
-      return parsed;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-function readActivePreviewSession() {
-  const raw = readActivePreviewSessionRaw();
-  if (!raw) {
-    return null;
-  }
-  if (!processIsAlive(raw.pid)) {
-    return null;
-  }
-  return raw;
-}
-
-// ../bitfab-plugin-lib/dist/chatSessions/arming.js
-import fs2 from "fs";
-import os2 from "os";
-import path2 from "path";
-function sessionsDir() {
-  return path2.join(os2.homedir(), ".config", "bitfab", "sessions");
-}
-function ensureSessionsDir() {
-  fs2.mkdirSync(sessionsDir(), { recursive: true });
-}
-function agentRunIdPath(sessionId) {
-  return path2.join(sessionsDir(), `${sessionId}.agent-run-id`);
-}
-function writeAgentRunId(sessionId, agentRunId) {
-  if (!sessionId || !agentRunId.trim()) {
-    return;
-  }
-  ensureSessionsDir();
-  fs2.writeFileSync(agentRunIdPath(sessionId), agentRunId);
-}
-
 // ../bitfab-plugin-lib/dist/clientHeaders.js
-import os4 from "os";
+import os2 from "os";
 
 // ../bitfab-plugin-lib/dist/config.js
 import crypto from "crypto";
-import fs3 from "fs";
-import os3 from "os";
-import path3 from "path";
+import fs from "fs";
+import os from "os";
+import path from "path";
 var DEFAULT_SERVICE_URL = "https://bitfab.ai";
 var DSM_NOT_STARTED_URL = "dsm:not-started";
-var GLOBAL_CONFIG_DIR = path3.join(os3.homedir(), ".config", "bitfab");
-var GLOBAL_CONFIG_FILE = path3.join(GLOBAL_CONFIG_DIR, "config.json");
-var GLOBAL_CREDENTIALS_FILE = path3.join(GLOBAL_CONFIG_DIR, "credentials.json");
-var PROJECT_CONFIG_RELATIVE = path3.join(".bitfab", "config.local.json");
-var PROJECT_CREDENTIALS_RELATIVE = path3.join(".bitfab", "credentials.local.json");
+var GLOBAL_CONFIG_DIR = path.join(os.homedir(), ".config", "bitfab");
+var GLOBAL_CONFIG_FILE = path.join(GLOBAL_CONFIG_DIR, "config.json");
+var GLOBAL_CREDENTIALS_FILE = path.join(GLOBAL_CONFIG_DIR, "credentials.json");
+var PROJECT_CONFIG_RELATIVE = path.join(".bitfab", "config.local.json");
+var PROJECT_CREDENTIALS_RELATIVE = path.join(".bitfab", "credentials.local.json");
 function projectSearchStartDirs() {
   const rawDirs = [
     process.cwd(),
@@ -14272,10 +14081,10 @@ function projectSearchStartDirs() {
   const dirs = [];
   const seen = new Set;
   for (const rawDir of rawDirs) {
-    if (typeof rawDir !== "string" || !path3.isAbsolute(rawDir)) {
+    if (typeof rawDir !== "string" || !path.isAbsolute(rawDir)) {
       continue;
     }
-    const dir = path3.resolve(rawDir);
+    const dir = path.resolve(rawDir);
     if (seen.has(dir)) {
       continue;
     }
@@ -14286,7 +14095,7 @@ function projectSearchStartDirs() {
 }
 function readJsonFile(filePath) {
   try {
-    const content = fs3.readFileSync(filePath, "utf-8");
+    const content = fs.readFileSync(filePath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -14298,15 +14107,15 @@ function findProjectFiles() {
     let foundConfigFile = null;
     let foundCredentialsFile = null;
     while (true) {
-      const configFile = path3.join(dir, PROJECT_CONFIG_RELATIVE);
-      const credentialsFile = path3.join(dir, PROJECT_CREDENTIALS_RELATIVE);
-      if (!foundConfigFile && fs3.existsSync(configFile)) {
+      const configFile = path.join(dir, PROJECT_CONFIG_RELATIVE);
+      const credentialsFile = path.join(dir, PROJECT_CREDENTIALS_RELATIVE);
+      if (!foundConfigFile && fs.existsSync(configFile)) {
         foundConfigFile = configFile;
       }
-      if (!foundCredentialsFile && fs3.existsSync(credentialsFile)) {
+      if (!foundCredentialsFile && fs.existsSync(credentialsFile)) {
         foundCredentialsFile = credentialsFile;
       }
-      const parent = path3.dirname(dir);
+      const parent = path.dirname(dir);
       if (parent === dir) {
         break;
       }
@@ -14406,8 +14215,8 @@ function getOrCreateInstallId() {
   }
   const installId = crypto.randomUUID();
   try {
-    fs3.mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true });
-    fs3.writeFileSync(GLOBAL_CONFIG_FILE, `${JSON.stringify({ ...config, installId }, null, 2)}
+    fs.mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(GLOBAL_CONFIG_FILE, `${JSON.stringify({ ...config, installId }, null, 2)}
 `);
   } catch {}
   return installId;
@@ -14422,8 +14231,8 @@ function buildBitfabClientHeaders(pluginVersion, platform) {
     "x-bitfab-client-version": pluginVersion,
     "x-bitfab-client-timezone": resolvedOptions.timeZone,
     "x-bitfab-client-locale": resolvedOptions.locale,
-    "x-bitfab-client-os": os4.platform(),
-    "x-bitfab-client-arch": os4.arch(),
+    "x-bitfab-client-os": os2.platform(),
+    "x-bitfab-client-arch": os2.arch(),
     "x-bitfab-client-node-version": process.version,
     "x-bitfab-install-id": getOrCreateInstallId()
   };
@@ -14563,59 +14372,11 @@ class McpProxy {
   }
 }
 
-// ../bitfab-plugin-lib/dist/resolveCodingAgentDisplayName.js
-var DEFAULT_LABEL = "Coding agent";
-function resolveCodingAgentDisplayName() {
-  const override = process.env.BITFAB_AGENT_LABEL?.trim();
-  if (override) {
-    return override;
-  }
-  if (process.env.CODEX_THREAD_ID != null || process.env.CODEX_CI === "1" || process.env.CODEX_SANDBOX === "seatbelt") {
-    return "Codex";
-  }
-  if (process.env.CLAUDE_CODE_VERSION != null) {
-    return "Claude";
-  }
-  if (process.env.CURSOR_PLUGIN_ROOT != null) {
-    return "Cursor";
-  }
-  return DEFAULT_LABEL;
-}
-
 // ../bitfab-plugin-lib/dist/bitfabToolHandlers.js
-function hasText(value) {
-  return typeof value === "string" && value.trim() !== "";
-}
 function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
   const proxy = new McpProxy(platform, pluginVersion);
   function proxyToolCall(toolName, args) {
-    const agentRunId = process.env.BITFAB_AGENT_RUN_ID;
-    const isNewAnalyzeRepoPlan = toolName === "save_trace_plan" && !args.planId && hasText(agentRunId);
-    if (isNewAnalyzeRepoPlan) {
-      const agentSessionId = process.env.CLAUDE_CODE_SESSION_ID;
-      if (agentSessionId) {
-        writeAgentRunId(agentSessionId, agentRunId);
-      }
-    }
-    const nextArgs = isNewAnalyzeRepoPlan ? { ...args, source: args.source ?? "analyze_repo", agentRunId } : args;
-    return proxy.toolCall(getConfig(), toolName, nextArgs);
-  }
-  async function pushToActivePreview(event) {
-    const active = readActivePreviewSession();
-    if (!active) {
-      return;
-    }
-    const config = getConfig();
-    if (!config.apiKey) {
-      return;
-    }
-    try {
-      await pushAgentSessionEvent({
-        serviceUrl: active.serviceUrl,
-        apiKey: config.apiKey,
-        sessionId: active.sessionId
-      }, event);
-    } catch {}
+    return proxy.toolCall(getConfig(), toolName, args);
   }
   async function handleSaveAgentLabels(args) {
     const { testRunId, labels } = args;
@@ -14654,52 +14415,10 @@ function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
       notes
     });
   }
-  async function handleSaveTemplate(args) {
-    const { spanType, traceFunctionKey, template, name, description } = args;
-    await pushToActivePreview({
-      type: "editStarted",
-      data: {
-        spanType,
-        traceFunctionKey: traceFunctionKey ?? null,
-        agentLabel: resolveCodingAgentDisplayName()
-      }
-    });
-    try {
-      const result = await proxyToolCall("save_template", {
-        spanType,
-        traceFunctionKey,
-        template,
-        name,
-        description
-      });
-      await pushToActivePreview({
-        type: "editEnded",
-        data: {
-          spanType,
-          traceFunctionKey: traceFunctionKey ?? null,
-          success: true,
-          summary: traceFunctionKey ? `Updated ${spanType} template for ${traceFunctionKey}` : `Updated org-global ${spanType} template`
-        }
-      });
-      return result;
-    } catch (err) {
-      await pushToActivePreview({
-        type: "editEnded",
-        data: {
-          spanType,
-          traceFunctionKey: traceFunctionKey ?? null,
-          success: false,
-          summary: err.message ?? "save_template failed"
-        }
-      });
-      throw err;
-    }
-  }
   const specialHandlers = {
     [saveAgentLabels.name]: handleSaveAgentLabels,
     [saveExperiment.name]: handleSaveExperiment,
-    [saveExperimentGroup.name]: handleSaveExperimentGroup,
-    [saveTemplate.name]: handleSaveTemplate
+    [saveExperimentGroup.name]: handleSaveExperimentGroup
   };
   const handlers = ALL_TOOL_CONTRACTS.map((contract) => ({
     contract,
@@ -14712,45 +14431,6 @@ var BITFAB_SKILLS = ["setup", "assistant", "update"];
 
 // ../bitfab-plugin-lib/dist/hooks/skillDetection.js
 var SKILL_PATTERN = new RegExp(`^\\s*\\/bitfab[:-](?<skill>${BITFAB_SKILLS.join("|")})(?=\\s|$)`, "i");
-// ../bitfab-plugin-lib/dist/activeStudioSession.js
-import os6 from "os";
-import path5 from "path";
-
-// ../bitfab-plugin-lib/dist/agentSessionKey.js
-import os5 from "os";
-import path4 from "path";
-var FALLBACK_KEY_PATH = path4.join(os5.homedir(), ".config", "bitfab", "agent-session-key");
-
-// ../bitfab-plugin-lib/dist/activeStudioSession.js
-var SESSIONS_DIR = path5.join(os6.homedir(), ".config", "bitfab", "sessions");
-
-// ../bitfab-plugin-lib/dist/daemon/protocol.js
-import os7 from "os";
-import path6 from "path";
-var BITFAB_CONFIG_DIR = path6.join(os7.homedir(), ".config", "bitfab");
-var SOCKET_PATH = path6.join(BITFAB_CONFIG_DIR, "studio-daemon.sock");
-var PID_FILE_PATH = path6.join(BITFAB_CONFIG_DIR, "studio-daemon.pid");
-var DAEMON_DIR = path6.join(BITFAB_CONFIG_DIR, "daemon");
-var BROWSER_HEALTH_INTERVAL_MS = 10 * 1000;
-
-// ../bitfab-plugin-lib/dist/daemon/scope.js
-import path7 from "path";
-var PROD_INSTALL_MARKERS = [
-  `${path7.sep}.claude${path7.sep}plugins${path7.sep}`,
-  `${path7.sep}.codex${path7.sep}plugins${path7.sep}`,
-  `${path7.sep}.cursor${path7.sep}plugins${path7.sep}`,
-  `${path7.sep}.npm${path7.sep}`
-];
-
-// ../bitfab-plugin-lib/dist/daemon/ensure.js
-var systemWaitClock = {
-  now: Date.now,
-  sleep: (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs))
-};
-// ../bitfab-plugin-lib/dist/studioEventLog.js
-import os8 from "os";
-import path8 from "path";
-var SESSIONS_DIR2 = path8.join(os8.homedir(), ".config", "bitfab", "sessions");
 // ../bitfab-plugin-lib/dist/replayCapabilities.js
 var semver = __toESM(require_semver2(), 1);
 
@@ -14759,13 +14439,6 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
 var semver2 = __toESM(require_semver2(), 1);
-// ../bitfab-plugin-lib/dist/studioConnectGrace.js
-var PRE_AUTH_CONNECT_GRACE_MS = 10 * 60 * 1000;
-// ../bitfab-plugin-lib/dist/commands/openStudioTo.js
-var LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
-var UNREACHABLE_REASONS = new Set(["timeout", "push-failed", "window-closed"]);
-// ../bitfab-plugin-lib/dist/commands/openTracePlan.js
-var OPEN_TRACE_PLAN_TIMEOUT_MS = 30 * 60 * 1000;
 // ../bitfab-plugin-lib/dist/commands/persistReplayLabels.js
 var lineageFileSchema = object({
   testRunId: uuid2(),
@@ -14792,6 +14465,8 @@ var replayResultSchema = object({
 
 // ../bitfab-plugin-lib/dist/commands/replayProgress.js
 var HEARTBEAT_MS = Number(process.env.BITFAB_REPLAY_HEARTBEAT_MS) || 12000;
+// ../bitfab-plugin-lib/dist/commands/startTemplatePreview.js
+var ticketResponseSchema = object({ id: uuid2() });
 // ../bitfab-flow/dist/commands.js
 function defineCommandCatalog(catalog) {
   return {
@@ -15706,17 +15381,9 @@ var SHARED_VARIABLES = {
 // ../bitfab-plugin-lib/dist/flows/commandWrappers.js
 var COMMAND_WRAPPERS = [
   {
-    name: "clearStudioSession",
-    sharedImports: ["runClearStudioSession"],
-    body: "runClearStudioSession()"
-  },
-  {
-    name: "closeStudio",
-    sharedImports: ["runCloseStudio"],
-    body: `runCloseStudio().catch((err) => {
-  console.error("Failed to close Studio:", err.message)
-  process.exit(1)
-})`
+    name: "pageLink",
+    sharedImports: ["runPageLink"],
+    body: `runPageLink()`
   },
   {
     name: "detectCapabilities",
@@ -15759,24 +15426,6 @@ var COMMAND_WRAPPERS = [
 })`
   },
   {
-    name: "openStudioTo",
-    sharedImports: ["runOpenStudioTo"],
-    localImports: ["platform"],
-    body: `runOpenStudioTo(platform).catch((err) => {
-  console.error("Failed to open Studio:", err.message)
-  process.exit(1)
-})`
-  },
-  {
-    name: "openTracePlan",
-    sharedImports: ["runOpenTracePlan"],
-    localImports: ["platform", "version"],
-    body: `runOpenTracePlan(platform, getVersion()).catch((err) => {
-  console.error("Failed to open trace plan:", err.message)
-  process.exit(1)
-})`
-  },
-  {
     name: "persistReplayLabels",
     sharedImports: ["runPersistReplayLabels"],
     localImports: ["platform", "version"],
@@ -15786,27 +15435,11 @@ var COMMAND_WRAPPERS = [
 })`
   },
   {
-    name: "pushActivity",
-    sharedImports: ["runPushActivity"],
-    body: `runPushActivity().catch((err) => {
-  console.error("Push activity failed:", err.message)
-  process.exit(1)
-})`
-  },
-  {
     name: "readTracesBatched",
     sharedImports: ["runReadTracesBatched"],
     localImports: ["platform", "version"],
     body: `runReadTracesBatched(platform, getVersion()).catch((err) => {
   console.error("Read traces (batched) failed:", err.message)
-  process.exit(1)
-})`
-  },
-  {
-    name: "reapDaemon",
-    sharedImports: ["runReapDaemon"],
-    body: `runReapDaemon().catch((err) => {
-  console.error("Failed to reap daemon:", err.message)
   process.exit(1)
 })`
   },
@@ -16138,14 +15771,11 @@ var FRAMEWORK_VARIABLES = {
   }
 };
 
-// ../bitfab-plugin-lib/dist/flows/studioRules.js
-var STUDIO_REUSE_NOTE = `**Studio reuse: never close-then-reopen to switch pages (applies to every Studio-opening command).** Every Studio-opening command (\`openTracePlan.js\`, \`startDataset.js\`, \`startTemplatePreview.js\`, \`login.js\`, etc.) resolves the active session and **navigates the live tab in place** (emitting \`{"event":"navigated",...}\`); it opens a fresh window only when no session is active. So to change what Studio is showing, open a different dataset, a different trace plan, or a different page, just run the relevant open command again with the new target. **Never call \`{{command:closeStudio}}\` just to switch:** closing and reopening churns the tab, can orphan windows, and is never the way to change pages. Reserve \`{{command:closeStudio}}\` for genuine end-of-flow cleanup (the cleanup step already handles that) or when the user explicitly asks for the Studio tab to be closed.`;
-
 // ../bitfab-plugin-lib/dist/flows/assistant.js
 var FAN_OUT_JUDGING = `{{#claude}}**Scale the judging with fan-out when there are many items.** Per-item judging is embarrassingly parallel: each verdict depends only on that one item's own artifacts (plus the fixed rubric and any shared context you gather once below), never on the other items, and the judge only reasons and returns JSON, it never edits files. So pick serial or fan-out by the item count:
 
 - **At or below ~15-20 items: stay serial.** Judge every item yourself, inline in this agent, exactly as described above. Below that threshold the subagent spawn overhead outweighs the parallelism, so serial is faster.
-- **Above ~15-20 items: fan out.** Split the items into batches (aim for one batch per subagent, roughly 8-12 items each, so even a large dataset resolves in a handful of subagents) and spawn one read-only subagent per batch with the Agent tool, \`subagent_type: "general-purpose"\`. Each subagent reasons over the payloads you hand it and returns its batch's verdicts as JSON. These judges only read and return data: do **NOT** pass \`isolation: "worktree"\` and do **NOT** depend on bypass permissions (that is only for the code-editing experiment fork in \`pick-execution-mode\`). A judge never edits files, runs replay, opens Studio, or calls MCP tools.
+- **Above ~15-20 items: fan out.** Split the items into batches (aim for one batch per subagent, roughly 8-12 items each, so even a large dataset resolves in a handful of subagents) and spawn one read-only subagent per batch with the Agent tool, \`subagent_type: "general-purpose"\`. Each subagent reasons over the payloads you hand it and returns its batch's verdicts as JSON. These judges only read and return data: do **NOT** pass \`isolation: "worktree"\` and do **NOT** depend on bypass permissions (that is only for the code-editing experiment fork in \`pick-execution-mode\`). A judge never edits files, runs replay, opens Bitfab, or calls MCP tools.
 
 Make each subagent prompt fully self-contained: its batch's per-item payloads (each item carries its own artifacts, enumerated below), the fixed rubric, and any shared context you gathered once (so no subagent re-derives it or touches the repo). Tell it to return one verdict entry per item in the exact shape this step persists, and nothing else.
 
@@ -16159,9 +15789,9 @@ var PER_ASSERTION_VERDICTS = `**Read each trace's assertions first, then write o
 **Never flatten the assertions into one entry.** No \`N/M assertion(s) passed\` tally, no \`[PASS]\` or \`[FAIL]\` lines inside an annotation, no paragraph standing in for the rows. One boolean cannot say which assertion failed, and prose cannot be filtered, counted, or trended. Each annotation covers exactly the assertion its entry names.
 
 Per-assertion entries and whole-trace verdicts travel together in the same {{tool:saveAgentLabels}} call, so batch them into as few calls as the tool's per-call limit allows.`;
-var REPLAY_SAFETY_CHECK = `**Mandatory pre-run replay safety check.** Complete this before executing the replay script for the first time, and re-run it whenever the script, replay root, span boundaries, dispatch model, or mock strategy changes. Do not discover unsafe coverage by running replay: a successful email, payment, queue publish, or database write has already caused the damage.
+var REPLAY_SAFETY_CHECK = `**Mandatory pre-run replay safety check.** Complete this before executing replay for the first time, and re-run it whenever the registry entry, replay root, span boundaries, dispatch model, or mock strategy changes. Do not discover unsafe coverage by running replay: a successful email, payment, queue publish, or database write has already caused the damage.
 
-1. Read the replay call and require an explicit recorded-output strategy: normally \`mock: "marked"\` / \`mock="marked"\`; \`all\` is allowed only when every matched recorded child is intentionally frozen. Never accept \`none\` for a path with unsafe external actions.
+1. Read the replay registry entry and require an explicit recorded-output strategy: normally \`mock: "marked"\` / \`mock="marked"\`; \`all\` is allowed only when every matched recorded child is intentionally frozen. Never accept \`none\` for a path with unsafe external actions.
 2. Trace every unsafe action reachable from the replay root (database writes, outbound mutations, queue publishes, emails, payments, file/vector writes). Under \`marked\`, each must execute inside a manual descendant span marked \`mockOnReplay: true\` / \`mock_on_replay: true\`. Auto-observed spans, unwrapped calls, root-inline work, and import-time work are not intercepted. Move the boundary before proceeding; if that cannot be done without changing behavior, report the exact blocker and stop.
 3. Verify the selected wrapper executes as a descendant in the same replay context. Python thread pools and \`threading.Thread\` require \`Bitfab(trace_across_threads=True)\`; pre-created queue consumers and other processes are not covered. Ruby span state is thread-local, so work dispatched to another or pre-created thread/process is not mockable from the replay root. Move the unsafe boundary into the replay context or stop. Ordinary same-context TypeScript async work and Python \`asyncio\` tasks/\`asyncio.to_thread\` retain context.
 4. In TypeScript, a synchronous selected span cannot consume the lazy recorded-output fetch used by \`mock: "marked"\`. Use an already-async/Promise-returning boundary, or use \`mock: "all"\` only when freezing every matched child is compatible with the experiment. Never change a production function's return type just to make replay work; if neither option is valid, stop.
@@ -16175,19 +15805,24 @@ var assistantFlow = Flow.parse({
     description: "Iterate on a traced function to improve pass rates using failed traces, labeling, and replay; also replays a single trace to check whether a fix worked. TRIGGER when: user explicitly asks Bitfab for help improving or optimizing a traced function in any way (quality, pass rate, token usage, cost: 'use bitfab to ...', 'can bitfab help me ...'), wants to fix failing AI outputs, improve pass rates, reduce token usage or LLM cost of a traced function against a dataset, debug LLM behavior, iterate on prompts, label traces, run experiments, benchmark or score a dataset against the current code, run a regression test, run a dedicated cost-optimization pass that profiles token spend and iterates to cut it, add a trace to a dataset, fix a bug **in a traced function starting from its failing Bitfab trace**, or replay/re-run one specific trace to verify a change; says anything like 'fix my AI', 'improve pass rate', 'fix this trace', 'fix trace <id>', 'fix this failing trace and lock it in as a test', 'use bitfab to reduce token usage', 'cut tokens on this dataset', 'lower the token cost of my traced function', 'cost optimize generate-email', 'optimize the cost of this function', 'why is this failing', 'iterate on traces', 'debug my agent', 'review traces', 'benchmark my dataset', 'run my dataset as a benchmark', 'how does my code score on this dataset', 'evaluate the dataset without changing anything', 'add a trace to a dataset', 'attach traces to a dataset', 'replay this trace', 'rerun trace <id>', 'did my fix work', 'does this trace pass now', 'check if my change fixed <id>', 'show experiments for a dataset', 'list experiments that ran on this dataset', 'what experiments used dataset <id>', 'open the experiments for <dataset>'. SKIP when: user wants to instrument new code or set up tracing (use bitfab:setup instead), or wants generic token/cost/code optimization that mentions none of Bitfab, traces, or datasets. A bare 'fix this bug' / 'fix X' that is not anchored to a specific Bitfab trace or traced function (an ordinary coding bug, UI fix, failing unit test, stack trace, or code review nit) is normal coding work and must not trigger this skill. Fix mode requires a trace ID or a failure clearly tied to a traced function; without that anchor, do not engage",
     argumentHint: { deriveFromModes: true }
   },
-  emitTemplate: '**Studio activity:** If `studioMode` is true, run `{{command:pushActivity}} {action} "{displayName}"`.',
   commands: BITFAB_PLUGIN_COMMANDS.defineCommands({
-    status: {
-      description: "Check plugin authentication and connection status"
+    login: {
+      description: "Open a sign-in window and wait for authentication."
     },
-    openStudio: {
-      command: "openStudioTo",
-      description: "Navigate an existing Studio session or open a new one at the given path",
+    pageLink: {
+      description: "Print a clickable product page URL and exit.",
       args: "<path>"
     },
-    pushActivity: {
-      description: "Emit activity events to the Studio sidebar",
-      args: '{action} "{displayName}"'
+    openExperiments: {
+      description: "Print a link to experiments.",
+      args: "<testRunIds>"
+    },
+    startDataset: {
+      description: "Print a dataset link.",
+      args: "<key> <datasetId>"
+    },
+    status: {
+      description: "Check plugin authentication and connection status"
     },
     detectCapabilities: {
       description: "Detect the installed SDK's replay capabilities and version-update status, emitted as a <bitfab-replay-capabilities> JSON block"
@@ -16203,14 +15838,6 @@ var assistantFlow = Flow.parse({
     readTracesBatched: {
       description: "Read many traces at once: fans get_traces out in parallel batches of 10, writes the concatenated result to a temp file, and prints its path as JSON",
       args: "<trace-id...> [--scope summary|full]"
-    },
-    closeStudio: {
-      description: "Close the active Studio session (tab + background event process); no-op when nothing is open",
-      args: "[message]"
-    },
-    clearStudio: {
-      command: "clearStudioSession",
-      description: "Start a fresh Studio window on the next open"
     }
   }),
   tools: {
@@ -16222,7 +15849,6 @@ var assistantFlow = Flow.parse({
     write: { kind: "builtin", name: "Write" },
     agent: { kind: "builtin", name: "Agent" },
     ask: { kind: "builtin", name: "AskUserQuestion" },
-    monitor: { kind: "builtin", name: "Monitor" },
     skill: { kind: "builtin", name: "Skill" },
     listFunctions: { kind: "mcp", name: "list_trace_functions" },
     searchTraces: { kind: "mcp", name: "search_traces" },
@@ -16238,7 +15864,6 @@ var assistantFlow = Flow.parse({
       kind: "mcp",
       name: "remove_traces_from_dataset"
     },
-    getTracePlan: { kind: "mcp", name: "get_trace_plan" },
     listExperiments: { kind: "mcp", name: "list_experiments" },
     listExperimentTraces: { kind: "mcp", name: "list_experiment_traces" },
     getReplayStatus: { kind: "mcp", name: "get_replay_status" },
@@ -16248,7 +15873,7 @@ var assistantFlow = Flow.parse({
   },
   intro: `Use the local plugin MCP tools ({{tool:listFunctions}}, {{tool:searchTraces}}, {{tool:getTraces}}, {{tool:getTraceLabels}}, {{tool:getTraceAssertions}}, {{tool:saveAgentLabels}}, {{tool:listDatasets}}, {{tool:saveDataset}}, {{tool:addTracesToDataset}}, {{tool:removeTracesFromDataset}}, {{tool:listExperiments}}, {{tool:listExperimentTraces}}, {{tool:getReplayStatus}}) to find what's failing in a traced function, build a dataset of labeled traces, and iterate on the code/prompts using replay until pass rates improve.
 
-**MCP tools:** This skill uses \`list_trace_functions\`, \`search_traces\`, \`get_traces\`, \`get_trace_labels\`, \`get_trace_assertions\`, \`save_agent_labels\`, \`save_human_labels\`, \`list_datasets\`, \`save_dataset\`, \`add_traces_to_dataset\`, \`remove_traces_from_dataset\`, \`get_trace_plan\`, \`list_experiments\`, \`list_experiment_traces\`, and \`get_replay_status\` from the **local plugin MCP server** (bundled with this plugin){{#claude}}. Do NOT use the remote Bitfab MCP tools (\`mcp__Simforge__*\` or \`mcp__Bitfab__*\`), use only the \`mcp__plugin_bitfab_Bitfab__*\` variants.{{/claude}}{{^claude}}, exposed under the \`mcp__Bitfab__*\` prefix.{{/claude}}
+**MCP tools:** This skill uses \`list_trace_functions\`, \`search_traces\`, \`get_traces\`, \`get_trace_labels\`, \`get_trace_assertions\`, \`save_agent_labels\`, \`save_human_labels\`, \`list_datasets\`, \`save_dataset\`, \`add_traces_to_dataset\`, \`remove_traces_from_dataset\`, \`list_experiments\`, \`list_experiment_traces\`, and \`get_replay_status\` from the **local plugin MCP server** (bundled with this plugin){{#claude}}. Do NOT use the remote Bitfab MCP tools (\`mcp__Simforge__*\` or \`mcp__Bitfab__*\`), use only the \`mcp__plugin_bitfab_Bitfab__*\` variants.{{/claude}}{{^claude}}, exposed under the \`mcp__Bitfab__*\` prefix.{{/claude}}
 
 {{#ask-user-question}}**Always use** \`AskUserQuestion\` **when asking questions, reporting results, or presenting choices** (two exceptions, each a report with no decision to hand the user: the \`benchmark\` scorecard is printed as Markdown tables directly in chat, not via \`AskUserQuestion\`, since tables don't render inside that UI, see Phase Benchmark; and \`share-results\` reports the experiment outcome and then routes silently by the already-approved plan, see Phase 5, so it is a plain chat report and never an \`AskUserQuestion\`, using one there would re-introduce the post-experiment prompt this flow deliberately removed). Never print a question as text and wait. Rules:{{/ask-user-question}}{{^ask-user-question}}**When the flow branches with options for the user, always present them clearly and wait for the user's answer before proceeding.** Number or letter the options so the user can pick by reference. **Two steps are reports, not option branches, and must NOT wait:** the \`benchmark\` scorecard prints its tables directly in chat, and \`share-results\` reports the experiment outcome then routes silently by the already-approved plan (see Phase 5) via auto-evaluated \`when\` conditions with no options to present, waiting there would re-introduce the post-experiment prompt this flow removes. Rules:{{/ask-user-question}}
 
@@ -16264,18 +15889,16 @@ var assistantFlow = Flow.parse({
 
 **Trace-first debugging rule (hard guard for instrumented AI behavior).** When the user asks why a traced AI workflow failed, whether a behavior is a regression, whether a PR caused an AI failure, or what fix/revert is appropriate for a traced function, do not declare root cause, recommend a revert/no-revert, or propose the fix path until you have either read the relevant Bitfab trace or explicitly proved no relevant trace exists. The required order is:
 
-1. Identify the trace function from code instrumentation first whenever the repo is available (imports such as \`@bitfab/sdk\`, \`withSpan\`, \`getFunction\`, \`traceable\`, provider wrappers, replay scripts, or local \`observability/providers/bitfab.*\` files). Treat \`list_trace_functions\` as confirmation/fallback, not the primary source of truth when code can reveal the key.
+1. Identify the trace function from code instrumentation first whenever the repo is available (imports such as \`@bitfab/sdk\`, \`withSpan\`, \`getFunction\`, \`traceable\`, provider wrappers, replay registries, or local \`observability/providers/bitfab.*\` files). Treat \`list_trace_functions\` as confirmation/fallback, not the primary source of truth when code can reveal the key.
 2. Search Bitfab traces using the function key plus whatever anchors the user supplied: failing query text, time window, org/session/user metadata, trace/session links, screenshots, labels, or recent activity.
 3. Read the candidate trace(s), using \`scope: "full"\` when planner/model outputs, child spans, retrieval counts, tool calls, or errors determine the answer.
 4. State what the trace proves separately from any code-based inference. Include the trace ID(s), function key, and the decisive span/input/output fields. If no trace exists, say exactly what function key and filters were searched before falling back to code-only diagnosis.
 
 Do not stop after \`list_trace_functions\`. If the expected function is absent from the list, inspect the code for the actual key and search traces directly; if that also fails, report "no relevant trace found" with the search criteria before making a weaker code-only recommendation.
 
-This skill has nine invocation modes, each a different entry point into the same pipeline. Six of them (\`wizard\`, \`dataset\`, \`investigate\`, \`experiment\`, \`cost-optimize\`, \`fix\`) converge on the shared replay-and-iterate loop (Phase 5) and follow the same path to the end. \`wizard\`, \`dataset\`, and \`investigate\` first build a labeled dataset and diagnose failures (dataset \u2192 diagnose \u2192 experiments \u2192 wrap up); \`experiment\` and \`cost-optimize\` skip dataset-building and enter at Phase 5 against an existing dataset, with \`cost-optimize\` first running its own cost-diagnosis phase (profile token spend, plan reductions) and entering with \`costRun\` forced on. \`fix\` enters at its own Phase Fix: it resolves a single failing trace and diagnoses it, then continues into the Phase 5 loop to make the fix and replay only that target trace first. That targeted replay is tagged with an experiment group but Studio stays closed until after labels persist. Only once the target trace passes does \`fix\` add it to a dataset with a validated failing label; then the user chooses whether to show the fix in Studio, re-run the same change across the full dataset as an experiment (in Studio or terminal-only), keep iterating on the target trace, or stop. \`benchmark\`, \`add-trace\`, and \`replay\` are the exceptions, \`benchmark\` enters at the replay step, runs no diagnosis/experiments/wrap-up, and exits at a terminal scorecard; \`add-trace\` enters at its own phase, attaches the trace(s) to a dataset, and stops; \`replay\` enters its own self-contained phase for lightweight single-trace replay, runs entirely in-chat, and stops. The user can stop early at any decision point, but the default is to continue. Most sub-modes require the trace function key as the argument because they skip the function picker (Phase 1) and instrumentation/replay verification (Phase 2).
+This skill has nine invocation modes, each a different entry point into the same pipeline. Six of them (\`wizard\`, \`dataset\`, \`investigate\`, \`experiment\`, \`cost-optimize\`, \`fix\`) converge on the shared replay-and-iterate loop (Phase 5) and follow the same path to the end. \`wizard\`, \`dataset\`, and \`investigate\` first build a labeled dataset and diagnose failures (dataset \u2192 diagnose \u2192 experiments \u2192 wrap up); \`experiment\` and \`cost-optimize\` skip dataset-building and enter at Phase 5 against an existing dataset, with \`cost-optimize\` first running its own cost-diagnosis phase (profile token spend, plan reductions) and entering with \`costRun\` forced on. \`fix\` enters at its own Phase Fix: it resolves a single failing trace and diagnoses it, then continues into the Phase 5 loop to make the fix and replay only that target trace first. That targeted replay is tagged with an experiment group but Bitfab stays closed until after labels persist. Only once the target trace passes does \`fix\` add it to a dataset with a validated failing label; then the user chooses whether to show the fix in Bitfab, re-run the same change across the full dataset as an experiment (in Bitfab or terminal-only), keep iterating on the target trace, or stop. \`benchmark\`, \`add-trace\`, and \`replay\` are the exceptions, \`benchmark\` enters at the replay step, runs no diagnosis/experiments/wrap-up, and exits at a terminal scorecard; \`add-trace\` enters at its own phase, attaches the trace(s) to a dataset, and stops; \`replay\` enters its own self-contained phase for lightweight single-trace replay, runs entirely in-chat, and stops. The user can stop early at any decision point, but the default is to continue. Most sub-modes require the trace function key as the argument because they skip the function picker (Phase 1) and instrumentation/replay verification (Phase 2).
 
-**Argument routing.** If the argument is free-form text (not a mode name or bare function key), infer the best mode and extract the trace function key if mentioned. A lone UUID with no mode keyword is a **trace ID, never a function key** (never \`wizard\`). Route a bare trace ID by intent: \`replay\` to *verify* a change the user already made ("did my fix work on \`<id>\`"), or \`fix\` to *make* the fix and lock the trace in as a regression test ("fix \`<id>\`", "this trace is wrong"); see the \`fix\` disambiguation note below. Confirm your pick in one line before entering the flow (e.g. "Starting investigate for \`generate-email\`."). If you can't pick a single mode, ask {{presentMode}}. Natural-language requests to attach a specific trace to a dataset (e.g. "add this trace to a dataset", "put trace abc123 in my dataset") route to \`add-trace\`; extract the trace IDs and any function key or dataset ID mentioned. In \`benchmark\` mode, a trailing \`studio\` token (e.g. \`benchmark generate-email studio\`) or a natural-language "with studio" / "open studio" sets the **Studio opt-in** for that run: strip it from the positional args before resolving the function key and dataset ID, and hold it as a working-context flag. It applies only to \`benchmark\` (every other mode always opens Studio). **When the opt-in is set, treat \`studioMode\` as true for the rest of the run** (Studio is open), so the **Studio activity** (\`{{command:pushActivity}}\`) steps fire just as in the always-Studio modes; a terminal-only benchmark leaves \`studioMode\` false and those steps no-op.
-
-**Token-cost goal (\`costRun\`).** Separately from the mode, classify the run's *optimization goal* (**except in \`cost-optimize\` mode, where \`costRun\` is always true by definition**, don't classify it, just confirm the mode and pick the \`costBasis\` below). Set a working-context flag \`costRun = true\` whenever the user's goal, **however they phrase it**, is to spend fewer tokens or less money. Match on intent, not keywords: "cut tokens", "reduce cost", "make it cheaper", "trim the prompt to save tokens", "we're over budget", "lower spend", or a token/cost budget the dataset is built around are **examples, not an exhaustive list**: "this is burning too much", "the prompt got huge", "what's this costing us", "make it leaner", and the like all count. When you genuinely can't tell whether cost is a goal, default \`costRun = false\` (the goal is output quality / pass rate). **Say which way you read it in your one-line entry confirmation** (the same line where you confirm the mode), e.g. "Starting experiment for \`generate-email\`, tracking token cost." A visible guess is one correction away; a silent one isn't. \`costRun\` is orthogonal to the mode: an \`experiment\` that trims a prompt and a \`benchmark\` that measures current token cost are both cost runs, and it is independent of the benchmark \`studio\` opt-in. Holding this flag once, here, is what makes the token-cost lens deterministic downstream: when \`costRun\` is set, the experiments page opens with \`&tokens=1\` and the \`evaluate-results\`, \`share-results\`, and benchmark scorecard steps report token deltas alongside pass/fail, instead of each step re-guessing mid-run whether the run "feels like" a cost run. (Latency, the per-item \`durationMs\` in the replay output, can ride along in the same delta reporting when the user also cares about speed.)
+**Token-cost goal (\`costRun\`).** Separately from the mode, classify the run's *optimization goal* (**except in \`cost-optimize\` mode, where \`costRun\` is always true by definition**, don't classify it, just confirm the mode and pick the \`costBasis\` below). Set a working-context flag \`costRun = true\` whenever the user's goal, **however they phrase it**, is to spend fewer tokens or less money. Match on intent, not keywords: "cut tokens", "reduce cost", "make it cheaper", "trim the prompt to save tokens", "we're over budget", "lower spend", or a token/cost budget the dataset is built around are **examples, not an exhaustive list**: "this is burning too much", "the prompt got huge", "what's this costing us", "make it leaner", and the like all count. When you genuinely can't tell whether cost is a goal, default \`costRun = false\` (the goal is output quality / pass rate). **Say which way you read it in your one-line entry confirmation** (the same line where you confirm the mode), e.g. "Starting experiment for \`generate-email\`, tracking token cost." A visible guess is one correction away; a silent one isn't. \`costRun\` is orthogonal to the mode: an \`experiment\` that trims a prompt and a \`benchmark\` that measures current token cost are both cost runs, and it is independent of the benchmark \`page\` opt-in. Holding this flag once, here, is what makes the token-cost lens deterministic downstream: when \`costRun\` is set, the experiments page opens with \`&tokens=1\` and the \`evaluate-results\`, \`share-results\`, and benchmark scorecard steps report token deltas alongside pass/fail, instead of each step re-guessing mid-run whether the run "feels like" a cost run. (Latency, the per-item \`durationMs\` in the replay output, can ride along in the same delta reporting when the user also cares about speed.)
 
 **Token basis (\`tokenType\`), set only when \`costRun\` is.** A cost run also has to pick *which* tokens to count, because prompt caching splits them and cache reads cost far less than fresh input. So when you set \`costRun\`, also fix a working-context \`costBasis\`:
 - \`uncached\` when the goal is **money / spend**: "make it cheaper", "lower the bill", "we're over budget", "what's this costing", "stop wasting money". The page counts \`(input - cached) + output\`, which tracks real dollars and surfaces a regression that grew the fresh-token work while prompt caching kept the all-token total looking flat.
@@ -16287,14 +15910,14 @@ When you genuinely can't tell, default \`all\`. State the basis in the same one-
 
 **Disambiguating \`benchmark\` from \`experiment\`** (both replay a dataset, so free-form text is easy to misroute):
 
-- Pick **\`benchmark\`** when the user wants to *measure the current code as-is*: "benchmark", "score", "baseline", "regression test", "how does it do right now", "evaluate the dataset without changing anything", "just run the dataset and tell me the pass rate". Benchmark makes **no edits to the traced function under test** and stops after the scorecard (it may still upgrade the SDK / replay script or add \`mockOnReplay\` to unblock the replay, those are infra, not the behavior being measured).
+- Pick **\`benchmark\`** when the user wants to *measure the current code as-is*: "benchmark", "score", "baseline", "regression test", "how does it do right now", "evaluate the dataset without changing anything", "just run the dataset and tell me the pass rate". Benchmark makes **no edits to the traced function under test** and stops after the scorecard (it may still upgrade the SDK or add \`mockOnReplay\` to unblock the replay, those are infra, not the behavior being measured).
 - Pick **\`experiment\`** when the user wants to *change the code and see if it improves*: "fix", "improve", "iterate", "try a prompt change", "make these traces pass". Free-form token/cost-reduction asks ("reduce token usage", "cut tokens", "lower the cost") prefer **\`cost-optimize\`** instead (see the cost-optimization routing note below), the dedicated cost front door; \`experiment\` still handles cost when invoked explicitly, and either way they are \`costRun\` runs (see the \`costRun\` note above) so the token-cost lens (\`&tokens=1\`) and token-delta reporting come on automatically. Experiment edits code and loops.
 
 When in genuine doubt between the two, default to **\`benchmark\`** (it's non-destructive, no edits, and the user can roll into \`experiment\` afterward), but say which you picked and why in one line so they can redirect.
 
 **Disambiguating \`replay\` from \`experiment\`** (both re-run one or more traces against the code, so free-form text is easy to misroute):
 
-- Pick **\`replay\`** when the user wants to *re-run one specific trace and hear whether it's fixed/passing now*, without editing code or building a dataset: a UUID (trace ID) appears in the message (alone or with a function key); verify-a-fix phrasing like "did my fix work", "does this trace pass now", "rerun/replay this trace", "check if my change fixed it", "is \`<id>\` good now"; or the message is scoped to a single trace and a change the user already made, with no mention of datasets, labeling, pass rates across many traces, or "experiments." \`replay\` runs in-chat (no Studio, no dataset, no experiment groups) and makes no edits of its own; it does save its pass/fail verdict onto the replay trace when the SDK supports replay trace IDs.
+- Pick **\`replay\`** when the user wants to *re-run one specific trace and hear whether it's fixed/passing now*, without editing code or building a dataset: a UUID (trace ID) appears in the message (alone or with a function key); verify-a-fix phrasing like "did my fix work", "does this trace pass now", "rerun/replay this trace", "check if my change fixed it", "is \`<id>\` good now"; or the message is scoped to a single trace and a change the user already made, with no mention of datasets, labeling, pass rates across many traces, or "experiments." \`replay\` runs in-chat (no Bitfab, no dataset, no experiment groups) and makes no edits of its own; it does save its pass/fail verdict onto the replay trace when the SDK supports replay trace IDs.
 - Pick **\`experiment\`** (or **\`cost-optimize\`** for a cost goal, see the cost-optimization routing note below) when the user wants to *change the code and see if it improves a whole labeled dataset*: "fix", "improve", "iterate", "try a prompt change", "make these traces pass", "improve the pass rate", "reduce token usage on the dataset", "cut tokens", "lower the cost", "run experiments on the failures." Token/cost-reduction asks pick an editing mode **even when a trace ID is present**: \`replay\` makes no edits, so it can't optimize anything (the mentioned trace just helps pick the function/dataset). The editing modes edit code, replay a dataset, and loop.
 
 When in genuine doubt between the two, default to **\`replay\`** if a single trace ID is present AND the intent is verify-only (not "fix it", not token/cost reduction): it's the lighter, in-chat path and the user can roll into \`fix\` or \`experiment\` afterward. If the single-trace intent is to actually fix the bug, prefer **\`fix\`** (see its disambiguation note below); otherwise default to **\`cost-optimize\`** for a token/cost-reduction intent (see the next note) and **\`experiment\`** for a quality intent across a dataset. Either way, say which you picked and why in one line so the user can redirect.
@@ -16318,48 +15941,37 @@ For \`replay\`, resolve its two arguments:
 
 In sub-modes that take a function key, grep the codebase for \`<key>\` early so labeling and experiments are grounded in the actual instrumented function (the full flow does this in Phase 2; sub-modes skip Phase 2 entirely). \`investigate\` mode does its own function lookup and code grep in Phase Investigate. \`replay\` mode does its own grep in Phase Replay's setup step. \`add-trace\` mode skips code grounding entirely, it never greps the codebase; it only resolves the trace's function key (via \`get_traces\` when not supplied) to scope the dataset.
 
-**Studio** is the companion browser surface for the assistant flow. In every mode **except \`benchmark\`, \`add-trace\`, \`replay\`, and the initial \`fix\` pass** it opens automatically at the start and stays open throughout all phases, and individual phases navigate it to the relevant page (dataset review, experiment viewer, etc.). \`add-trace\` and \`replay\` are terminal-only and never open Studio. \`fix\` starts terminal-only while it fixes and replays the target trace; that targeted replay is tagged with an experiment group, but Studio opens only if, after the target trace passes and is added to a dataset, the user chooses to show the fix in Studio or re-run the full dataset experiment **in Studio** (the full-dataset re-run can also be run terminal-only, which keeps Studio closed). \`benchmark\` is terminal-only **by default** too, but opting in with the \`studio\` keyword opens Studio and navigates to the experiments page for this test run so verdicts stream in live as the replay runs.
+**Dataset experiment links:** Resolve the requested dataset, then provide a /experiments?datasetId=<id> link using {{command:pageLink}}.
 
-${STUDIO_REUSE_NOTE}
-
-**Opening a trace plan, when asked.** Opening trace plans is part of this skill, not a separate primitive, but only do it when the user asks (or the context clearly implies it, e.g. they said "show me what's captured"). Never auto-open. When triggered, run two sequential calls (step 2 needs the planId from step 1, so they can't be batched): (1) {{tool:getTracePlan}} with \`{ traceFunctionKey: "<key>" }\` returns the plan id, then (2) \`openStudioTo.js "/studio/trace-plan/<planId>"\` (substituting the id from step 1) routes Studio there in-place. The command finds an active session or opens a new one automatically. The Studio chrome (header, session indicator, agent activity) stays mounted around the trace plan content. No questions, no preamble, no summary up-front. If no plan exists for the key, say so in one line and offer \`{{cmd}}setup modify <key>\` to build one.
-
-**Opening a dataset's experiments, when asked.** Listing the experiments that have run against a dataset is part of this skill, not a separate primitive, but only do it when the user asks (e.g. "show experiments for dataset \`<id>\`", "what experiments ran on this dataset", "list experiments for \`<name>\`"). Never auto-open. **Establish the dataset first** (never open before the dataset is resolved): if the user gave a dataset UUID, use it; if they named a dataset or gave only a function key, call {{tool:listDatasets}} to resolve it, and {{askVerb}} so the user can pick when more than one matches. Then run \`{{command:openStudio}} "/studio/experiments?datasetId=<datasetId>"\` (substituting the resolved id) to route Studio there in-place. Base the lens on the \`costRun\` flag, not on this request's wording: when \`costRun\` is set (established in argument routing, whether from the entry classification or because this very request frames the work around tokens, cost, or a token budget), open \`...?datasetId=<datasetId>&tokens=1&tokenType=<all|uncached>\` (the basis from \`costBasis\`, always explicit; see the token-cost lens note in \`open-experiments-before-replay\`) so the token-cost lens shows the original \u2192 replay total-token trend per experiment; when \`costRun\` is false, open without \`&tokens=1\`. This keeps a neutral "show experiments for this dataset" mid-cost-run from dropping the lens. The page lists every experiment (test run) that replayed a trace belonging to the dataset (derived server-side from the shared traces, so it covers past runs too). The command finds an active session or opens a new one automatically. No preamble or summary up-front; confirm in one line, identifying the dataset by name when known and id otherwise. If the dataset has no experiments yet, the page says so, offer \`{{cmd}}assistant experiment <key> <datasetId>\` or \`{{cmd}}assistant benchmark <key> <datasetId>\` to run one.
-{{#exec-polling}}
-
-\uD83D\uDEA8 **Studio command foreground rule:** Plugin CLIs that open or navigate Studio can stay alive while the user acts in the browser. Always launch Studio-opening commands with the runtime's background / long-running exec mechanism and read their JSONL stdout incrementally, but do **not** block the conversation foreground waiting for the browser action to finish.
-
-- For \`openStudioTo.js\` / dataset / experiment / trace-plan opens: read until you have the handshake lines you need (especially \`monitor.eventFile\`, or a stop such as \`not-responding\` / \`open-failed\`), then continue according to the step. Do not keep polling until the user clicks Done in Studio.
-- User actions after the page is open arrive through the durable \`eventFile\`; steps that need those actions explicitly tail that file. A "Show in Studio" navigation only opens the view and returns to the next in-chat prompt.
-- If a command exits quickly with a completion or error JSONL line, handle it immediately. If it remains running after the needed handshake, leave it in the background and move on.{{/exec-polling}}`,
+**Product pages:** Link to the existing app pages for experiments, datasets, and other dashboard features. Use /plugin only for automatic-close login and template previews. Page commands print one JSON line with \`event: "link"\` and \`url\`, then exit. Relay the URL in chat. The user reports review decisions in chat; fetch current saved state with MCP before continuing. Never treat printing a link or closing a browser tab as approval.`,
   entries: {
     wizard: {
-      default: "studio/open",
+      default: "auth/login",
       codex: "preamble/resolve-plugin-dir",
       amp: "preamble/resolve-plugin-dir"
     },
     dataset: {
-      default: "studio/open",
+      default: "auth/login",
       codex: "preamble/resolve-plugin-dir",
       amp: "preamble/resolve-plugin-dir"
     },
     experiment: {
-      default: "studio/open",
+      default: "auth/login",
       codex: "preamble/resolve-plugin-dir",
       amp: "preamble/resolve-plugin-dir"
     },
     "cost-optimize": {
-      default: "studio/open",
+      default: "auth/login",
       codex: "preamble/resolve-plugin-dir",
       amp: "preamble/resolve-plugin-dir"
     },
     investigate: {
-      default: "studio/open",
+      default: "auth/login",
       codex: "preamble/resolve-plugin-dir",
       amp: "preamble/resolve-plugin-dir"
     },
     benchmark: {
-      default: "studio/open",
+      default: "auth/login",
       codex: "preamble/resolve-plugin-dir",
       amp: "preamble/resolve-plugin-dir"
     },
@@ -16382,10 +15994,10 @@ ${STUDIO_REUSE_NOTE}
     experiment: "`<key> [<dataset-id>]`. **Edits code** to fix failing traces, replays against a labeled dataset, and iterates. Use when the user wants to change the code and see if it improves. Omitted `<dataset-id>` prompts a pick; if the function has no datasets yet, run `dataset` first.",
     "cost-optimize": "`<key> [<dataset-id>]`. **Cuts token cost.** Profiles where the dataset's tokens go in a dedicated cost-diagnosis phase, then edits code and replays to lower cost while holding the pass rate. Runs with `costRun` always on; the dataset needs only >=1 trace.",
     investigate: "`[<key>]`. Free-form investigation of an issue the user describes: read traces and code to characterize the problem, then offer to stop with a summary, write an analysis report, or roll into dataset building. `<key>` is optional (inferred from the ask).",
-    benchmark: "`<key> [<dataset-id>] [studio]`. **No edits to the function under test.** Replay a labeled dataset against the current code, score each trace against its labels, report a pass/fail scorecard, then stop. Terminal-only by default; append `studio` to stream verdicts live in Studio.",
-    "add-trace": "`[<key>] <trace-id...> [<dataset-id>]`. Lightweight: attach one or more existing traces to a dataset (pick or create one), then stop. No labeling, diagnosis, experiments, or Studio. `<key>` is optional (inferred from the traces).",
-    replay: "`<key> <trace-id>`. Minimal single-trace replay, in-chat: run the replay script against one trace, report pass/fail in one line, and persist that verdict onto the replay trace (in-chat-only when the replay returns no server trace ID). No Studio, dataset, or labeling UI. For verifying a fix you already made.",
-    fix: "`[<key>] <trace-id>`. **Fix one specific bug end to end.** Resolve and diagnose the failing trace, then edit code and replay only that trace until it passes; once green, add it to a dataset with a validated failing label, then offer Studio / full-dataset experiment / keep iterating / stop. **Requires a trace anchor** (a trace ID, or a failure clearly pointed at in a traced function): a bare 'fix this bug' about ordinary code is NOT this mode. `<key>` is optional (inferred from the trace)."
+    benchmark: "`<key> [<dataset-id>]`. **No edits to the function under test.** Replay a labeled dataset against the current code, score each trace against its labels, report a pass/fail scorecard, then stop. Terminal-only by default; Review results using the experiment link.",
+    "add-trace": "`[<key>] <trace-id...> [<dataset-id>]`. Lightweight: attach one or more existing traces to a dataset (pick or create one), then stop. No labeling, diagnosis, experiments, or Bitfab. `<key>` is optional (inferred from the traces).",
+    replay: "`<key> <trace-id>`. Minimal single-trace replay, in-chat: run the SDK-installed replay command against one trace, report pass/fail in one line, and persist that verdict onto the replay trace (in-chat-only when the replay returns no server trace ID). No Bitfab, dataset, or labeling UI. For verifying a fix you already made.",
+    fix: "`[<key>] <trace-id>`. **Fix one specific bug end to end.** Resolve and diagnose the failing trace, then edit code and replay only that trace until it passes; once green, add it to a dataset with a validated failing label, then offer experiment link / full-dataset experiment / keep iterating / stop. **Requires a trace anchor** (a trace ID, or a failure clearly pointed at in a traced function): a bare 'fix this bug' about ordinary code is NOT this mode. `<key>` is optional (inferred from the trace)."
   },
   compile: {
     mode: { default: "monolith", claude: "split-chain" },
@@ -16428,16 +16040,16 @@ ${STUDIO_REUSE_NOTE}
 {{command:status}}
 \`\`\`
 
-If a \`v<X> available\` upgrade notice appeared, pass it through to the user verbatim, but don't block on it; surface the notice once and move on. Ignore the authentication status (Studio handles login inline).`,
+If a \`v<X> available\` upgrade notice appeared, pass it through to the user verbatim, but don't block on it; surface the notice once and move on. Ignore the authentication status (Bitfab handles login inline).`,
           next: {
             byMode: {
-              wizard: "studio/open",
-              dataset: "studio/open",
-              experiment: "studio/open",
+              wizard: "auth/login",
+              dataset: "auth/login",
+              experiment: "auth/login",
               fix: "fix/resolve",
-              "cost-optimize": "studio/open",
-              investigate: "studio/open",
-              benchmark: "studio/open",
+              "cost-optimize": "auth/login",
+              investigate: "auth/login",
+              benchmark: "auth/login",
               "add-trace": null,
               replay: "quick-replay/setup"
             }
@@ -16446,73 +16058,18 @@ If a \`v<X> available\` upgrade notice appeared, pass it through to the user ver
       ]
     },
     {
-      id: "studio",
-      title: "Studio Lifecycle",
-      intro: `The Studio is the companion browser surface for the assistant flow. In every mode that uses it, it opens once at the start and stays open throughout all phases, with individual phases navigating it to the relevant page (dataset review, experiment viewer, etc.) using \`openStudioTo.js\`. **\`benchmark\` is the exception:** it opens Studio only when the run passed the \`studio\` opt-in. A terminal-only \`benchmark\` run (no \`studio\` keyword) opens no Studio at all, and the \`open\` step below does nothing for it.
-
-**\`openStudioTo.js\` handles session resolution automatically.** It takes a single \`<path>\` argument and reads auth from your local config. The active Studio session is the single source of truth on disk:
-1. If an active session is recorded, it navigates that window to the path and reuses it.
-2. If none is recorded, it opens a **new** Studio window at the path.
-
-It never opens a second window while a session is recorded: it either reuses it or stops. A clean tab close or a deliberate end clears the record, so the next open is simply a fresh window.
-
-Output events:
-- \`{"event":"navigated","sessionId":"...","path":"..."}\`, reused an existing session.
-- \`{"event":"window-open-requested","url":"..."}\`, a fresh Studio window open was *requested* (the browser launch was called), not confirmed on screen. Immediately surface the URL to the user in a normal chat message (for example, \`Opening Studio: <url>. Click it if a window doesn't appear\`) so it is copyable from the transcript; on a remote/SSH session or with no supported browser nothing may surface, so the link is the reliable fallback.
-- \`{"event":"started","sessionId":"..."}\`, opened a new Studio window.
-- \`{"event":"monitor","sessionId":"...","eventFile":"..."}\`, the durable event stream path. Tail \`eventFile\` for the live in-session events (the daemon appends them there for the whole session, independent of any running command).
-- \`{"event":"not-responding","sessionId":"..."}\`, a recorded session exists but the window did not respond (the navigation retries via ping-pong before reporting this, so the tab was pinged twice and never answered). **Every** Studio-opening command emits this on a stale session (\`openStudioTo.js\` and the dataset/experiment/trace-plan commands alike), and none of them opens a duplicate window. **Do not retry this blindly.** Recommend the user refresh or reopen the Studio tab in their browser, then {{askVerb}} with two options: **Try again** (re-run the command that stopped, the record is still on disk, so a window that came back gets reused) or **Open a new Studio** (run \`{{command:clearStudio}}\`, then re-run the command, which now opens a fresh window). Only run \`{{command:clearStudio}}\` after the user approves. Some commands (e.g. \`login\`) also expose a \`--force\` flag for a user at a terminal to recover the same way; never run \`--force\` yourself, surface the recovery to the user instead. **Describe this to the user in terms of their browser window, never the plumbing:** the words in this bullet (session, pointer, record, stale, \`not-responding\`, sessionId) are for you, not for them. A user has a Studio tab open, not a session pointer. Offer a cause they can check rather than a diagnosis you can't make, the browser may have backgrounded the window (behind another window, minimized, or on another desktop or space): "The Studio tab I opened earlier isn't responding. Your browser may have backgrounded it. Try switching to it and refreshing it, and if you can't find it I'll open a new one."
-- \`{"event":"open-failed","reason":"...","url":"..."}\`, the browser process did not launch (e.g. \`rate-limited\`, \`spawn-failed\`), so no window opened. When a \`url\` is present, the Studio session is live and reachable, tell the user Studio couldn't open a browser (give the \`reason\`) and ask them to click the link to open it: \`<url>\`. The command keeps polling, so a manual click connects and the flow proceeds. (A bare \`open-failed\` with no \`url\` is a hard failure, surface the error.)
-
-This stop happens only when a recorded window went unreachable with **no close signal**: a crash, sleep, or a tab close no process witnessed. A cleanly closed or deliberately ended session leaves no record, so the next open just opens fresh (no handshake, no prompt).
-
-**Never use Playwright, \`open\`, \`chrome-testing\`, or any other browser automation to open Studio pages.** Always use \`openStudioTo.js\` which handles auth and session management.`,
+      id: "auth",
+      title: "Authentication",
+      intro: "Authenticate before accessing organization resources.",
       stepStyle: "list",
       steps: [
         {
-          id: "open",
+          id: "login",
           kind: "action",
           toolCalls: ["bash", "ask"],
-          commandCalls: ["openStudio"],
-          title: "Open the Studio",
-          body: `**In \`benchmark\` mode, first check the Studio opt-in flag** (set during argument routing when the \`studio\` keyword was passed). If benchmark did NOT opt in, skip this entire step without running any command and continue to the \`pick-dataset\` step (Phase 5 Setup). In all other modes, and in \`benchmark\` with the \`studio\` flag, proceed.
-
-Open Studio at the initial path for this mode. \`openStudioTo.js\` is the single entry point for all Studio operations: it navigates an existing session or opens a new one automatically.
-
-\`\`\`bash
-{{command:openStudio}} <path>
-\`\`\`
-
-The command resolves this agent's active session on its own and reads auth from local config, no session id or credentials to pass.
-
-**The Studio daemon is the durable event buffer, not this process.** \`openStudioTo.js\` opens or navigates the session and prints handshake JSONL, including a \`monitor\` line with the path to a durable event file. Studio-opening commands may stay alive until the user acts in Studio, so always launch them with the host's background / long-running process mechanism, read stdout incrementally until you capture the handshake, and never block the conversation foreground waiting for the user. Events are appended to the \`eventFile\` by the daemon for the whole session, whether or not any command is still running, so you can never miss Done / Edit-with-agent / session-ended. **Capture the \`eventFile\` path from this step's \`monitor\` line; the \`await-event\` step tails that file, not this process's output.** Every later \`{{command:openStudio}}\` call (dataset page, experiments page, trace plans) uses the same background/long-running process pattern against the same session and event file: you do not start a second monitor for them.
-
-**The path MUST start with \`/studio\`.** Never pass \`/\`, a bare URL, or any path outside the \`/studio/\` route tree.
-
-- **\`wizard\` mode:** pass \`/studio\`
-- **\`dataset <key>\` mode:** pass \`/studio\` (Phase 3's "Open the dataset review page" step navigates to the chosen dataset's own page once the datasetId is held; there is no function-level dataset page)
-- **\`experiment <key>\` mode:** pass \`/studio\`
-- **\`fix [<key>] <trace-id>\` mode:** this mode normally skips the initial Studio open and starts at Phase Fix. If you are here because the user later chose to inspect the single-trace before/after or run the full dataset experiment, pass \`/studio\` and continue with the experiment viewer flow.
-- **\`cost-optimize <key>\` mode:** pass \`/studio\`
-- **\`investigate [<key>]\` mode:** pass \`/studio\`
-- **\`benchmark <key>\` mode:** only when the run opted in with the \`studio\` keyword (the working-context flag from argument routing): pass \`/studio\`. Without the flag, benchmark is terminal-only: do NOT run \`openStudioTo.js\` at all, skip straight to the \`pick-dataset\` step (the step's \`next\` already routes there)
-
-\`replay\` mode never reaches this step (it runs entirely in-chat with no Studio session), see Phase Replay.
-
-{{#claude}}Run it with \`run_in_background: true\` on the Bash tool so you can read its handshake output without blocking. **Do NOT append \`&\` to the command string.**{{/claude}}{{#cursor}}Run it as a background process and capture its stdout.{{/cursor}}{{#codex}}Run it via your runtime's "long-running exec session" mechanism and capture its stdout.{{/codex}}{{#amp}}Run it as a background shell command and read its stdout with the shell status tool.{{/amp}} On the daemon path it prints the handshake and exits immediately; in the rare no-daemon fallback it stays alive writing the event file itself. Either way you do the same thing: read the handshake, then tail the \`eventFile\` in \`await-event\`.
-
-The script outputs these handshake JSON lines on stdout (see the Studio Lifecycle intro for the full event reference):
-
-- \`{"event":"window-open-requested","url":"..."}\`, a fresh Studio window open was *requested* (not confirmed on screen). Immediately surface the URL, e.g. \`Opening Studio: <url>. Click it if a window doesn't appear\`, before continuing to poll; the link is the reliable fallback when nothing surfaces.
-- \`{"event":"started","sessionId":"..."}\`, new Studio opened. The session is written to disk; all subsequent \`openStudioTo.js\` and \`pushActivity.js\` calls resolve it automatically. You do not need to track the sessionId.
-- \`{"event":"navigated","sessionId":"...","path":"..."}\`, navigated an existing session.
-- \`{"event":"auth-required","sessionId":"..."}\`, user needs to sign in. Wait for \`authenticated\`.
-- \`{"event":"authenticated","sessionId":"..."}\`, user signed in. Continue.
-- \`{"event":"monitor","sessionId":"...","eventFile":"..."}\`, the durable event stream lives at \`eventFile\`. **Record this path**, the \`await-event\` step tails it for the live stream (Done / Edit-with-agent / session-ended).
-
-Status messages go to stderr. Filter to JSON lines only. The live in-session events (Done, Edit-with-agent, session-ended) do NOT appear on this process's stdout, they go to the \`eventFile\`; tail it in \`await-event\`.
-
-**Recovering after compaction:** Automatic. \`openStudioTo.js\` and \`pushActivity.js\` read the active-session file on disk.`,
+          commandCalls: ["status"],
+          title: "Check authentication",
+          body: "Check authentication with {{command:status}}. If unauthenticated, invoke the setup login workflow and relay its sign-in link. Once authenticated, continue to the selected mode. No browser interaction is required to navigate between workflow steps.",
           next: {
             byMode: {
               wizard: "identify-function/list-or-arg",
@@ -16575,7 +16132,7 @@ Status messages go to stderr. Filter to JSON lines only. The live in-session eve
     {
       id: "verify-instrumentation",
       title: "Phase 2: Verify Instrumentation & Replay",
-      intro: "Check that this trace function has both instrumentation and a replay script.",
+      intro: "Check that this trace function has both instrumentation and a replay registry entry.",
       stepStyle: "list",
       steps: [
         {
@@ -16612,7 +16169,7 @@ If the user chooses **"Instrument now"**, tell the user to run \`{{cmd}}setup in
                 description: "set up tracing in this codebase"
               },
               recommended: true,
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               option: {
@@ -16631,7 +16188,7 @@ If the user chooses **"Instrument now"**, tell the user to run \`{{cmd}}setup in
             },
             {
               option: { letter: "D", label: "Stop" },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -16639,56 +16196,54 @@ If the user chooses **"Instrument now"**, tell the user to run \`{{cmd}}setup in
           id: "check-replay-script",
           kind: "branch",
           toolCalls: ["read", "glob", "ask", "skill"],
-          title: "Check replay script",
-          body: `Search for a replay script that covers this trace function:
+          title: "Check replay registry",
+          body: `Search for a replay registry module that covers this trace function:
 
-- Look for files matching \`scripts/replay.*\`, \`scripts/*replay*\`, or any file that imports \`bitfab.replay\` / \`client.replay\`
-- Read the script and check that it maps the target trace function key
+- Look for \`scripts/replayRegistry.*\`, \`scripts/replay_registry.*\`, or a module defining \`ReplayRegistry\` / \`defineReplayRegistry\`
+- Read the registry and check that an entry maps a pipeline name to the target trace function key and the exact production root
+- Treat a project-owned file that parses replay flags or calls \`replay()\` as a legacy expanded script, not a current registry
 
-If a replay script exists but targets a different function key, do NOT modify the existing script or suggest changing the code's function key. Instead, treat it as "no replay script for this function" and offer to create a new one.
+If a registry exists but targets a different function key, do not change the code's function key. Treat it as no registry entry for this function and offer to add one.
 
-If no replay script exists or it doesn't cover this function, {{askVerb}}:
+If no registry entry exists, {{askVerb}}:
 
-For every replay-capable language, wire the ready-made reporter to both lifecycle callbacks: TypeScript \`onItemStart\` + \`onItemFinish\`, Python \`on_item_start\` + \`on_item_finish\`, and Ruby \`on_item_start:\` + \`on_item_finish:\`. The legacy \`onProgress\` / \`on_progress\` names are deprecated compatibility callbacks and should not be used in new scripts.
-
-> "No replay script found for \`<traceFunctionKey>\`."
+> "No replay registry entry found for \`<traceFunctionKey>\`."
 >
 {{branches}}
 
-If the user chooses **"Create replay now"**, create the replay script inline: fetch the SDK replay reference (\`https://docs.bitfab.ai/reference/typescript.md\` or the equivalent for the project language) and the script template (\`https://docs.bitfab.ai/typescript-sdk.md\`), then write a new replay script following the template. For keys with a decorated or manually wrapped root function, the function passed to \`bitfab.replay(...)\` / \`client.replay(...)\` must be the exact same exported top-level traced wrapper that production/runtime calls to create the root span; you must do this unless it is genuinely impossible in the host app. Inconvenience, extra refactoring, an inline wrapper, or needing to move code is not impossible. If production currently creates that wrapper inline inside a route, job, handler, callback, or local file scope, extract it into the nearest appropriate service/module, export it, and update both production and replay to import and call that same symbol. Do not replay a convenient inner helper unless that exact helper is also the production root traced wrapper, and do not create duplicate semantic wrappers split across production and replay with names like \`runX\`, \`processX\`, or \`generateX\`. If exported-symbol parity is impossible, stop and document the concrete blocker that prevents any shared exported root symbol. The script must accept \`--limit N\`, \`--trace-ids\`, \`--name <name>\`, \`--code-change <path>\`, \`--experiment-group-id <uuid>\`, and \`--dataset-id <uuid>\` flags. Pass the SDK's ready-made progress reporter into both replay lifecycle callbacks (\`onItemStart: reportReplayProgress\` and \`onItemFinish: reportReplayProgress\` in TS, \`on_item_start=report_replay_progress\` and \`on_item_finish=report_replay_progress\` in Python, \`on_item_start: Bitfab.method(:report_replay_progress)\` and \`on_item_finish: Bitfab.method(:report_replay_progress)\` in Ruby, the template already does this) so it streams \`@@bitfab:progress {json}\` lines that \`{{command:replayProgress}}\` turns into one relayable line per trace. Capture the full \`ReplayResult\` in one variable and print that JSON to stdout for direct runs; when \`{{command:replayProgress}}\` sets \`BITFAB_REPLAY_RESULT_PATH\`, the SDK writes the same final result file automatically and the wrapper reads that file first. Do NOT hand-code writes to \`BITFAB_REPLAY_RESULT_PATH\` in the script. Do NOT invoke \`{{cmd}}setup replay\` as a separate skill. After creating the script, check its capabilities and include the required final verification fields: \`Replay root parity:\`, \`Production root symbol:\`, \`Production import/path:\`, \`Replay symbol:\`, \`Replay import/path:\`, \`Same symbol? yes/no\`, and \`If no, why is this impossible?\`.
+If the user chooses **"Create registry entry now"**, fetch the SDK replay reference (\`https://docs.bitfab.ai/reference/typescript.md\` or the equivalent for the project language) and the language guide (\`https://docs.bitfab.ai/<language>-sdk.md\`), then create or update the project registry. The project owns only app imports/bootstrap, mappings to exact production roots, and per-function defaults such as \`mock\`, \`adaptInputs\` / \`adapt_inputs\`, and database branching. The module must not parse CLI arguments, call \`replay()\`, install lifecycle callbacks, print output, or handle \`BITFAB_REPLAY_RESULT_PATH\`; the SDK-installed \`bitfab-replay\` executable owns those behaviors.
 
-**Handler-instrumented keys (no decorated root function) are replayable too.** If the key is registered via a framework handler ({{keyedHandlerKeyRefs}}) rather than \`@span\`/\`withSpan\`, follow the docs' "Replaying handler-instrumented functions" section: pass the handler's key plus a plain callable to \`replay()\` (the SDK wraps it internally), re-invoking the same framework entrypoint production calls with reconstructed runtime wiring. Put every unsafe call made by that wiring behind a replay-mockable marked span; use no-op values only for replay-only callback slots with no recorded call to mock. On SDKs that predate explicit-key replay, wrap the callable under the same key yourself. Never report a handler-instrumented function as not replayable.
+For decorated or manually wrapped roots, the registry must import the exact same exported top-level traced wrapper that production/runtime calls to create the root span. If production creates that wrapper inside a route, job, handler, callback, or local scope, extract it into the nearest import-safe service/module and update production and the registry to import the same symbol. Do not create duplicate semantic wrappers. For handler-instrumented keys, register the key with a plain callable that invokes the same framework entrypoint and reconstructs runtime wiring. If root parity is impossible, stop and document the concrete blocker.
+
+After editing, report \`Replay root parity:\`, \`Production root symbol:\`, \`Production import/path:\`, \`Registry symbol:\`, \`Registry import/path:\`, \`Same symbol? yes/no\`, and \`If no, why is this impossible?\`. Do not invoke \`{{cmd}}setup replay\` as a separate skill.
 
 ${REPLAY_SAFETY_CHECK}`,
           branches: [
             {
               when: "the replay safety check finds any uncovered or unmockable unsafe action",
               description: "report the exact call and why replay interception cannot cover it, then stop without executing replay",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
-              when: "replay script covers this function",
+              when: "replay registry covers this function",
               next: "verify-instrumentation/detect-replay-capabilities"
             },
             {
               option: {
                 letter: "A",
-                label: "Create replay now",
-                description: "create the replay script inline"
+                label: "Create registry entry now",
+                description: "create or update the replay registry inline"
               },
               recommended: true,
               next: "verify-instrumentation/detect-replay-capabilities"
             },
             {
-              option: {
-                letter: "B",
-                label: "Pick a different function"
-              },
+              option: { letter: "B", label: "Pick a different function" },
               next: "identify-function/list-or-arg"
             },
             {
               option: { letter: "C", label: "Stop" },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -16696,52 +16251,27 @@ ${REPLAY_SAFETY_CHECK}`,
           id: "detect-replay-capabilities",
           kind: "branch",
           toolCalls: ["bash", "grep", "ask", "skill"],
-          title: "Detect replay script capabilities",
-          body: `**Detect replay script capabilities.** Check what the replay script supports. These flags determine how experiment results are tracked and displayed in Phase 5. **If you already ran this step for the same trace function earlier in this session, skip it and continue. Re-run if the user switched functions via "Pick a different function".**
+          title: "Detect replay capabilities",
+          body: `**Detect installed replay capabilities.** Common flags, progress events, result serialization, and replay trace IDs belong to the SDK-installed \`bitfab-replay\` executable. Do not inspect or modify the project registry for CLI flag support. **Reuse a capability result for the same workspace and installed SDK version; re-run after switching projects or upgrading the SDK.**
 
-**1. Use the replay script located in the previous step** (or grep for \`scripts/replay.*\` / files importing \`bitfab.replay\` / \`client.replay\`).
-
-**2. Grep the replay script for the flags it forwards:**
-
-| Grep the script for | Flag | What it enables |
-|----------|------|-----------------|
-| \`code-change\` or \`code_change\` | \`supportsCodeChanges\` | Code diffs attached to each experiment in the dashboard |
-| \`experiment-group-id\` or \`experiment_group_id\` | \`supportsExperimentGroups\` | Live streaming of results in Studio as replay runs |
-| \`dataset-id\` or \`dataset_id\` | \`supportsDatasetId\` | Durable attribution of the experiment to its dataset (shows under the dataset's experiments) |
-| \`--name\` plus \`name\` / \`name:\` forwarded to \`replay()\` | \`supportsExperimentNames\` | Human-readable experiment/test-run names in the UI |
-| \`originalTraceId\`/\`traceId\` (or \`original_trace_id\`/\`trace_id\`; \`sourceTraceId\`/\`source_trace_id\` is the deprecated alias) in the output/print section | \`supportsReplayTraceIds\` (re-confirmed post-replay in \`check-verdict-persistence\`) | Verdict persistence (keyed by \`originalTraceId\`), cross-iteration comparison, Studio experiments page |
-
-\`supportsInputAdapters\` is **not** a script-grep flag (the script gains an \`adaptInputs\` / \`adapt_inputs\` argument only after a signature actually drifts, in \`adapt-replay-inputs\`). It comes solely from the installed SDK in step 3.
-
-**3. Confirm the installed SDK supports each flag.** A flag the script forwards is silently ignored when the installed SDK predates it, so each flag also depends on the SDK. Run the capability probe (it resolves the installed SDK version from the lockfile/manifest and resolves every capability by version, with no dist-file grepping across package-manager layouts):
+Run the capability probe from the application workspace:
 
 \`\`\`bash
 cd <project-dir> && {{command:detectCapabilities}}
 \`\`\`
 
-Read the \`<bitfab-replay-capabilities>\` block. Each line is a JSON object for one detected SDK with \`language\`, \`workspacePath\`, \`current\` (resolved version), \`versionResolved\`, \`updateAvailable\`, \`latest\`, and a \`capabilities\` object holding \`supportsExperimentGroups\`, \`supportsDatasetId\`, \`supportsCodeChanges\`, \`supportsReplayTraceIds\`, \`supportsInputAdapters\`, \`supportsExperimentNames\`. Pick the line whose \`language\` (and \`workspacePath\`, in a monorepo) matches the replay script's project.
+Read the matching line from the \`<bitfab-replay-capabilities>\` block. Select by \`language\` and, in a monorepo, \`workspacePath\`. Hold \`supportsExperimentGroups\`, \`supportsDatasetId\`, \`supportsCodeChanges\`, \`supportsReplayTraceIds\`, \`supportsInputAdapters\`, and \`supportsExperimentNames\` directly from that SDK's \`capabilities\` object. If \`versionResolved\` is false, resolve the installed version or inspect that SDK installation before relying on a capability; do not infer support from the registry module.
 
-- **Combine the two sources:** a flag is true only when the script forwards it (step 2) **and** that SDK's matching \`capabilities.*\` is true. Take \`supportsInputAdapters\` straight from \`capabilities.supportsInputAdapters\` (it has no script side).
-- \`supportsReplayTraceIds\` from the probe is a definitive **pre-replay** signal; the later \`check-verdict-persistence\` step still re-confirms from the actual replay output.
-- If \`versionResolved\` is \`false\`, the probe couldn't pin the installed version, so every capability defaulted false and is **unverified**. Check that one SDK by hand before relying on the flags (TypeScript: grep \`node_modules/@bitfab/sdk/dist/index.d.ts\` for the option names and \`ReplayItem.traceId\`; Python: the installed \`bitfab/replay.py\`; Ruby: the installed gem's \`replay.rb\`), or resolve the version and re-run.
+If all capabilities are true, continue silently. If any are false, tell the user which SDK capabilities are missing and what they affect, then {{askVerb}}:
 
-If the script has a flag but the SDK's \`capabilities.*\` is false, mark that flag **false**. Prioritize upgrading the SDK over using fallbacks: without replay trace IDs, verdict labels can't be persisted (benchmark/experiment results stay in-agent only).
-
-**4. Route on the result.**
-
-If all flags are true, skip the question and continue silently.
-
-If one or more flags are false, tell the user which capabilities are missing and what they affect, then {{askVerb}}. List the missing capabilities in the question text:
-
-> "Your replay script is missing support for:
+> "Your installed Bitfab SDK is missing support for:
 >
 > [if !supportsCodeChanges] **Code changes**: edits won't appear in the experiment dashboard
-> [if !supportsExperimentGroups] **Experiment groups**: no live streaming; results appear in Studio after each run
-> [if !supportsDatasetId] **Dataset attribution**: the experiment won't be durably linked to its dataset (still findable via the trace-lineage fallback; fixed by regenerating the script / upgrading the SDK)
-> [if !supportsExperimentNames] **Experiment names**: runs will show as generated IDs instead of readable names
-> [if !supportsReplayTraceIds] **Replay trace IDs**: experiment results can't be persisted or compared across iterations (your SDK needs an upgrade)
->
-> [if !supportsInputAdapters] **Input adapters**: replay can't recover traces when the function's signature drifts after capture (fixed by upgrading the SDK)"
+> [if !supportsExperimentGroups] **Experiment groups**: results cannot stream into one group during the run
+> [if !supportsDatasetId] **Dataset attribution**: the experiment won't be durably linked to its dataset
+> [if !supportsExperimentNames] **Experiment names**: runs will show generated IDs
+> [if !supportsReplayTraceIds] **Replay trace IDs**: verdicts can't be persisted or compared
+> [if !supportsInputAdapters] **Input adapters**: replay can't adapt historical inputs after signature drift"
 
 {{branches}}`,
           branches: [
@@ -16758,15 +16288,15 @@ If one or more flags are false, tell the user which capabilities are missing and
                   investigate: "dataset/list-datasets",
                   benchmark: "iterate/replay-against-dataset",
                   "add-trace": null,
-                  replay: "cleanup/close-studio"
+                  replay: "cleanup/finish"
                 }
               }
             },
             {
               option: {
                 letter: "A",
-                label: "Upgrade the replay script",
-                description: "regenerate the script with full support, then continue"
+                label: "Upgrade the SDK",
+                description: "upgrade the installed replay executable, then continue"
               },
               recommended: true,
               next: "verify-instrumentation/upgrade-replay-script"
@@ -16775,7 +16305,7 @@ If one or more flags are false, tell the user which capabilities are missing and
               option: {
                 letter: "B",
                 label: "Continue without",
-                description: "run experiments with the current script; missing features are skipped"
+                description: "run experiments with the current SDK; missing features are skipped"
               },
               next: {
                 byMode: {
@@ -16787,7 +16317,7 @@ If one or more flags are false, tell the user which capabilities are missing and
                   investigate: "dataset/list-datasets",
                   benchmark: "iterate/replay-against-dataset",
                   "add-trace": null,
-                  replay: "cleanup/close-studio"
+                  replay: "cleanup/finish"
                 }
               }
             }
@@ -16797,33 +16327,15 @@ If one or more flags are false, tell the user which capabilities are missing and
           id: "upgrade-replay-script",
           kind: "action",
           toolCalls: ["skill", "bash", "grep"],
-          title: "Upgrade SDK and replay script",
-          body: `**Upgrade the SDK and replay script.** The replay script references SDK APIs (\`name\`, \`experimentGroupId\`, \`codeChangeDescription\`, per-item \`traceId\`, \`adaptInputs\` / \`adapt_inputs\`) that require a recent SDK. Upgrade the SDK first, then regenerate the script.
+          title: "Upgrade replay SDK",
+          body: `**Upgrade the installed SDK and replay executable.** The project registry does not own common flags, progress callbacks, or result serialization, so do not regenerate it merely to gain those capabilities.
 
-**1. Upgrade the SDK.** Run the capability probe to read the installed version and update status (skip if you still have its block from \`detect-replay-capabilities\`):
-
-\`\`\`bash
-cd <project-dir> && {{command:detectCapabilities}}
-\`\`\`
-
-For the SDK matching this project, the \`<bitfab-replay-capabilities>\` block reports \`current\` (resolved version), \`latest\`, \`updateAvailable\`, and \`renameFrom\`. If \`updateAvailable\` is false, the SDK is already current, skip to step 2. Otherwise run the package manager's update command:
-- TypeScript: \`pnpm update @bitfab/sdk\` (in monorepos, scope with \`--filter <pkg>\`). **If \`package.json\` pins an exact version (e.g. \`"@bitfab/sdk": "0.13.4"\` with no \`^\`/\`~\`), \`pnpm update\` will NOT move past the pin, bump the spec in \`package.json\` to the reported \`latest\` first (e.g. \`"@bitfab/sdk": "0.13.6"\`), then \`pnpm install\`.**
+Run \`{{command:detectCapabilities}}\` from the application workspace and use the matching SDK line's \`current\`, \`latest\`, \`updateAvailable\`, and \`renameFrom\` fields. If an update is available, use the project's package manager:
+- TypeScript: \`pnpm update @bitfab/sdk\` (scope monorepos with \`--filter <pkg>\`). If the manifest pins an exact version, update that spec to \`latest\` and install.
 - Python: \`uv lock --upgrade-package bitfab-py && uv sync\` or \`poetry update bitfab-py\`
 - Ruby: \`bundle update bitfab --conservative\`
 
-If \`renameFrom\` is set (the SDK is on the legacy \`bitfab\` package instead of \`@bitfab/sdk\`), remove the old package and install \`@bitfab/sdk\`.
-
-**2. Regenerate the replay script.** Locate the replay script for this trace function (found in \`detect-replay-capabilities\`). Fetch the SDK replay reference (\`https://docs.bitfab.ai/reference/typescript.md\` or the equivalent for the project language) and the script template (\`https://docs.bitfab.ai/typescript-sdk.md\`). Then edit the script to add the missing flags:
-- **\`--code-change <path>\`**: parse the JSON file, pass \`codeChangeDescription\` and \`codeChangeFiles\` to \`replay()\`
-- **\`--experiment-group-id <uuid>\`**: pass \`experimentGroupId\` to \`replay()\`
-- **\`--name <name>\`**: pass \`name\` to \`replay()\` so the resulting experiment/test run has a readable title
-- **\`--dataset-id <uuid>\`**: pass \`datasetId\` to \`replay()\`. This is the **preferred way to replay a dataset**: passed alone (no \`--trace-ids\`) the server replays exactly the dataset's traces and durably attributes the experiment to the dataset. Adding this flag is what lets the replay step drop the hand-enumerated \`--trace-ids\` list.
-- **Preserve replay root parity**: while editing decorated or manually wrapped roots, verify the function passed to \`bitfab.replay(...)\` / \`client.replay(...)\` is the exact same exported top-level traced wrapper that production/runtime calls to create the root span. You must preserve this unless it is genuinely impossible in the host app; inconvenience, extra refactoring, an inline wrapper, or needing to move code is not impossible. Do not switch to a convenient inner helper, do not create a replay-only semantic wrapper (\`runX\`, \`processX\`, \`generateX\`), and if the current script already violates this, fix the production/replay imports to share one exported root symbol before continuing. For handler-instrumented keys with explicit-key replay, verify the callable invokes the same production framework entrypoint; this handler path is the explicit-key exception to exported-function replay, not permission to call a different helper. If exported-symbol parity is impossible, stop and document the concrete blocker that prevents any shared exported root symbol.
-- **Replay Output Contract**: capture the full \`ReplayResult\` (including every item's \`traceId\`, \`durationMs\`, \`tokens\`, \`model\`) in one variable and print the JSON as one stdout block for direct runs. When \`BITFAB_REPLAY_RESULT_PATH\` is set by \`{{command:replayProgress}}\`, the SDK writes that final result file automatically; do not hand-code plugin transport in the script. Human-readable summary always goes to stderr.
-- **Replay root parity verification**: when reporting the upgraded replay script, include the required final verification section: \`Replay root parity:\`, \`Production root symbol:\`, \`Production import/path:\`, \`Replay symbol:\`, \`Replay import/path:\`, \`Same symbol? yes/no\`, and \`If no, why is this impossible?\`.
-Do NOT invoke \`{{cmd}}setup replay\` as a separate skill; edit the script inline here.
-
-**3. Re-check capabilities.** After upgrading and editing, re-run \`{{command:detectCapabilities}}\` and re-read the \`capabilities\` object for this SDK (the probe now sees the upgraded version). Combine again with the script-side grep from step 2 and update the flags in working context. If any are still missing after the upgrade, note it but continue.`,
+If \`renameFrom\` identifies the legacy TypeScript \`bitfab\` package, replace it with \`@bitfab/sdk\`. Re-run \`{{command:detectCapabilities}}\` after the upgrade and hold the new capability values. Edit the replay registry only when the upgraded SDK reports an actual registry schema incompatibility or the pipeline needs a per-entry default such as \`adaptInputs\` / \`adapt_inputs\`; never add CLI parsing, callbacks, output printing, or \`BITFAB_REPLAY_RESULT_PATH\` handling to project code.`,
           next: {
             byMode: {
               wizard: "dataset/list-datasets",
@@ -16834,7 +16346,7 @@ Do NOT invoke \`{{cmd}}setup replay\` as a separate skill; edit the script inlin
               investigate: "dataset/list-datasets",
               benchmark: "iterate/replay-against-dataset",
               "add-trace": null,
-              replay: "cleanup/close-studio"
+              replay: "cleanup/finish"
             }
           }
         }
@@ -16854,7 +16366,7 @@ Do NOT invoke \`{{cmd}}setup replay\` as a separate skill; edit the script inlin
           body: `Read what the user typed when they invoked \`{{cmd}}assistant investigate\`. Two cases:
 
 - **They passed a function key as the argument:** use it. Call {{tool:listFunctions}} once to confirm the key exists and capture trace count + last activity for the explore step. Then grep the codebase for the key (\`grep -r "<key>" --include="*.ts" --include="*.tsx" --include="*.py" --include="*.rb" --include="*.go" --include="*.baml"\`) and note the file path. Hold both in working context.
-- **They didn't pass a key:** read their description (failure pattern, customer complaint, "something seems off with X", etc.). First inspect the local instrumentation to infer likely function keys: grep for Bitfab SDK usage and wrappers (\`@bitfab/sdk\`, \`withSpan\`, \`getFunction\`, \`traceable\`, \`observability/providers/bitfab\`, replay scripts) plus domain terms from the user's description. If one key is clearly tied to the described workflow, hold it as the candidate and grep for its exact string. Then call {{tool:listFunctions}} to confirm whether the candidate has traces and to capture trace count + last activity. If code does not reveal a candidate, or multiple candidates remain plausible, use \`list_trace_functions\` as a fallback picker (recommend 2-4 alternatives by key, trace count, last activity, and code path when known). If nothing matches, ask the user to clarify or pass a key explicitly.
+- **They didn't pass a key:** read their description (failure pattern, customer complaint, "something seems off with X", etc.). First inspect the local instrumentation to infer likely function keys: grep for Bitfab SDK usage and wrappers (\`@bitfab/sdk\`, \`withSpan\`, \`getFunction\`, \`traceable\`, \`observability/providers/bitfab\`, replay registries) plus domain terms from the user's description. If one key is clearly tied to the described workflow, hold it as the candidate and grep for its exact string. Then call {{tool:listFunctions}} to confirm whether the candidate has traces and to capture trace count + last activity. If code does not reveal a candidate, or multiple candidates remain plausible, use \`list_trace_functions\` as a fallback picker (recommend 2-4 alternatives by key, trace count, last activity, and code path when known). If nothing matches, ask the user to clarify or pass a key explicitly.
 
 Do NOT invent or infer descriptions of what each function does from its key name. Use only what {{tool:listFunctions}} returns plus what's in the codebase.`,
           next: "investigate/explore"
@@ -16901,7 +16413,7 @@ Then {{askVerb}} for the next step. Recommend based on what the investigation su
 
 {{branches}}
 
-Options A and B end at the cleanup step, which closes Studio. Option C continues through dataset building, diagnosis, and experiments, with Studio staying open throughout until cleanup at wrap-up.`,
+Options A and B end with a summary. Option C continues through dataset building, diagnosis, and experiments, sharing relevant page links along the way.`,
           branches: [
             {
               option: {
@@ -16909,7 +16421,7 @@ Options A and B end at the cleanup step, which closes Studio. Option C continues
                 label: "Stop here",
                 description: "the in-chat summary is enough; no further artifact"
               },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               option: {
@@ -16960,15 +16472,15 @@ Options A and B end at the cleanup step, which closes Studio. Option C continues
 <concrete actions: build a dataset around hypothesis X, instrument span Y, ship a code fix for Z, etc.>
 \`\`\`
 
-After writing, tell the user the file path so they can open or share it, then stop (the cleanup step closes Studio). Do NOT roll into dataset building automatically; that is option C, not option B.`,
-          next: "cleanup/close-studio"
+After writing, tell the user the file path so they can open or share it, then stop. Do NOT roll into dataset building automatically; that is option C, not option B.`,
+          next: "cleanup/finish"
         }
       ]
     },
     {
       id: "fix",
       title: "Phase Fix: Capture the Failing Scenario",
-      intro: `Reached only from \`fix\` mode. The user has a specific bug, a failing trace, and wants it fixed and saved in a dataset. This phase resolves THIS trace and its function and diagnoses the failure (deciding the acceptance criterion), then continues into the Phase 5 loop, where the fix itself is made and replayed against only the target trace first. **Nothing is added to a dataset here:** adding it to a dataset happens later (in \`fix-add-to-dataset\`), only after the fix proves the target trace green. The single-trace replay is still tagged with an experiment group so Studio can later show the before/after if the user asks, but Studio stays closed during this initial pass.`,
+      intro: "Reached only from `fix` mode. The user has a specific bug, a failing trace, and wants it fixed and saved in a dataset. This phase resolves THIS trace and its function and diagnoses the failure (deciding the acceptance criterion), then continues into the Phase 5 loop, where the fix itself is made and replayed against only the target trace first. **Nothing is added to a dataset here:** adding it to a dataset happens later (in `fix-add-to-dataset`), only after the fix proves the target trace green. The single-trace replay is still tagged with an experiment group so Bitfab can later show the before/after if the user asks, but Bitfab stays closed during this initial pass.",
       stepStyle: "list",
       steps: [
         {
@@ -16995,7 +16507,7 @@ After writing, tell the user the file path so they can open or share it, then st
    **Confirm why the trace is wrong before editing.** If the trace already has a validated failing label/annotation, or the user already stated what is wrong in this conversation, use that as the starting acceptance criterion and say so. If the trace + code make the defect obvious (for example, an error span, malformed output, wrong tool args, or a clear mismatch between requested and returned content), state the specific trace evidence in one line and proceed. If you cannot confidently explain **why** the original trace is wrong, {{askVerb}} with a short confirmation question: what is wrong, and what correct behavior should be? Then wait. Do not make a speculative code change, do not replay, and do not later call {{tool:saveHumanLabels}} until the acceptance criterion is concrete.
 
    **If you can't find a real defect** (you read the trace and the code and the output actually looks correct for the inputs), do **not** invent a fix. {{askVerb}} with a short question asking what specifically is wrong with this trace, the output they expected versus what they got, then wait. Only proceed once you have a concrete defect to target; if there genuinely isn't one, say the trace looks correct in one line and stop rather than editing code to "fix" a non-bug.
-5. **Set the replay scope.** Hold \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\` in working context (initialize both now so later steps never read \`fixSkipMakeChange\` unset). The first replay uses only this trace ID, not a dataset, and Studio stays closed.
+5. **Set the replay scope.** Hold \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\` in working context (initialize both now so later steps never read \`fixSkipMakeChange\` unset). The first replay uses only this trace ID, not a dataset, and Bitfab stays closed.
 
 Hold the trace ID, function key, code path, the failure annotation, and the trace's failure details in working context. Tell the user in one line what you'll do, and **the first time you mention "replay" to the user, explain it in one plain-English clause**: a replay re-runs the traced function on this trace's exact recorded inputs against your current code, so you can see whether your change fixes the captured output, without making a real production call. For example: "I'll fix the code and replay trace \`<traceId>\` (re-run it on its recorded inputs against the new code) to confirm the fix, then add it to a dataset once it passes." Then continue into the replay loop, where \`make-change\` is the fix.`,
           next: "load-dataset/pick-execution-mode"
@@ -17005,7 +16517,7 @@ Hold the trace ID, function key, code path, the failure annotation, and the trac
     {
       id: "add-trace",
       title: "Phase Add: Attach a Trace to a Dataset",
-      intro: `Reached only from \`add-trace\` mode. This is the lightweight path: attach one or more existing traces to a dataset (picking or creating one), then stop. No labeling, no diagnosis, no experiments, and **no Studio**: this mode never opens the Studio browser surface and runs no Studio commands (\`openStudioTo.js\` / \`closeStudio.js\`). It does still run the \`readTracesBatched\` CLI command to resolve trace function keys. The traces attach **raw**; the user labels and approves them later wherever they review datasets.`,
+      intro: "Reached only from `add-trace` mode. This is the lightweight path: attach one or more existing traces to a dataset (picking or creating one), then stop. No labeling, no diagnosis, no experiments, and no browser interaction. It does still run the `readTracesBatched` CLI command to resolve trace function keys. The traces attach **raw**; the user labels and approves them later wherever they review datasets.",
       stepStyle: "list",
       steps: [
         {
@@ -17061,7 +16573,7 @@ Hold the (single, verified) function key, the trace IDs that belong to it, and a
 
 **Report the tool's actual result, not the input count.** {{tool:addTracesToDataset}} returns how many traces were added vs skipped (IDs not in the org, or not on the dataset's function, are silently skipped). Read those counts from the response and report the **added** count, not \`N = trace-IDs-you-passed\`. If any were skipped, say so in the same line (e.g. "2 added, 1 skipped, not on this function").
 
-Then tell the user in one line, identifying the dataset by its \`datasetId\` (always known) and including its name only when you have one: "Added \`<added>\` trace(s) to dataset \`<datasetId>\`\`<skipped-note>\`." (When a name is available, from \`list_datasets\`, or the \`<key>\`/\`<key> #N\` you just created it with, use "Added \`<added>\` trace(s) to dataset \`<name>\` (\`<datasetId>\`)." On the supplied-dataset-ID path you called \`list_datasets\` to validate scope, so its name is available too.) This is the end of the lightweight \`add-trace\` flow: no labeling, no diagnosis, no experiments, and **no Studio**. Do not open a browser or run any Studio command (\`openStudioTo.js\` / \`closeStudio.js\`).`,
+Then tell the user in one line, identifying the dataset by its \`datasetId\` (always known) and including its name only when you have one: "Added \`<added>\` trace(s) to dataset \`<datasetId>\`\`<skipped-note>\`." (When a name is available, from \`list_datasets\`, or the \`<key>\`/\`<key> #N\` you just created it with, use "Added \`<added>\` trace(s) to dataset \`<name>\` (\`<datasetId>\`)." On the supplied-dataset-ID path you called \`list_datasets\` to validate scope, so its name is available too.) This is the end of the lightweight \`add-trace\` flow: no labeling, no diagnosis, no experiments, and no browser interaction.`,
           next: null
         }
       ]
@@ -17100,46 +16612,19 @@ In \`dataset\` mode this phase is the entry point, Phase 1 (function picker) and
           id: "open-page",
           kind: "branch",
           toolCalls: ["bash", "searchTraces"],
-          commandCalls: ["openStudio"],
-          title: "Open the dataset review page",
+          commandCalls: ["startDataset"],
+          title: "Share the dataset review link",
           emit: "Reviewing dataset",
-          body: `Open the dataset review page for the user **immediately** after picking or creating the dataset.
-
-**First, derive the function's current input shape** so the page can flag traces that won't replay against today's code (the dataset rows and trace detail show a "Can't replay" badge when a trace's recorded inputs no longer fit the current signature). Find the function registered under \`<functionKey>\` in the codebase (the value passed to \`getFunction(...)\` / the traced function), read its parameters, and build a compact JSON shape:
-
-\`\`\`json
-{"fields":[{"name":"query","type":"string"},{"name":"limit","type":"number","required":false}]}
-\`\`\`
-
-- \`name\`: each top-level input field, for a single object argument, its keys; for positional params, the parameter names.
-- \`type\` (optional): one of \`string\` / \`number\` / \`boolean\` / \`object\` / \`array\` / \`null\` / \`unknown\`. Omit if unsure.
-- \`required\` (optional): defaults to true; set \`false\` for optional params.
-
-This is best-effort. If you can't confidently determine the shape (no clear signature, dynamic args), **skip it** and open the bare path, the page falls back to flagging only traces that captured no inputs. Never block or ask the user about this.
-
-Then base64-encode the shape and pass it as a \`?shape=\` query param (no shape -> open the bare path):
-
-\`\`\`bash
-SHAPE=$(printf %s '{"fields":[{"name":"query","type":"string"}]}' | base64 | tr -d '\\n')
-{{command:openStudio}} "/studio/trace-functions/<functionKey>/datasets/<datasetId>?shape=$SHAPE"
-\`\`\`
-
-The command navigates an existing session or opens a new one automatically.
-
-**This navigation is mandatory even though Studio is already open.** The initial mode open lands on \`/studio\` (the home), not this dataset's page. Labels and traces stream live only into the per-dataset page above, so a Studio session sitting anywhere else does NOT satisfy this step. Always navigate with the \`<datasetId>\` path once you hold the id.
-
-**After opening, check whether the dataset already has traces.** Call {{tool:searchTraces}} with \`traceFunctionKey: <key>\`, \`datasetId: <datasetId>\`, \`limit: 1\` to see if the dataset is populated.
-
-{{whens}}`,
+          body: "Run {{command:startDataset}} <traceFunctionKey> <datasetId> and relay the returned URL as a clickable link. Keep the same datasetId throughout review. Call {{tool:searchTraces}} with that datasetId to determine whether it already contains traces, then follow the matching branch. Continue without waiting on a browser process.",
           branches: [
             {
               when: "the dataset already has traces (search returned results)",
-              description: `The dataset is not empty. Tell the user the dataset page is open with the existing traces, and they can review, approve, or edit labels there. Then go straight to waiting for their review. Do NOT ask how to source new candidates or offer to find more traces. The user should review what's already in the dataset first; they can request more traces via the "Edit with agent" button if needed.`,
+              description: `The dataset is not empty. Tell the user the linked dataset page contains the existing traces, where they can review, approve, or edit labels. Then go straight to waiting for their review. Do NOT ask how to source new candidates or offer to find more traces. The user should review what's already in the dataset first; they can request more traces in chat if needed.`,
               next: "dataset/await-event"
             },
             {
               when: "the dataset is empty (search returned no results)",
-              description: `The dataset has no traces yet. Tell the user the dataset page is open in a "waiting for traces" state, and that traces will appear there live as you search and add them. Then proceed to find candidate traces.`,
+              description: `The dataset has no traces yet. Tell the user that traces will appear on the linked page as you search and add them. Then proceed to find candidate traces.`,
               next: "dataset/ask-search-mode"
             }
           ]
@@ -17224,7 +16709,7 @@ Hold the chosen mode in working context, the next steps branch on it.
               option: {
                 letter: "B",
                 label: "Move on with just the reused set",
-                description: "skip further labeling; the dataset page is already open with the reused traces streamed in"
+                description: "skip further labeling; the linked dataset page shows the reused traces"
               },
               recommended: true,
               next: "dataset/await-event"
@@ -17309,7 +16794,7 @@ ${FAN_OUT_JUDGING}
 
 **The cross-trace failure-pattern synthesis stays separate.** Phase 4 (\`understand-failures\`) is a deliberate join: it reads all the labels at once so the holistic "these N traces fail the same way" view is never lost. Per-trace labeling here is mechanical and independent, {{#claude}}and when you fan out, each subagent sees only its own batch, so {{/claude}}do not fold cross-trace synthesis into the labeling, that recognition is Phase 4's job on the full set.
 
-> \uD83D\uDEA8 **HARD RULE, DO NOT SKIP (agent-first mode only):** When the user picked Option A, you MUST call {{tool:saveAgentLabels}} with verdicts for every approved trace BEFORE navigating Studio to the labeling page. Sending the user into an agent-first review with no pre-labeled verdicts is a process violation. (In manual mode this step is unreachable, and the rule does not apply.)
+> \uD83D\uDEA8 **HARD RULE, DO NOT SKIP (agent-first mode only):** When the user picked Option A, you MUST call {{tool:saveAgentLabels}} with verdicts for every approved trace BEFORE sharing the labeling page link. Sending the user into an agent-first review with no pre-labeled verdicts is a process violation. (In manual mode this step is unreachable, and the rule does not apply.)
 
 > **Made a mistake?** If you realize a verdict was wrong (e.g., you mislabeled a trace or want to re-evaluate), call {{tool:saveAgentLabels}} again with \`{ traceId, archive: true }\` for those traces, or \`{ traceId, assertionId, archive: true }\` to archive one assertion's verdict without touching its siblings. The previous label is hidden (kept for audit), and you can re-label the trace from scratch with another \`save_agent_labels\` call.`,
           next: "dataset/attach-to-dataset"
@@ -17321,52 +16806,30 @@ ${FAN_OUT_JUDGING}
           title: "Attach labeled traces to the dataset",
           body: `**Attach candidate traces to the dataset**: Call {{tool:addTracesToDataset}} with the \`datasetId\` chosen earlier and the array of approved candidate trace IDs (in agent-first mode, the ones you just labeled; in manual mode, the candidates the user approved in find-unlabeled). The call is idempotent, re-adding traces already in the dataset is a no-op, so it's safe to include the full set. If no new candidate traces were approved (the dataset was already populated), skip this step.
 
-The dataset review page is already open in Studio (opened earlier in \`open-page\`). Each trace you attach streams in live via real-time events, so the user sees them appear instantly. After attaching, tell the user the dataset is populated and ready for their review, then proceed to \`await-event\`.`,
+The dataset review link was shared earlier in \`open-page\`. If the user has opened it, each attached trace appears through real-time updates. After attaching, tell the user the dataset is populated and ready for their review, then proceed to \`await-event\`.`,
           next: "dataset/await-event"
         },
         {
           id: "await-event",
           kind: "branch",
-          toolCalls: ["bash", "monitor"],
+          toolCalls: ["ask"],
           title: "Wait for user to finish dataset review",
-          body: `\uD83D\uDEA8 **MANDATORY: Set up a Monitor IMMEDIATELY.** Do not skip this step or defer it. The user is reviewing traces in Studio right now and will click Done or Edit with agent. If you don't monitor, you will miss the event.
-
-Use the **Monitor tool** to tail the durable Studio event file for new JSON events:
-
-\`\`\`bash
-tail -f -n +<NEXT_LINE> <eventFile> | grep -E --line-buffered '"event"'
-\`\`\`
-
-\`<eventFile>\` is the path from the \`monitor\` line emitted by \`openStudioTo.js\` in the \`open\` step (the daemon appends events here for the whole session, so tailing it replays anything that happened before you attached). \`<NEXT_LINE>\` is one past the last line you read (e.g. if you read 5 lines, use \`-n +6\`).
-
-The Monitor streams ALL events from Studio. Route on the \`event\` field in each JSON line:
-
-- \`{"event":"return-to-agent",...}\`, user clicked **Done**. Dataset review is complete.
-- \`{"event":"edit-with-agent",...,"datasetId":"..."}\`, user clicked **Edit with agent**. Go to the modify loop, then come back here.
-- \`{"event":"session-ended",...}\`, user closed Studio entirely. **Exception:** a \`"reason":"never-connected"\` field means the user did NOT close anything, the Studio window never actually opened. Tell them that, and offer to re-run the open (the stale session is auto-cleared, so the re-run opens a fresh window). Terminal events from the wrapper commands (\`cancelled\` from \`startDataset.js\`/\`openTracePlan.js\`, \`ended\` from the experiments commands) carry the same \`reason\` field and get the same treatment: never-connected is "window never opened, offer retry", not a user abort.
-- \`{"event":"navigated",...}\`, Studio navigated to a new page (informational).
-- \`{"event":"element-clicked",...}\` / \`{"event":"focusChanged",...}\`, user interaction events (used during template editing).
-
-**Stay silent while monitoring.** Do not narrate each event. Only speak when you reach a branch point or hit an error.
-
-**Template editing during labeling.** The user may ask to edit a template in chat while the Monitor is running (e.g. "change the LLM view"). This arrives as a user message, not a Studio event. If so, go to the edit-template-loop step. **Do NOT invoke \`{{cmd}}setup templates\`**: that navigates Studio away from the dataset page.
-
-{{whens}}`,
+          body: "Ask the user in chat whether the dataset review is complete or they want changes. If they reviewed labels on the linked page, read the current labels before continuing. The user can also request template changes in chat. {{whens}}",
           branches: [
             {
-              when: "`event: edit-with-agent`",
-              description: "user clicked Edit with agent on the dataset page. Go to the modify loop, then come back here to read the next event",
+              when: "the user asks to modify the dataset in chat",
+              description: "Go to the modify loop, then ask for review again in chat",
               next: "dataset/modify-loop"
             },
             {
-              when: "`event: return-to-agent`",
-              description: "user clicked Done on the dataset page. Dataset review is complete, move on to build + confirm the dataset",
+              when: "the user says review is complete in chat",
+              description: "Dataset review is complete, move on to build + confirm the dataset",
               next: "dataset/build-dataset"
             },
             {
-              when: "`event: session-ended`",
-              description: "user closed Studio. Stop the flow",
-              next: "cleanup/close-studio"
+              when: "the user asks to stop",
+              description: "The user requested a stop in chat. Stop the flow",
+              next: "cleanup/finish"
             },
             {
               when: "user asks to edit a template in chat",
@@ -17386,7 +16849,7 @@ The Monitor streams ALL events from Studio. Route on the \`event\` field in each
             "removeTracesFromDataset"
           ],
           title: "Modify loop: add or remove traces in chat",
-          body: `**Modify loop: add or remove traces in chat**: The dataset page is still open in Studio and the user wants you to add or remove traces. Ask in plain chat:
+          body: `**Modify loop: add or remove traces in chat**: The user wants you to add or remove traces from the dataset. Ask in plain chat:
 
 > What would you like to add or remove? You can describe by criteria (e.g. "drop empty-output traces", "add 5 more from last week with errors") or paste explicit trace IDs.
 
@@ -17397,7 +16860,7 @@ Then act on it:
 - **Adding traces:** find candidates with {{tool:searchTraces}} / {{tool:getTraces}}, then respect the labeling mode the user chose earlier in this phase (the ask-labeling-mode step). In **agent-first mode (Option A)**, label them yourself with {{tool:saveAgentLabels}} (same rigor as label-self: every trace gets a verdict + annotation, grounded in the code) before attaching. In **manual mode (Option B)**, do NOT call {{tool:saveAgentLabels}}. **If no labeling mode was selected** (the user took the Reuse \u2192 Move-on path that bypasses ask-labeling-mode, or find-unlabeled returned no candidates so ask-labeling-mode did nothing), default to **agent-first mode (Option A)**: match the recommended default and label new candidates yourself before attaching. Either way, call {{tool:addTracesToDataset}} to attach.
 - **Removing traces:** call {{tool:removeTracesFromDataset}} with the trace IDs to remove. The traces themselves aren't deleted, only their membership in the dataset.
 
-The dataset page reflects each add/remove live (SSE), so the user sees changes flow in as you make them. When you're done, summarize what changed in chat and **return to the await-event step to read the next event**. The user can click Edit with agent again for another modify round, or Done to finalize.`,
+The dataset page reflects each add/remove live (SSE), so the user sees changes flow in as you make them. When you're done, summarize what changed in chat and **return to the await-event step to ask for review in chat**. The user can request another edit or say review is complete.`,
           next: "dataset/await-event"
         },
         {
@@ -17428,7 +16891,7 @@ Then return to the await-event step. If the user wants more edits, they'll ask a
 - **\`costRun\` is false (the common case):** call {{tool:getTraceLabels}} with all of them. It returns only the verdict fields (label + annotation + approved, no span content) and takes up to 100 IDs per call, so for almost every dataset this is a single call. Only if the dataset has more than 100 traces, split the IDs into chunks of 100 and call {{tool:getTraceLabels}} once per chunk; the responses are small, so plain sequential calls are fine.
 - **\`costRun\` is set:** run \`{{command:readTracesBatched}} <trace-id...> --scope full\` **once** with all the trace IDs instead, because the Phase 5 cost-delta step reads each original trace's recorded token usage from this load and {{tool:getTraceLabels}} does not carry it. The command fans the \`scope: "full"\` reads out in parallel batches of 10 and writes the combined result to a temp file; it prints \`{"status":"ok","outputFile":"..."}\` as JSON, so \`Read\` that \`outputFile\`. **Use this command here, not the \`get_traces\` MCP tool directly:** \`get_traces\` caps at 10 IDs, so calling it for the dataset would re-introduce the serial per-batch fan-out \`readTracesBatched\` exists to replace.
 
-**Re-read them fresh here even if you read them earlier in this phase:** the Studio labeling review persists human approvals and label/annotation edits to the DB, so cached context from the find / label steps can be stale. This is the working set for confirm + every Phase 5 experiment.`,
+**Re-read them fresh here even if you read them earlier in this phase:** the Bitfab labeling review persists human approvals and label/annotation edits to the DB, so cached context from the find / label steps can be stale. This is the working set for confirm + every Phase 5 experiment.`,
           next: "dataset/confirm-dataset"
         },
         {
@@ -17463,13 +16926,13 @@ Unapproved agent labels do **not** satisfy this requirement by design, \`validat
             byMode: {
               wizard: "diagnose/understand-failures",
               dataset: "diagnose/understand-failures",
-              experiment: "cleanup/close-studio",
-              fix: "cleanup/close-studio",
+              experiment: "cleanup/finish",
+              fix: "cleanup/finish",
               "cost-optimize": null,
               investigate: "diagnose/understand-failures",
-              benchmark: "cleanup/close-studio",
+              benchmark: "cleanup/finish",
               "add-trace": null,
-              replay: "cleanup/close-studio"
+              replay: "cleanup/finish"
             }
           }
         }
@@ -17542,13 +17005,13 @@ Get the user's confirmation before proceeding.`,
             byMode: {
               wizard: "iterate/detect-replay-capabilities",
               dataset: "iterate/detect-replay-capabilities",
-              experiment: "cleanup/close-studio",
-              fix: "cleanup/close-studio",
+              experiment: "cleanup/finish",
+              fix: "cleanup/finish",
               "cost-optimize": null,
               investigate: "iterate/detect-replay-capabilities",
-              benchmark: "cleanup/close-studio",
+              benchmark: "cleanup/finish",
               "add-trace": null,
-              replay: "cleanup/close-studio"
+              replay: "cleanup/finish"
             }
           }
         }
@@ -17632,8 +17095,8 @@ The trace function key comes from the argument and no prior phase has run (on th
           branches: [
             {
               when: "no datasets exist for this function (`list_datasets` returned empty), or the picked dataset fails the mode's usability check (experiment: no validated failing labels; benchmark / cost-optimize: no traces at all)",
-              description: `tell the user the function has no usable dataset yet and recommend running \`{{cmd}}assistant dataset <key>\` first; then stop the flow (the cleanup step closes Studio if one was opened)`,
-              next: "cleanup/close-studio"
+              description: "tell the user the function has no usable dataset yet and recommend running `{{cmd}}assistant dataset <key>` first; then stop the flow",
+              next: "cleanup/finish"
             },
             {
               when: "dataset loaded (experiment: \u22651 validated failing label; benchmark / cost-optimize: \u22651 trace)",
@@ -17698,70 +17161,45 @@ Hold the chosen mode in working context. Every iteration below (\`make-change\`,
     {
       id: "iterate",
       title: "Phase 5: Iterate with Replay",
-      intro: `In \`wizard\`, \`dataset\`, \`investigate\`, and \`cost-optimize\` mode this works through the experiments in the plan the user already approved (built in Phase 4 diagnose, or Phase Cost for \`cost-optimize\`), making each change and replaying in turn, then wraps up once the plan is done: it does not pause to ask whether to keep going. In \`experiment\` mode there is no such plan, so it runs the single requested experiment against the chosen dataset and wraps up (the user re-invokes to run another). In \`fix\` mode the first pass replays only the target trace and tags that replay with an experiment group; once it passes the trace is added to the dataset (in \`fix-add-to-dataset\`), and after that replay's labels are persisted the user can choose to show the fix in Studio, re-run the full dataset as an experiment (in Studio or terminal-only, chosen in \`fix-rerun-dataset-mode\`), keep iterating, or stop. When that full-dataset re-run reveals real regressions (previously-passing traces the fix broke), \`share-results\` reports them plainly, with the target trace left saved red in the dataset, and the run wraps up. In \`benchmark\` mode it is a single replay of the current code followed by a terminal scorecard, no changes, no iteration.
+      intro: `In \`wizard\`, \`dataset\`, \`investigate\`, and \`cost-optimize\` mode this works through the experiments in the plan the user already approved (built in Phase 4 diagnose, or Phase Cost for \`cost-optimize\`), making each change and replaying in turn, then wraps up once the plan is done: it does not pause to ask whether to keep going. In \`experiment\` mode there is no such plan, so it runs the single requested experiment against the chosen dataset and wraps up (the user re-invokes to run another). In \`fix\` mode the first pass replays only the target trace and tags that replay with an experiment group; once it passes the trace is added to the dataset (in \`fix-add-to-dataset\`), and after that replay's labels are persisted the user can choose to show the fix in Bitfab, re-run the full dataset as an experiment (in Bitfab or terminal-only, chosen in \`fix-rerun-dataset-mode\`), keep iterating, or stop. When that full-dataset re-run reveals real regressions (previously-passing traces the fix broke), \`share-results\` reports them plainly, with the target trace left saved red in the dataset, and the run wraps up. In \`benchmark\` mode it is a single replay of the current code followed by a terminal scorecard, no changes, no iteration.
 
-This phase begins at \`detect-replay-capabilities\`. \`experiment\` / \`benchmark\` modes arrive from Phase 5 Setup (dataset already picked); \`wizard\` / \`dataset\` / \`investigate\` modes arrive from Phase 4 (dataset built in Phase 3); \`fix\` arrives from Phase Fix with \`fixReplayScope = "single-trace"\`. \`openStudioTo.js\` resolves the active session automatically. \`benchmark\` mode opens Studio only when the run opted in with the \`studio\` keyword; without it, benchmark opens no Studio and runs terminal-only. \`fix\` opens Studio only after the user explicitly chooses to inspect the single-trace before/after or run the full-dataset experiment.`,
+This phase begins at \`detect-replay-capabilities\`. \`experiment\` / \`benchmark\` modes arrive from Phase 5 Setup (dataset already picked); \`wizard\` / \`dataset\` / \`investigate\` modes arrive from Phase 4 (dataset built in Phase 3); \`fix\` arrives from Phase Fix with \`fixReplayScope = "single-trace"\`. Provide links to regular experiment pages as results become available.`,
       stepStyle: "list",
       steps: [
         {
           id: "detect-replay-capabilities",
           kind: "branch",
           toolCalls: ["bash", "grep", "ask", "skill"],
-          title: "Detect replay script capabilities",
-          body: `**Detect replay script capabilities.** Check what the replay script supports. These flags determine how experiment results are tracked and displayed. **If you already ran this step in Phase 2 earlier in this session, reuse its capability flags only after confirming the replay safety check still applies to the unchanged script and code.**
+          title: "Detect replay capabilities",
+          body: `**Detect installed replay capabilities.** Common flags, progress events, result serialization, and replay trace IDs belong to the SDK-installed \`bitfab-replay\` executable. Do not inspect or modify the project registry for CLI flag support. **Reuse a capability result for the same workspace and installed SDK version; re-run after switching projects or upgrading the SDK.**
 
 ${REPLAY_SAFETY_CHECK}
 
-**1. Locate the replay script** (you found it in Phase 2 in \`wizard\` mode, or grep for \`scripts/replay.*\` / files importing \`bitfab.replay\` / \`client.replay\` now).
-
-**2. Grep the replay script for the flags it forwards:**
-
-| Grep the script for | Flag | What it enables |
-|----------|------|-----------------|
-| \`code-change\` or \`code_change\` | \`supportsCodeChanges\` | Code diffs attached to each experiment in the dashboard |
-| \`experiment-group-id\` or \`experiment_group_id\` | \`supportsExperimentGroups\` | Live streaming of results in Studio as replay runs |
-| \`dataset-id\` or \`dataset_id\` | \`supportsDatasetId\` | Durable attribution of the experiment to its dataset (shows under the dataset's experiments) |
-| \`--name\` plus \`name\` / \`name:\` forwarded to \`replay()\` | \`supportsExperimentNames\` | Human-readable experiment/test-run names in the UI |
-| \`originalTraceId\`/\`traceId\` (or \`original_trace_id\`/\`trace_id\`; \`sourceTraceId\`/\`source_trace_id\` is the deprecated alias) in the output/print section | \`supportsReplayTraceIds\` (re-confirmed post-replay in \`check-verdict-persistence\`) | Verdict persistence (keyed by \`originalTraceId\`), cross-iteration comparison, Studio experiments page |
-
-\`supportsInputAdapters\` is **not** a script-grep flag (the script gains an \`adaptInputs\` / \`adapt_inputs\` argument only after a signature actually drifts, in \`adapt-replay-inputs\`). It comes solely from the installed SDK in step 3.
-
-**3. Confirm the installed SDK supports each flag.** A flag the script forwards is silently ignored when the installed SDK predates it, so each flag also depends on the SDK. Run the capability probe (it resolves the installed SDK version from the lockfile/manifest and resolves every capability by version, with no dist-file grepping across package-manager layouts):
+Run the capability probe from the application workspace:
 
 \`\`\`bash
 cd <project-dir> && {{command:detectCapabilities}}
 \`\`\`
 
-Read the \`<bitfab-replay-capabilities>\` block. Each line is a JSON object for one detected SDK with \`language\`, \`workspacePath\`, \`current\` (resolved version), \`versionResolved\`, \`updateAvailable\`, \`latest\`, and a \`capabilities\` object holding \`supportsExperimentGroups\`, \`supportsDatasetId\`, \`supportsCodeChanges\`, \`supportsReplayTraceIds\`, \`supportsInputAdapters\`, \`supportsExperimentNames\`. Pick the line whose \`language\` (and \`workspacePath\`, in a monorepo) matches the replay script's project.
+Read the matching line from the \`<bitfab-replay-capabilities>\` block. Select by \`language\` and, in a monorepo, \`workspacePath\`. Hold \`supportsExperimentGroups\`, \`supportsDatasetId\`, \`supportsCodeChanges\`, \`supportsReplayTraceIds\`, \`supportsInputAdapters\`, and \`supportsExperimentNames\` directly from that SDK's \`capabilities\` object. If \`versionResolved\` is false, resolve the installed version or inspect that SDK installation before relying on a capability; do not infer support from the registry module.
 
-- **Combine the two sources:** a flag is true only when the script forwards it (step 2) **and** that SDK's matching \`capabilities.*\` is true. Take \`supportsInputAdapters\` straight from \`capabilities.supportsInputAdapters\` (it has no script side).
-- \`supportsReplayTraceIds\` from the probe is a definitive **pre-replay** signal; the later \`check-verdict-persistence\` step still re-confirms from the actual replay output.
-- If \`versionResolved\` is \`false\`, the probe couldn't pin the installed version, so every capability defaulted false and is **unverified**. Check that one SDK by hand before relying on the flags (TypeScript: grep \`node_modules/@bitfab/sdk/dist/index.d.ts\` for the option names and \`ReplayItem.traceId\`; Python: the installed \`bitfab/replay.py\`; Ruby: the installed gem's \`replay.rb\`), or resolve the version and re-run.
+If all capabilities are true, continue silently. If any are false, tell the user which SDK capabilities are missing and what they affect, then {{askVerb}}:
 
-If the script has a flag but the SDK's \`capabilities.*\` is false, mark that flag **false**. Prioritize upgrading the SDK over using fallbacks: without replay trace IDs, verdict labels can't be persisted (benchmark/experiment results stay in-agent only).
-
-**4. Route on the result.**
-
-If all flags are true, skip the question and continue silently.
-
-If one or more flags are false, tell the user which capabilities are missing and what they affect, then {{askVerb}}. List the missing capabilities in the question text:
-
-> "Your replay script is missing support for:
+> "Your installed Bitfab SDK is missing support for:
 >
 > [if !supportsCodeChanges] **Code changes**: edits won't appear in the experiment dashboard
-> [if !supportsExperimentGroups] **Experiment groups**: no live streaming; results appear in Studio after each run
-> [if !supportsDatasetId] **Dataset attribution**: the experiment won't be durably linked to its dataset (still findable via the trace-lineage fallback; fixed by regenerating the script / upgrading the SDK)
-> [if !supportsExperimentNames] **Experiment names**: runs will show as generated IDs instead of readable names
-> [if !supportsReplayTraceIds] **Replay trace IDs**: experiment results can't be persisted or compared across iterations (your SDK needs an upgrade)
->
-> [if !supportsInputAdapters] **Input adapters**: replay can't recover traces when the function's signature drifts after capture (fixed by upgrading the SDK)"
+> [if !supportsExperimentGroups] **Experiment groups**: results cannot stream into one group during the run
+> [if !supportsDatasetId] **Dataset attribution**: the experiment won't be durably linked to its dataset
+> [if !supportsExperimentNames] **Experiment names**: runs will show generated IDs
+> [if !supportsReplayTraceIds] **Replay trace IDs**: verdicts can't be persisted or compared
+> [if !supportsInputAdapters] **Input adapters**: replay can't adapt historical inputs after signature drift"
 
 {{branches}}`,
           branches: [
             {
               when: "the replay safety check finds any uncovered or unmockable unsafe action",
               description: "report the exact call and why replay interception cannot cover it, then stop without executing replay",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               when: "all flags are true",
@@ -17771,8 +17209,8 @@ If one or more flags are false, tell the user which capabilities are missing and
             {
               option: {
                 letter: "A",
-                label: "Upgrade the replay script",
-                description: "regenerate the script with full support, then continue"
+                label: "Upgrade the SDK",
+                description: "upgrade the installed replay executable, then continue"
               },
               recommended: true,
               next: "iterate/upgrade-replay-script"
@@ -17781,7 +17219,7 @@ If one or more flags are false, tell the user which capabilities are missing and
               option: {
                 letter: "B",
                 label: "Continue without",
-                description: "run experiments with the current script; missing features are skipped"
+                description: "run experiments with the current SDK; missing features are skipped"
               },
               next: "iterate/open-experiments-before-replay"
             }
@@ -17791,75 +17229,23 @@ If one or more flags are false, tell the user which capabilities are missing and
           id: "upgrade-replay-script",
           kind: "action",
           toolCalls: ["skill", "bash", "grep"],
-          title: "Upgrade SDK and replay script",
-          body: `**Upgrade the SDK and replay script.** The replay script references SDK APIs (\`name\`, \`experimentGroupId\`, \`codeChangeDescription\`, per-item \`traceId\`, \`adaptInputs\` / \`adapt_inputs\`) that require a recent SDK. Upgrade the SDK first, then regenerate the script.
+          title: "Upgrade replay SDK",
+          body: `**Upgrade the installed SDK and replay executable.** The project registry does not own common flags, progress callbacks, or result serialization, so do not regenerate it merely to gain those capabilities.
 
-**1. Upgrade the SDK.** Run the capability probe to read the installed version and update status (skip if you still have its block from \`detect-replay-capabilities\`):
-
-\`\`\`bash
-cd <project-dir> && {{command:detectCapabilities}}
-\`\`\`
-
-For the SDK matching this project, the \`<bitfab-replay-capabilities>\` block reports \`current\` (resolved version), \`latest\`, \`updateAvailable\`, and \`renameFrom\`. If \`updateAvailable\` is false, the SDK is already current, skip to step 2. Otherwise run the package manager's update command:
-- TypeScript: \`pnpm update @bitfab/sdk\` (in monorepos, scope with \`--filter <pkg>\`). **If \`package.json\` pins an exact version (e.g. \`"@bitfab/sdk": "0.13.4"\` with no \`^\`/\`~\`), \`pnpm update\` will NOT move past the pin, bump the spec in \`package.json\` to the reported \`latest\` first (e.g. \`"@bitfab/sdk": "0.13.6"\`), then \`pnpm install\`.**
+Run \`{{command:detectCapabilities}}\` from the application workspace and use the matching SDK line's \`current\`, \`latest\`, \`updateAvailable\`, and \`renameFrom\` fields. If an update is available, use the project's package manager:
+- TypeScript: \`pnpm update @bitfab/sdk\` (scope monorepos with \`--filter <pkg>\`). If the manifest pins an exact version, update that spec to \`latest\` and install.
 - Python: \`uv lock --upgrade-package bitfab-py && uv sync\` or \`poetry update bitfab-py\`
 - Ruby: \`bundle update bitfab --conservative\`
 
-If \`renameFrom\` is set (the SDK is on the legacy \`bitfab\` package instead of \`@bitfab/sdk\`), remove the old package and install \`@bitfab/sdk\`.
-
-**2. Regenerate the replay script.** Locate the replay script for this trace function (found in \`detect-replay-capabilities\`). Fetch the SDK replay reference (\`https://docs.bitfab.ai/reference/typescript.md\` or the equivalent for the project language) and the script template (\`https://docs.bitfab.ai/typescript-sdk.md\`). Then edit the script to add the missing flags:
-- **\`--code-change <path>\`**: parse the JSON file, pass \`codeChangeDescription\` and \`codeChangeFiles\` to \`replay()\`
-- **\`--experiment-group-id <uuid>\`**: pass \`experimentGroupId\` to \`replay()\`
-- **\`--name <name>\`**: pass \`name\` to \`replay()\` so the resulting experiment/test run has a readable title
-- **\`--dataset-id <uuid>\`**: pass \`datasetId\` to \`replay()\`. This is the **preferred way to replay a dataset**: passed alone (no \`--trace-ids\`) the server replays exactly the dataset's traces and durably attributes the experiment to the dataset. Adding this flag is what lets the replay step drop the hand-enumerated \`--trace-ids\` list.
-- **Preserve replay root parity**: while editing decorated or manually wrapped roots, verify the function passed to \`bitfab.replay(...)\` / \`client.replay(...)\` is the exact same exported top-level traced wrapper that production/runtime calls to create the root span. You must preserve this unless it is genuinely impossible in the host app; inconvenience, extra refactoring, an inline wrapper, or needing to move code is not impossible. Do not switch to a convenient inner helper, do not create a replay-only semantic wrapper (\`runX\`, \`processX\`, \`generateX\`), and if the current script already violates this, fix the production/replay imports to share one exported root symbol before continuing. For handler-instrumented keys with explicit-key replay, verify the callable invokes the same production framework entrypoint; this handler path is the explicit-key exception to exported-function replay, not permission to call a different helper. If exported-symbol parity is impossible, stop and document the concrete blocker that prevents any shared exported root symbol.
-- **Replay Output Contract**: capture the full \`ReplayResult\` (including every item's \`traceId\`, \`durationMs\`, \`tokens\`, \`model\`) in one variable and print the JSON as one stdout block for direct runs. When \`BITFAB_REPLAY_RESULT_PATH\` is set by \`{{command:replayProgress}}\`, the SDK writes that final result file automatically; do not hand-code plugin transport in the script. Human-readable summary always goes to stderr.
-- **Replay root parity verification**: when reporting the upgraded replay script, include the required final verification section: \`Replay root parity:\`, \`Production root symbol:\`, \`Production import/path:\`, \`Replay symbol:\`, \`Replay import/path:\`, \`Same symbol? yes/no\`, and \`If no, why is this impossible?\`.
-Do NOT invoke \`{{cmd}}setup replay\` as a separate skill; edit the script inline here.
-
-**3. Re-check capabilities.** After upgrading and editing, re-run \`{{command:detectCapabilities}}\` and re-read the \`capabilities\` object for this SDK (the probe now sees the upgraded version). Combine again with the script-side grep from step 2 and update the flags in working context. If any are still missing after the upgrade, note it but continue.`,
+If \`renameFrom\` identifies the legacy TypeScript \`bitfab\` package, replace it with \`@bitfab/sdk\`. Re-run \`{{command:detectCapabilities}}\` after the upgrade and hold the new capability values. Edit the replay registry only when the upgraded SDK reports an actual registry schema incompatibility or the pipeline needs a per-entry default such as \`adaptInputs\` / \`adapt_inputs\`; never add CLI parsing, callbacks, output printing, or \`BITFAB_REPLAY_RESULT_PATH\` handling to project code.`,
           next: "iterate/open-experiments-before-replay"
         },
         {
           id: "open-experiments-before-replay",
           kind: "action",
           toolCalls: ["bash"],
-          commandCalls: ["openStudio"],
           title: "Prepare experiment group before replay",
-          body: `**Generate the experiment group ID before making changes or running replay.** In normal dataset/experiment modes, also open the experiments page before replay so the user can watch results stream in live from the moment replay starts.
-
-**Fix-mode single-trace pass:** if mode is \`fix\` and \`fixReplayScope = "single-trace"\`, generate the \`experimentGroupId\` but do **not** open Studio yet. Hold this UUID as \`fixSingleTraceExperimentGroupId\` as well as the current \`experimentGroupId\`, then continue to \`make-change\`. This first pass is a targeted replay of the target trace, and the group exists only so the user can inspect the before/after in Studio after labels are persisted. If the user later chooses the full-dataset run (after the trace passed and \`fix-add-to-dataset\` attached it to the dataset), set \`fixReplayScope = "dataset"\` and return here; then generate a fresh \`experimentGroupId\` for the dataset experiment. Whether Studio opens for that dataset run depends on \`fixDatasetStudio\` (chosen in \`fix-rerun-dataset-mode\`): open the experiment page when it is true, keep Studio closed and report results in chat when it is false.
-
-**Generate an experiment group ID.** Generate a fresh UUID to use as the \`experimentGroupId\` for this iteration. This groups all test runs from this iteration together so the experiments page can stream results live as the replay runs.
-
-Treat the UUID as a literal value: substitute it directly into the \`<experimentGroupId>\` slot of each command below (and into \`--experiment-group-id\` in \`replay-against-dataset\`), exactly like \`<tokensSuffix>\`. **Do not assign it to a shell variable named \`GID\`, \`UID\`, \`EUID\`, or \`EGID\`** (in zsh these are read-only/integer special parameters bound to the process IDs, so \`GID="$(uuidgen)"\` makes the shell evaluate the UUID as arithmetic and throws \`bad math expression: operator expected at '<hex>...'\`). If you keep it in a variable at all, use a plain lowercase name like \`gid\`; a double-quoted experiments URL with \`&\` is otherwise shell-safe. If you ever see that \`bad math expression\` error, it is the variable name, not the \`&\` or the query string: rename the variable, do not rewrite the command.
-
-**Open the experiments page.** Pick exactly one case (they are mutually exclusive):
-
-- **\`fix\` mode with \`fixReplayScope = "single-trace"\`:** do NOT run any \`openStudio\` navigation yet. Keep Studio closed until the user explicitly chooses the post-replay "Show in Studio" option. Continue to \`make-change\`.
-- **\`fix\` mode with \`fixReplayScope = "dataset"\` and \`fixDatasetStudio\` false (terminal-only re-run):** do NOT run any \`openStudio\` navigation. Generate the experiment group ID above only to tag the test run on the server, then continue. The dataset run reports its results in chat (\`share-results\`), no Studio window.
-- **\`benchmark\` mode WITHOUT the \`studio\` opt-in:** do NOT run any \`openStudio\` navigation (no Studio is open). Just generate the experiment group ID above for tagging the test run on the server, then continue to \`replay-against-dataset\`.
-- **\`benchmark\` mode WITH the \`studio\` flag** (and \`supportsExperimentGroups\` is true): navigate Studio to the experiments page using the group ID **and** \`&mode=benchmark\`, so the page relabels its copy as "Benchmark" (the underlying run is still an experiment; only the displayed noun changes):
-
-  \`\`\`bash
-  {{command:openStudio}} "/studio/experiments?experimentGroupId=<experimentGroupId>&mode=benchmark<tokensSuffix>"
-  \`\`\`
-- **All other modes** (and \`supportsExperimentGroups\` is true): navigate Studio to the experiments page using the group ID (no \`mode\` parameter):
-
-  \`\`\`bash
-  {{command:openStudio}} "/studio/experiments?experimentGroupId=<experimentGroupId><tokensSuffix>"
-  \`\`\`
-
-\`<tokensSuffix>\` is a real placeholder, like \`<experimentGroupId>\`: resolve it from \`costRun\` (and, when set, \`costBasis\`) before you open the URL:
-- \`costRun\` false: substitute the empty string.
-- \`costRun\` set, \`costBasis = all\`: substitute \`&tokens=1&tokenType=all\`.
-- \`costRun\` set, \`costBasis = uncached\`: substitute \`&tokens=1&tokenType=uncached\`.
-
-Always emit \`&tokenType=\` explicitly when the lens is on (never a bare \`&tokens=1\`): the page's tokenType is sticky, so a bare \`&tokens=1\` after a prior \`uncached\` view would keep counting uncached against an all-basis intent. Pinning the basis on every tokens-bearing nav keeps the live lens matching the run. Because the slot is driven by the flags, the lens lands on for token/cost runs (on the basis you fixed at entry) and stays off for quality runs, with nothing to remember to add or strip per run. The only way to get it wrong is to leave a literal \`<tokensSuffix>\` in the command.
-
-**Token-cost lens (\`&tokens=1&tokenType=<all|uncached>\`).** When the URL carries \`&tokens=1\` the page turns on the token-cost lens: each trace and the experiment header show the original \u2192 replay total-token trend, streaming in next to pass/fail. \`&tokenType=all\` counts **all** tokens (\`input + output\`, cache reads included), tinted indigo (cheaper) / amber (costlier); \`&tokenType=uncached\` switches the same trend to the **uncached** basis (\`(input - cached) + output\`), tinted cyan / orange so it reads apart from the all-token view. A "Token count: All | Uncached" toggle in the page header flips it live too, and overrides the URL until the next tokens-bearing nav. On a quality run (\`costRun\` false) \`<tokensSuffix>\` resolves to nothing and the page looks exactly as it does today, so a non-cost run never carries the lens.
-
-This is a Studio-opening navigation call. Launch it as a background/long-running process and read its JSONL stdout incrementally; do not wait in the foreground for the user to act in Studio. The existing Studio session handles it. If \`supportsExperimentGroups\` is false, skip this navigation (the \`open-experiments\` fallback will navigate with \`testRunIds\` after the replay completes).`,
+          body: "Generate one experimentGroupId for this iteration before making changes or running replay. Pass that same ID through the replay registry using --experiment-group-id. Do not emit or share an experiment link yet: generating a UUID does not create the group on the server. The first persisted replay creates it. Keep reporting replay progress in chat, then share the verified group or test-run link in the open-experiments step after replay.",
           next: {
             byMode: {
               wizard: "iterate/make-change",
@@ -17896,15 +17282,15 @@ This is a Studio-opening navigation call. Launch it as a background/long-running
           commandCalls: ["replayProgress", "persistReplayLabels"],
           title: "Replay against the selected scope",
           emit: "Running replay",
-          body: `**Replay against the selected scope.** In normal dataset modes, collect the trace IDs from the labeled dataset (built in Phase 3 in \`wizard\` and \`dataset\` modes, or rehydrated in Phase 5 Setup's \`pick-dataset\` step in \`experiment\` and \`benchmark\` modes). In \`fix\` mode, branch on \`fixReplayScope\`: \`"single-trace"\` means replay only the target trace ID from Phase Fix; \`"dataset"\` means replay the full dataset after the user explicitly opted into the Studio experiment. The experiment group ID was already generated in the \`open-experiments-before-replay\` step. For the initial \`fixReplayScope = "single-trace"\` pass, the group tags the targeted replay for optional before/after inspection but Studio is not opened yet.
+          body: `**Replay against the selected scope.** In normal dataset modes, collect the trace IDs from the labeled dataset (built in Phase 3 in \`wizard\` and \`dataset\` modes, or rehydrated in Phase 5 Setup's \`pick-dataset\` step in \`experiment\` and \`benchmark\` modes). In \`fix\` mode, branch on \`fixReplayScope\`: \`"single-trace"\` means replay only the target trace ID from Phase Fix; \`"dataset"\` means replay the full dataset after the user explicitly opted into the Bitfab experiment. The experiment group ID was already generated in the \`open-experiments-before-replay\` step. For the initial \`fixReplayScope = "single-trace"\` pass, the group tags the targeted replay for optional before/after inspection but Bitfab is not opened yet.
 
 ${REPLAY_SAFETY_CHECK}
 
 If the check does not pass, stop this flow and report the exact uncovered call. Do not launch a replay command and do not wait for that call to fail: unsafe actions can succeed.
 
-**In \`benchmark\` mode, skip the code-change payload entirely.** Benchmark makes no experiment-style edits to the traced function, so there is no code diff to capture. Omit \`--code-change\` from the invocation. The replay evaluates the current code as-is against the labeled dataset. Use \`"Benchmark: current code baseline"\` as the change description for display purposes. (Infra fixes are still allowed when a gap blocks the run, upgrading the SDK / replay script in \`detect-replay-capabilities\`, or adding \`mockOnReplay\` to a failing child span below, since none of those change the function's measured behavior. What you must not do is edit the traced function to alter its output.)
+**In \`benchmark\` mode, skip the code-change payload entirely.** Benchmark makes no experiment-style edits to the traced function, so there is no code diff to capture. Omit \`--code-change\` from the invocation. The replay evaluates the current code as-is against the labeled dataset. Use \`"Benchmark: current code baseline"\` as the change description for display purposes. (Infra fixes are still allowed when a gap blocks the run, upgrading the SDK in \`detect-replay-capabilities\`, or adding \`mockOnReplay\` to a failing child span below, since none of those change the function's measured behavior. What you must not do is edit the traced function to alter its output.)
 
-**Write the code-change payload first (skip this entire block in \`benchmark\` mode, \`make-change\` never ran, there are no snapshots, and \`--code-change\` is omitted per the benchmark note above).** Before running the script, write a tmp JSON file (e.g. \`/tmp/bitfab-code-change-<experimentN>.json\`) using the snapshots captured in \`make-change\`:
+**Write the code-change payload first (skip this entire block in \`benchmark\` mode, \`make-change\` never ran, there are no snapshots, and \`--code-change\` is omitted per the benchmark note above).** Before running replay, write a tmp JSON file (e.g. \`/tmp/bitfab-code-change-<experimentN>.json\`) using the snapshots captured in \`make-change\`:
 
 \`\`\`json
 {
@@ -17921,40 +17307,40 @@ The schema is flat, every file object is exactly \`{ path, before, after }\`. Do
 
 **Automatic fallback capture.** If you do not pass \`--code-change\`, a recent SDK auto-captures the branch's diff **against trunk** (the merge-base with \`origin/main\`) inside \`replay()\` itself and attaches it, so even a run where you did not hand-write a payload still shows a diff, as long as the SDK is new enough (\`supportsCodeChanges\`), you are in a git repo, and the working tree carries the change. This fallback is **cumulative** (whole branch vs trunk), not per-experiment. The precise per-experiment before/after still comes from writing the \`--code-change\` payload above, which always wins over the fallback, so keep doing that in \`make-change\`; the trunk diff is a last resort, not a reason to skip it.
 
-**Check the \`supportsExperimentGroups\` flag** (from \`detect-replay-capabilities\`). If true and an \`experimentGroupId\` exists, pass \`--experiment-group-id <experimentGroupId>\` (from \`open-experiments-before-replay\`) so the test run is tagged with the group. This includes the initial \`fixReplayScope = "single-trace"\` pass. If false, skip the flag; the post-replay Studio inspection can fall back to \`testRunId\` when available.
+**Check the \`supportsExperimentGroups\` flag** (from \`detect-replay-capabilities\`). If true and an \`experimentGroupId\` exists, pass \`--experiment-group-id <experimentGroupId>\` (from \`open-experiments-before-replay\`) so the test run is tagged with the group. This includes the initial \`fixReplayScope = "single-trace"\` pass. If false, skip the flag; the post-replay Bitfab inspection can fall back to \`testRunId\` when available.
 
 **Check the \`supportsExperimentNames\` flag** (from \`detect-replay-capabilities\`). If true, pass \`--name "<experimentName>"\` so the resulting experiment/test run is readable in the UI. Use the one-line change description from \`make-change\` as \`<experimentName>\`; in \`benchmark\` mode use \`Benchmark: current code baseline\`. Keep it 120 characters or fewer. If false, omit \`--name\`; this is cosmetic and the replay still runs.
 
 **Choose trace selection.**
 
 - **Initial \`fix\` pass (\`fixReplayScope = "single-trace"\`)**: pass \`--trace-ids <targetTraceId>\` (the trace ID held from Phase Fix \`resolve\`) and do NOT pass \`--dataset-id\`. This is the user's requested targeted replay. It proves the bug turned green before anything is added to a dataset or the rest of the dataset is run.
-- **Full dataset runs**: check the \`supportsDatasetId\` flag (from \`detect-replay-capabilities\`). When true, this is the **preferred way to replay the dataset**: pass \`--dataset-id <datasetId>\` (the dataset id held in working context: from \`pick-dataset\` in \`experiment\` / \`cost-optimize\` / \`benchmark\` modes, or from \`fix-add-to-dataset\` in \`fix\` mode, which skips \`pick-dataset\`) and **omit \`--trace-ids\` entirely**. The server replays exactly the dataset's traces and durably attributes the experiment to the dataset, so it shows under the dataset's experiments even when trace lineage can't be reconstructed, and you don't have to enumerate the dataset's trace IDs by hand. Only when \`supportsDatasetId\` is false do you fall back to \`--trace-ids <the dataset's resolved trace ids>\` (attribution then relies on the derived trace-lineage join). If the script lacks \`--dataset-id\`, prefer upgrading it (see \`upgrade-replay-script\`) over the trace-ids fallback.
+- **Full dataset runs**: check the \`supportsDatasetId\` flag (from \`detect-replay-capabilities\`). When true, this is the **preferred way to replay the dataset**: pass \`--dataset-id <datasetId>\` (the dataset id held in working context: from \`pick-dataset\` in \`experiment\` / \`cost-optimize\` / \`benchmark\` modes, or from \`fix-add-to-dataset\` in \`fix\` mode, which skips \`pick-dataset\`) and **omit \`--trace-ids\` entirely**. The server replays exactly the dataset's traces and durably attributes the experiment to the dataset, so it shows under the dataset's experiments even when trace lineage can't be reconstructed, and you don't have to enumerate the dataset's trace IDs by hand. Only when \`supportsDatasetId\` is false do you fall back to \`--trace-ids <the dataset's resolved trace ids>\` (attribution then relies on the derived trace-lineage join). If the installed SDK lacks \`--dataset-id\`, prefer upgrading it (see \`upgrade-replay-script\`) over the trace-ids fallback.
 
-**Run the replay through \`{{command:replayProgress}}\` in the background, then relay the progress lines it prints.** Before starting, choose a unique run directory for this replay, for example \`.bitfab/replays/<experimentN>-<timestamp>-<short-random>\`, pass it with \`--run-dir\`, and hold that path in context; do not use a shared \`--events-log\` path. A foreground run blocks you for the whole replay and the user just sees "a shell is running" with no detail. \`{{command:replayProgress}}\` runs the replay, turns the SDK's per-trace \`@@bitfab:progress\` events into one self-contained line per trace on its stdout (a header, then for each trace as it finishes a pass/fail glyph, the running \`n/total\`, and that trace's duration, with the error reason inline on failure, plus a liveness heartbeat line when a slow trace goes quiet so the run never looks frozen, then a final summary with total + average time), and writes a small JSONL event log at \`<run-dir>/events.jsonl\`: \`type: "progress"\` rows as items finish, then a final \`type: "complete"\` row. Large per-item payloads are written atomically under \`<run-dir>/items/\` and referenced by \`item.itemPath\` / \`items[].itemPath\`, so outputs are not duplicated in the event log. It also tees every human line to \`<run-dir>/progress.log\`, so the user can \`tail -f\` it in a separate terminal for a live view that never collapses the way a tool card does. The wrapper writes \`<run-dir>/run.json\`; once the server test run ID is known it also writes \`<parent-of-run-dir>/by-test-run/<testRunId>/run.json\` pointing back to the run directory. If the replay finishes no traces at all (an \`@bitfab/sdk\` too old to carry the lifecycle reporter, or a script that never wired \`onItemFinish\` / \`on_item_finish\`), it closes with a \`\u26A0 done \xB7 replay finished but reported no progress\` line instead of ending silently, so a missing stream of per-trace lines never reads as a hang, fix it via \`upgrade-replay-script\` (or an SDK upgrade) and re-run. If the replay command exits 0 but its local \`ReplayResult\` capture is unavailable, the wrapper also exits 0, emits a \`\u26A0 unverified\` capture warning, and records \`status: "unverified"\` with \`resultCaptured: false\` in \`run.json\`: this prevents the host and metadata consumers from falsely reporting either failure or completion. Progress lines alone do not verify the result. Treat the outcome as unverified until server test-run status resolves it; then explicitly report the server-confirmed outcome. You do NOT decide what or when to print: it does the formatting; you just show each new line.
+**Run the replay through \`{{command:replayProgress}}\` in the background, then relay the progress lines it prints.** Before starting, choose a unique run directory for this replay, for example \`.bitfab/replays/<experimentN>-<timestamp>-<short-random>\`, pass it with \`--run-dir\`, and hold that path in context; do not use a shared \`--events-log\` path. A foreground run blocks you for the whole replay and the user just sees "a shell is running" with no detail. \`{{command:replayProgress}}\` runs the replay, turns the SDK's per-trace \`@@bitfab:progress\` events into one self-contained line per trace on its stdout (a header, then for each trace as it finishes a pass/fail glyph, the running \`n/total\`, and that trace's duration, with the error reason inline on failure, plus a liveness heartbeat line when a slow trace goes quiet so the run never looks frozen, then a final summary with total + average time), and writes a small JSONL event log at \`<run-dir>/events.jsonl\`: \`type: "progress"\` rows as items finish, then a final \`type: "complete"\` row. Large per-item payloads are written atomically under \`<run-dir>/items/\` and referenced by \`item.itemPath\` / \`items[].itemPath\`, so outputs are not duplicated in the event log. It also tees every human line to \`<run-dir>/progress.log\`, so the user can \`tail -f\` it in a separate terminal for a live view that never collapses the way a tool card does. The wrapper writes \`<run-dir>/run.json\`; once the server test run ID is known it also writes \`<parent-of-run-dir>/by-test-run/<testRunId>/run.json\` pointing back to the run directory. If the replay finishes no traces at all (an \`@bitfab/sdk\` too old to carry the lifecycle reporter, or an SDK too old to emit installed-command lifecycle events), it closes with a \`\u26A0 done \xB7 replay finished but reported no progress\` line instead of ending silently, so a missing stream of per-trace lines never reads as a hang, fix it via \`upgrade-replay-script\` and re-run. If the replay command exits 0 but its local \`ReplayResult\` capture is unavailable, the wrapper also exits 0, emits a \`\u26A0 unverified\` capture warning, and records \`status: "unverified"\` with \`resultCaptured: false\` in \`run.json\`: this prevents the host and metadata consumers from falsely reporting either failure or completion. Progress lines alone do not verify the result. Treat the outcome as unverified until server test-run status resolves it; then explicitly report the server-confirmed outcome. You do NOT decide what or when to print: it does the formatting; you just show each new line.
 
-With a current replay-capable SDK and replay template, the event log also contains \`type: "started"\` lifecycle rows. These identify historical trace IDs that have entered a worker but have not necessarily settled; they are diagnostic only and must not be evaluated as completed items.
+With a current replay-capable SDK, the event log also contains \`type: "started"\` lifecycle rows. These identify historical trace IDs that have entered a worker but have not necessarily settled; they are diagnostic only and must not be evaluated as completed items.
 
-1. **Launch it in the background** (use the Bash tool's background mode; never append a trailing \`&\`, that detaches and kills it). Pass \`--label <pipeline-name>\` for the header. Use whichever replay flags the script supports (omit unsupported ones):
+1. **Launch it in the background** (use the Bash tool's background mode; never append a trailing \`&\`, that detaches and kills it). Pass \`--label <pipeline-name>\` for the header. Use whichever replay flags the installed SDK supports (omit unsupported ones):
 
 \`\`\`bash
-# The exact replay command depends on the script, adapt to what exists
+# Use the package runner for the project language; examples below use pnpm exec
 # Fix initial pass: replay only the target trace, no dataset-id, but tag it with an experiment group
-cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> -- npx tsx scripts/replay.ts <pipeline-name> --trace-ids <targetTraceId> --name "<experimentName>" --code-change /tmp/bitfab-code-change-<experimentN>.json --experiment-group-id <experimentGroupId>
+cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> -- pnpm exec bitfab-replay --registry <registry-path> <pipeline-name> --trace-ids <targetTraceId> --name "<experimentName>" --code-change /tmp/bitfab-code-change-<experimentN>.json --experiment-group-id <experimentGroupId>
 # Preferred (supportsDatasetId true): --dataset-id alone replays the dataset; no --trace-ids needed
-cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> --run-dir .bitfab/replays/<experimentN>-<timestamp>-<short-random> -- npx tsx scripts/replay.ts <pipeline-name> --dataset-id <datasetId> --name "<experimentName>" --code-change /tmp/bitfab-code-change-<experimentN>.json --experiment-group-id <experimentGroupId>
-# Fallback (older script/SDK without dataset-id support): pass the dataset's resolved trace IDs
-cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> --run-dir .bitfab/replays/<experimentN>-<timestamp>-<short-random> -- npx tsx scripts/replay.ts <pipeline-name> --trace-ids <id1>,<id2>,<id3>,... --name "<experimentName>" --code-change /tmp/bitfab-code-change-<experimentN>.json --experiment-group-id <experimentGroupId>
+cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> --run-dir .bitfab/replays/<experimentN>-<timestamp>-<short-random> -- pnpm exec bitfab-replay --registry <registry-path> <pipeline-name> --dataset-id <datasetId> --name "<experimentName>" --code-change /tmp/bitfab-code-change-<experimentN>.json --experiment-group-id <experimentGroupId>
+# Fallback (older SDK without dataset-id support): pass the dataset's resolved trace IDs
+cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> --run-dir .bitfab/replays/<experimentN>-<timestamp>-<short-random> -- pnpm exec bitfab-replay --registry <registry-path> <pipeline-name> --trace-ids <id1>,<id2>,<id3>,... --name "<experimentName>" --code-change /tmp/bitfab-code-change-<experimentN>.json --experiment-group-id <experimentGroupId>
 \`\`\`
 
 2. **Relay its output to the user as it runs.** Poll the background command's output every few seconds and **show the user each new line it prints, verbatim** (they are already formatted, one line per trace: \`\u25B6 generate-email \xB7 20 traces\`, \`\u2713 5/20 \xB7 1.1s\`, \`\u2717 7/20 \xB7 0.3s \xB7 missing OPENAI_API_KEY\`, \`\u2026 7/20 running \xB7 24s elapsed\` (a heartbeat while a slow trace runs), \`\u26A0 done \xB7 18 ok \xB7 2 failed \xB7 14.3s \xB7 avg 0.9s\`). Do not parse, summarize, or re-decide cadence, just relay. Your relay is bursty (only between tool calls) and the tool card collapses; if the user wants a continuous, never-collapsing view, point them at \`tail -f <logPath>\` from this run's \`run.json\`, which shows every line the instant it is written. (If you are running this inside a parallel experiment subagent, your chat is not shown to the user, so skip relaying and just report at the end.)
 
-3. **Run the live replay/evaluation loop while the replay is still running.** Use the run directory you passed with \`--run-dir\` and poll \`<run-dir>/events.jsonl\` alongside the human output. Each \`type: "progress"\` JSONL row is a normalized SDK item-finish event; \`item.originalTraceId\` is the **original trace id, the key verdicts are persisted by** (every item file carries it under the same \`originalTraceId\` field, plus a deprecated \`sourceTraceId\` alias). On modern SDKs, \`item.traceId\` may already hold the server replay trace ID after the per-item flush; it is null only when that flush/readback could not confirm the ID, and the final persistence barrier/result fills it when possible. \`item.replayTraceId\` is only set by older SDKs. Treat a new successful progress row as "this original trace's replay item finished" and start evaluation for that item as soon as the row carries \`item.itemPath\` and an \`item.originalTraceId\`: read \`item.itemPath\` for the full input, replay output, original output, and metadata. Failed progress rows become unreplayable candidates immediately and should be carried forward with their error string. If the row is progress-only (old SDK/current basic reporter: no \`item.itemPath\`), do the cheap prep only and defer judging to the final \`type: "complete"\` row's item refs. If the JSONL file is missing or empty (old SDK, old replay script, unwired \`onItemFinish\` / \`on_item_finish\`, or an unwritable log path), do not block or treat it as a replay failure: continue from the final complete event exactly as older scripts did from the old result file.
+3. **Run the live replay/evaluation loop while the replay is still running.** Use the run directory you passed with \`--run-dir\` and poll \`<run-dir>/events.jsonl\` alongside the human output. Each \`type: "progress"\` JSONL row is a normalized SDK item-finish event; \`item.originalTraceId\` is the **original trace id, the key verdicts are persisted by** (every item file carries it under the same \`originalTraceId\` field, plus a deprecated \`sourceTraceId\` alias). On modern SDKs, \`item.traceId\` may already hold the server replay trace ID after the per-item flush; it is null only when that flush/readback could not confirm the ID, and the final persistence barrier/result fills it when possible. \`item.replayTraceId\` is only set by older SDKs. Treat a new successful progress row as "this original trace's replay item finished" and start evaluation for that item as soon as the row carries \`item.itemPath\` and an \`item.originalTraceId\`: read \`item.itemPath\` for the full input, replay output, original output, and metadata. Failed progress rows become unreplayable candidates immediately and should be carried forward with their error string. If the row is progress-only (old SDK/current basic reporter: no \`item.itemPath\`), do the cheap prep only and defer judging to the final \`type: "complete"\` row's item refs. If the JSONL file is missing or empty (old SDK without installed-command lifecycle events, or an unwritable log path), do not block or treat it as a replay failure: continue from the final complete event from the final result artifact.
 
    For every item you can judge during the run, key the verdict by its **original trace id** (the \`originalTraceId\` field in each item file, the same \`item.originalTraceId\` on progress rows), the original trace the item was replayed from, which the server resolves to this run's replay trace, no local-to-server id mapping step. You need the run's \`testRunId\` to persist (enriched progress rows may carry \`event.testRunId\`; older scripts may only reveal it in the final \`ReplayResult\`). As soon as a small batch of judged items has its original trace ids and you know the \`testRunId\`, persist that batch with \`{{command:persistReplayLabels}}\`. Keep a set of original trace IDs already persisted so the final reconciliation never double-writes a verdict. A verdict judged live was judged before the item's outlines existed (\`originalTraceOutline\` and \`traceOutline\` are \`null\` on progress item files), so also keep the set of original trace ids judged without outlines; step 4 re-checks those against the final item files.
 
 4. **When the background command finishes, read the final \`type: "complete"\` row from this run's \`events.jsonl\`**. Its \`result\` carries run metadata (\`testRunId\`, \`testRunUrl\`, \`itemCount\`) and its \`items\` array carries item refs. Read each needed \`items[].itemPath\` for the full replay item (trace ID, duration, tokens, model, full original/new outputs, and the two trace outlines). Read from the **files**, not from the captured command output, which the harness truncates in the middle. On current SDKs each completed item also carries \`originalTraceOutline\` and \`traceOutline\`: the original and the replayed trace's span tree (span names, types, nesting, order, durations, tokens, model, errors, and whether each span was mocked) with no inputs or outputs. The SDK fills both in at completion from the server, so they are \`null\` on live progress rows and on older SDKs. Use them to judge execution shape (did the replay call the same tools in the same order, did a span that used to run get mocked or skipped, did a child span error) straight from the item file, instead of reading both traces back from the server for that comparison. **Re-check every item you judged live:** its verdict was derived before the outlines existed, so re-read its final item file (the complete row's write fills both outlines) and run the execution-shape comparison now. When that comparison changes the verdict, include the corrected \`{ originalTraceId, label, annotation }\` in the next \`{{command:persistReplayLabels}}\` batch: a new agent verdict for the same original trace replaces the earlier one in place, so this correction is the one case where re-persisting an already-persisted id is right. When it does not change the verdict, leave the persisted verdict alone.
 
-**Before running: verify the replay script prints the full original and new output values AND at least one verdict persist key (\`item.originalTraceId\` or \`item.traceId\`) for every item** (not just lengths, counts, hashes, or truncated previews) so the run's \`items/*.json\` files carry them. Modern items may carry both: prefer lineage persistence by \`item.originalTraceId\` (older SDKs may print it under the deprecated \`sourceTraceId\` alias), and fall back to the server replay \`item.traceId\` only when original lineage is absent. After an item's replay trace is flushed, its \`item.traceId\` is available to lifecycle callbacks and in the final result. The oldest SDKs have no \`item.originalTraceId\` and persist by \`item.traceId\`. If the script prints neither, fix it first; the Replay Output Contract and example script live in the SDK reference at \`https://docs.bitfab.ai/<language>-sdk.md\`. Subagents can't evaluate an improvement from \`5 \u2192 7 (+2)\`, and an item that carries no persist key blocks verdict persistence for that item.
+**Before running: verify the installed replay command returns the full original and new output values AND at least one verdict persist key (\`item.originalTraceId\` or \`item.traceId\`) for every item** (not just lengths, counts, hashes, or truncated previews) so the run's \`items/*.json\` files carry them. Modern items may carry both: prefer lineage persistence by \`item.originalTraceId\` (older SDKs may print it under the deprecated \`sourceTraceId\` alias), and fall back to the server replay \`item.traceId\` only when original lineage is absent. After an item's replay trace is flushed, its \`item.traceId\` is available to lifecycle callbacks and in the final result. The oldest SDKs have no \`item.originalTraceId\` and persist by \`item.traceId\`. If the installed command returns neither, upgrade the SDK first; the Replay Output Contract and registry examples live in the SDK reference at \`https://docs.bitfab.ai/<language>-sdk.md\`. Subagents can't evaluate an improvement from \`5 \u2192 7 (+2)\`, and an item that carries no persist key blocks verdict persistence for that item.
 
 **Capture the \`testRunId\` from the replay complete event**: read the final \`type: "complete"\` row in this run's \`events.jsonl\`; it carries \`testRunId\` and \`testRunUrl\` when the SDK returned them. Track every \`testRunId\` produced across all iterations of this phase for the \`open-experiments\` fallback.
 
@@ -18018,7 +17404,7 @@ If \`completed === 0\`, do not score pass/fail on an empty set, branch to \`chec
 
 **If the errors are signature/shape mismatches (\`shapeErrored\`), that is NOT an infra problem**: it has its own route below (\`adapt-replay-inputs\`), which maps the recorded inputs onto the function's current signature. The DB/infra guidance in the rest of this step applies only to infrastructure-shaped failures.
 
-**\uD83D\uDEA8 Do not silently work around DB issues.** Do not drop affected trace IDs, stub the read in the script, hide writes behind a script-only flag, wrap the function in a rollback transaction, or edit the instrumented function to skip DB calls. Those all hide infra problems as fake passing or fake failing results and corrupt the experiment.
+**\uD83D\uDEA8 Do not silently work around DB issues.** Do not drop affected trace IDs, stub the read in the registry or hide writes behind a registry-only option, wrap the function in a rollback transaction, or edit the instrumented function to skip DB calls. Those all hide infra problems as fake passing or fake failing results and corrupt the experiment.
 
 **Instead: tell the user what's wrong and offer only the safe workarounds that apply.** Pick a representative failing trace and call {{tool:getTraces}} with \`scope: "summary"\` to inspect its capture-environment metadata for diagnosis only. That metadata can explain missing configuration, but it neither selects replay dependencies nor provides safety, and pointing at that environment's database would not reconstruct the database state at capture time. Before offering a database snapshot, verify **every affected trace that would be retried**, batching at most 50 IDs per call to {{tool:searchTraces}} with its function key, those \`traceIds\`, \`hasDbSnapshot: true\`, and \`limit: <batch length>\`. Compare the returned IDs with the requested IDs. Then {{askVerb}} with a clear summary of the failing trace ID(s), error pattern, function, and span, followed by the safe options available to this exact set. Safety comes from mocking every unsafe side-effecting call; database snapshots provide historical fidelity when database behavior is part of the test.
 
@@ -18094,12 +17480,12 @@ When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listE
             },
             {
               when: "server status is `failed`, or it is `completed` with `traceCount === 0`",
-              description: "the server confirms the replay failed or produced no replay items. Show the server status, diagnose the replay script, and retry",
+              description: "the server confirms the replay failed or produced no replay items. Show the server status, diagnose the installed replay command, and retry",
               next: "iterate/replay-against-dataset"
             },
             {
               when: "no test run ID can be resolved, server status cannot be read, or server status remains `pending` after 30 seconds",
-              description: "the outcome cannot be verified. Fix the replay script's SDK reporter/result-artifact contract, then retry",
+              description: "the outcome cannot be verified. Upgrade or fix the installed SDK's reporter/result-artifact contract, then retry",
               next: "iterate/replay-against-dataset"
             }
           ]
@@ -18113,7 +17499,7 @@ When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listE
 
 **Step 0: confirm the capability.** Check the \`supportsInputAdapters\` flag from \`detect-replay-capabilities\` (the installed SDK accepts the \`adaptInputs\` / \`adapt_inputs\` option on \`replay()\`). If true, go to Step 1. If false, the installed SDK predates the input-adapter hook: tell the user to upgrade the SDK and re-run the assistant, and for this run take the **decline** branch below (these traces can't be validated without the hook). Do not hand-roll the reshape inside the function under test.
 
-**Step 1: reuse a committed adapter if one already covers this shape (re-ask only on drift).** Adapters live in their own file next to the replay script, imported by it (recommended: TS \`scripts/replay-adapters/<name>.ts\`, Python \`scripts/replay_adapters/<name>.py\`, Ruby \`scripts/replay_adapters/<name>.rb\`; plus an optional sibling \`<name>.inputs.json\` for judgement cases). If such an adapter already exists AND maps the current recorded shapes onto the current signature (sanity-check it against a sampled input below), do not re-prompt: just confirm the replay script imports it (Step 5) and re-run. Only when the signature has drifted past what it handles do you propose a new/updated mapping and re-confirm.
+**Step 1: reuse a committed adapter if one already covers this shape (re-ask only on drift).** Adapters live in their own file next to the replay registry, imported by it (recommended: TS \`scripts/replay-adapters/<name>.ts\`, Python \`scripts/replay_adapters/<name>.py\`, Ruby \`scripts/replay_adapters/<name>.rb\`; plus an optional sibling \`<name>.inputs.json\` for judgement cases). If such an adapter already exists AND maps the current recorded shapes onto the current signature (sanity-check it against a sampled input below), do not re-prompt: just confirm the replay registry imports it (Step 5) and re-run. Only when the signature has drifted past what it handles do you propose a new/updated mapping and re-confirm.
 
 **Step 2: learn the actual captured shape(s).** Pick a few \`shapeErrored\` trace IDs and call {{tool:getTraces}} with \`scope: "full"\` to read their recorded inputs. Sample MORE than one: the trace set can span several historical signatures (the function may have drifted more than once), so the adapter must tolerate each shape it actually sees, not just the newest old one. Then read the function's CURRENT signature from the code.
 
@@ -18121,17 +17507,17 @@ When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listE
 - **Mechanical** (rename, reorder, positional-to-options-object, drop a removed param, supply a literal/default): expressible as a pure function. Prefer this.
 - **Judgement** (the new shape can't be derived by rearrangement, e.g. one freeform field must be split into two based on its content): do NOT call a model from inside the adapter at replay time (that makes replay slow and non-deterministic). Instead, materialize up-front: YOU compute the adapted inputs for each affected trace now, once, and write them to the sibling \`<key>.inputs.json\` table keyed by the original Bitfab trace ID. The adapter then just looks the trace up.
 
-**Step 4: confirm, then write the adapter co-located with the replay script.** {{askVerbCap}} to show the concrete mapping (old shape -> new shape) and get a yes before writing. On yes, write:
+**Step 4: confirm, then write the adapter co-located with the replay registry.** {{askVerbCap}} to show the concrete mapping (old shape -> new shape) and get a yes before writing. On yes, write:
 - The adapter function. It receives the recorded inputs and a per-trace context (\`{ originalTraceId, originalSpanId }\` in TS; \`{"original_trace_id", "original_span_id"}\` in Python; both carry deprecated \`source*\` aliases) and returns the args actually passed to the function. Make it **shape-dispatching**: branch on the input it actually receives so it normalizes each historical shape in the sample, not only one. For judgement cases, look up \`<key>.inputs.json\` by \`originalTraceId\` first, then fall back to the mechanical branch.
 - **Faithfulness is non-negotiable.** If the current signature has a genuinely new REQUIRED input with no analog in the recorded trace, do NOT invent a value. Leave those traces unmapped; they go in the decline bucket below with a stated reason. Adapting must never silently fabricate test inputs.
-- These files are committed (they sit next to the replay script, in source control), so they persist across runs and are reviewable in the PR.
+- These files are committed (they sit next to the replay registry, in source control), so they persist across runs and are reviewable in the PR.
 
-**Step 5: wire it in and re-run.** Write the adapter to its own file next to the replay script (TS \`scripts/replay-adapters/<name>.ts\` exporting \`adaptInputs\`; Python \`scripts/replay_adapters/<name>.py\` defining \`adapt_inputs(args, kwargs, ctx)\`; Ruby \`scripts/replay_adapters/<name>.rb\` defining an adapter lambda). Then edit the replay script to import it and pass it to this pipeline's \`replay()\` call as \`adaptInputs\` / \`adapt_inputs\` (see the Replay section for the exact import shape). Editing the replay script here is expected. Loop back to \`replay-against-dataset\`, re-run, and confirm the \`shapeErrored\` items cleared.
+**Step 5: wire it in and re-run.** Write the adapter to its own file next to the replay registry (TS \`scripts/replay-adapters/<name>.ts\` exporting \`adaptInputs\`; Python \`scripts/replay_adapters/<name>.py\` defining \`adapt_inputs(args, kwargs, ctx)\`; Ruby \`scripts/replay_adapters/<name>.rb\` defining an adapter lambda). Then edit the replay registry to import it and set it on this pipeline entry as \`adaptInputs\` / \`adapt_inputs\` (see the Replay section for the exact import shape). Editing the replay registry here is expected. Loop back to \`replay-against-dataset\`, re-run, and confirm the \`shapeErrored\` items cleared.
 
 {{whens}}`,
           branches: [
             {
-              when: "an adapter is in place (user approved a new mapping, or a persisted adapter already covers the current shape) and the replay script loads it",
+              when: "an adapter is in place (user approved a new mapping, or a persisted adapter already covers the current shape) and the replay registry loads it",
               description: `re-run with the adapter applied. Loop back to \`replay-against-dataset\``,
               next: "iterate/replay-against-dataset"
             },
@@ -18147,18 +17533,18 @@ When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listE
           kind: "branch",
           toolCalls: ["bash", "ask"],
           title: "Check replay persistence support",
-          body: `**Route on whether verdicts can be persisted.** Check the \`canPersistVerdicts\` flag from \`replay-against-dataset\` (this confirms the tentative \`supportsReplayTraceIds\` flag from \`detect-replay-capabilities\`): it is true when every completed item carries a persist key, either \`item.originalTraceId\` (lineage keying, modern replays) or the trace's own \`item.traceId\` (direct keying). Either way verdicts can be persisted to the server and the experiments page in Studio will show meaningful results; carry forward which keying the run uses.
+          body: `**Route on whether verdicts can be persisted.** Check the \`canPersistVerdicts\` flag from \`replay-against-dataset\` (this confirms the tentative \`supportsReplayTraceIds\` flag from \`detect-replay-capabilities\`): it is true when every completed item carries a persist key, either \`item.originalTraceId\` (lineage keying, modern replays) or the trace's own \`item.traceId\` (direct keying). Either way verdicts can be persisted to the server and the experiments page in Bitfab will show meaningful results; carry forward which keying the run uses.
 
 {{whens}}`,
           branches: [
             {
               when: "verdicts are persistable (`canPersistVerdicts` is true), by lineage `originalTraceId` or direct `traceId`",
-              description: 'the replay exposes a persist key for every completed item. In non-benchmark modes, open the experiments page in Studio first (so the user can watch verdicts populate in real time), then evaluate and persist labels. In `fix` mode with `fixReplayScope = "single-trace"`, the replay has an experiment group but do not open Studio yet; `open-experiments` does nothing so the single trace can be evaluated and persisted first, then `fix-target-replay-status` branches on whether the target passed or failed. In `benchmark` mode without the `studio` flag no Studio is open, so `open-experiments` does nothing: go straight to evaluating and persisting labels. In `benchmark` mode with the `studio` flag, `open-experiments` behaves like other modes',
+              description: 'the replay exposes a persist key for every completed item. In non-benchmark modes, share the experiments page link first (so the user can watch verdicts populate in real time), then evaluate and persist labels. In `fix` mode with `fixReplayScope = "single-trace"`, the replay has an experiment group but do not share the experiments link yet; `open-experiments` does nothing so the single trace can be evaluated and persisted first, then `fix-target-replay-status` branches on whether the target passed or failed. In `benchmark` mode without the `page` flag no page link was requested, so `open-experiments` does nothing: go straight to evaluating and persisting labels. In `benchmark` mode with the `page` flag, `open-experiments` behaves like other modes',
               next: "iterate/open-experiments"
             },
             {
               when: "no persist key is available (`canPersistVerdicts` is false: neither `originalTraceId` nor a server `traceId`)",
-              description: 'tell the user: "Your SDK version is too old to persist replay verdicts (it emits neither the source-trace lineage nor server replay trace ids), so experiment results can\'t be persisted to Studio or compared across iterations. Upgrade your SDK and run `{{cmd}}setup replay` to regenerate the script. Evaluating in-agent for now." Then proceed to text-only evaluation so the user still sees comparison results in-agent, without the Studio experiments page',
+              description: `tell the user: "Your SDK version is too old to persist replay verdicts (it emits neither the source-trace lineage nor server replay trace ids), so experiment results can't be persisted to Bitfab or compared across iterations. Upgrade your SDK. Evaluating in-agent for now." Then proceed to text-only evaluation so the user still sees comparison results in-agent, without the Bitfab experiments page`,
               next: "iterate/evaluate-results-text-only"
             }
           ]
@@ -18169,9 +17555,9 @@ When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listE
           toolCalls: ["read"],
           title: "Evaluate results (text only)",
           emit: "Evaluating results",
-          body: `**Run only when verdicts cannot be persisted** (\`canPersistVerdicts\` is false, you were routed here from \`check-verdict-persistence\`; if they can be persisted, by either lineage \`originalTraceId\` or direct \`traceId\`, use \`evaluate-results\` instead). **Evaluate results in-agent without persisting.** The agent still compares original vs new outputs and derives pass/fail verdicts, but cannot persist them via \`persistReplayLabels.js\` or show them in Studio. This is a terminal path: it does NOT continue to \`evaluate-results\` or \`verify-replay-labels\`; its \`next\` goes straight to the report (share-results, or the benchmark scorecard).
+          body: `**Run only when verdicts cannot be persisted** (\`canPersistVerdicts\` is false, you were routed here from \`check-verdict-persistence\`; if they can be persisted, by either lineage \`originalTraceId\` or direct \`traceId\`, use \`evaluate-results\` instead). **Evaluate results in-agent without persisting.** The agent still compares original vs new outputs and derives pass/fail verdicts, but cannot persist them via \`persistReplayLabels.js\` or show them in Bitfab. This is a terminal path: it does NOT continue to \`evaluate-results\` or \`verify-replay-labels\`; its \`next\` goes straight to the report (share-results, or the benchmark scorecard).
 
-If \`replay-against-dataset\` already consumed a non-empty run \`events.jsonl\`, reuse that progress-derived work and any verdicts already produced from item files referenced by progress rows. Successful progress events identify which original traces finished, and failed events already define unreplayable candidates. Do not reclassify those failures as output regressions. If the progress file is missing or empty, fall back to the completed replay output; this is expected for old SDKs or replay scripts without \`onItemFinish\` / \`on_item_finish\`. Since no persist key is available on this path, verdicts can't be persisted and stay in working context only.
+If \`replay-against-dataset\` already consumed a non-empty run \`events.jsonl\`, reuse that progress-derived work and any verdicts already produced from item files referenced by progress rows. Successful progress events identify which original traces finished, and failed events already define unreplayable candidates. Do not reclassify those failures as output regressions. If the progress file is missing or empty, fall back to the completed replay output; this is expected for old SDKs without installed-command lifecycle events. Since no persist key is available on this path, verdicts can't be persisted and stay in working context only.
 
 For each completed (non-errored) replay item, derive a verdict by comparing the replay's new output against the original trace's label and annotation, and when the item file carries \`originalTraceOutline\` and \`traceOutline\`, also compare the two span trees so a replay that produced the right text by skipping a required tool call, erroring in a child span, or leaning on a mocked span that used to run real code does not pass on output alone:
 
@@ -18209,7 +17595,7 @@ Hold the verdicts in working context for the final report, the \`share-results\`
 
 **Finalize the live evaluation loop; do not start from scratch.** If \`replay-against-dataset\` produced a non-empty run \`events.jsonl\`, read it before judging and reuse any prep, unreplayable buckets, verdicts, and persisted original trace IDs already produced during the running replay. Each progress event's \`item.originalTraceId\` is the original trace id: use it both to identify which dataset item settled and as the key each verdict is persisted by (item files carry it under the same \`originalTraceId\` field, plus a deprecated \`sourceTraceId\` alias). Enriched progress rows carry \`item.itemPath\`; the item file has the full input, replay output, original output, and metadata needed to judge during replay (its \`originalTraceOutline\` and \`traceOutline\` are still \`null\` mid-run and are filled by the final write, so an execution-shape comparison waits for the complete row). Progress-only rows are only a trigger/prep signal. If the file is missing or empty, continue from the final complete event; older scripts remain valid and simply do not get incremental evaluation. The final verdict still comes from the completed replay item files / experiment trace data, and persistence is still keyed by the **original trace** id.
 
-When possible, evaluate and persist in small completed batches rather than waiting to judge every item at once: every time a progress event gives you a replay item ref with an original trace id, full item file, and its original label/annotation, read the item file, derive that item's verdict, and append it to the pending verdict set. Once a batch has complete coverage for its expected original trace ids, call \`persistReplayLabels.js\` for that batch. If the current replay script/SDK only exposes replay outputs at the end, use progress during the run for preparation and failed-item bucketing, then do the first persist immediately after this run's \`complete\` row appears. At the end of the replay, run the same coverage check over the complete row's item refs; any item not already persisted must be judged and persisted before continuing, and any item judged live before its outlines existed must be re-checked against the final item file's \`originalTraceOutline\` and \`traceOutline\`, re-persisting only when that comparison changes the verdict. This keeps Studio's experiment view filling in as early as the available data allows while preserving the same final correctness checks.
+When possible, evaluate and persist in small completed batches rather than waiting to judge every item at once: every time a progress event gives you a replay item ref with an original trace id, full item file, and its original label/annotation, read the item file, derive that item's verdict, and append it to the pending verdict set. Once a batch has complete coverage for its expected original trace ids, call \`persistReplayLabels.js\` for that batch. If the current SDK only exposes replay outputs at the end, use progress during the run for preparation and failed-item bucketing, then do the first persist immediately after this run's \`complete\` row appears. At the end of the replay, run the same coverage check over the complete row's item refs; any item not already persisted must be judged and persisted before continuing, and any item judged live before its outlines existed must be re-checked against the final item file's \`originalTraceOutline\` and \`traceOutline\`, re-persisting only when that comparison changes the verdict. This keeps Bitfab's experiment view filling in as early as the available data allows while preserving the same final correctness checks.
 
 For each completed (non-errored) replay item, derive a verdict by comparing the replay's new output against the original trace's label and annotation, and when the item file carries \`originalTraceOutline\` and \`traceOutline\`, also compare the two span trees so a replay that produced the right text by skipping a required tool call, erroring in a child span, or leaning on a mocked span that used to run real code does not pass on output alone (from Phase 3 in \`wizard\`/\`dataset\` modes, loaded by \`pick-dataset\` in Phase 5 Setup in \`experiment\` and \`benchmark\` modes; in \`fix\` mode's single-trace pass, the failure annotation held from Phase Fix \`resolve\` is the criterion, and on a later full-dataset run the added trace plus any pre-existing dataset siblings loaded by \`fix-add-to-dataset\`):
 
@@ -18374,25 +17760,9 @@ Per-assertion and whole-trace entries travel in the same file and the same call,
           id: "open-experiments",
           kind: "action",
           toolCalls: ["bash", "listExperiments", "listExperimentTraces"],
-          commandCalls: ["openStudio"],
-          title: "Open experiment viewer",
-          body: `**Open experiment viewer (fallback).** This step only runs when verdicts can be persisted (\`canPersistVerdicts\` is true, by either lineage \`originalTraceId\` or direct \`traceId\`; routed here from \`check-verdict-persistence\`). If no \`testRunId\`s were captured, skip this step and continue to evaluate.
-
-**In \`fix\` mode with \`fixReplayScope = "single-trace"\`, skip this step entirely.** Studio should not open automatically for the targeted first replay, even though the replay is tagged with \`fixSingleTraceExperimentGroupId\`. Continue directly to \`evaluate-results\`; after labels are persisted, \`fix-target-replay-status\` branches on whether the target passed or failed before asking what to do next.
-
-**In \`fix\` mode with \`fixReplayScope = "dataset"\` and \`fixDatasetStudio\` false (the user chose a terminal-only re-run), also skip this step entirely** (no Studio is open). Continue to \`evaluate-results\`; the dataset results are reported in chat by \`share-results\`.
-
-**In \`benchmark\` mode without the \`studio\` flag, skip this step entirely** (no Studio is open). With the \`studio\` flag, benchmark behaves like the other modes below: skip if the experiments page was already opened via \`experimentGroupId\` in \`open-experiments-before-replay\`, otherwise navigate with the collected \`testRunId\`s. Either way this step's \`next\` goes to \`evaluate-results\`, which in benchmark mode scores the items, persists verdicts, and then routes to the terminal benchmark scorecard. (The numbered position of this step in the rendered list does not reflect run order: follow the \`next\` routing, not the list sequence.)
-
-If the experiments page was already opened via \`experimentGroupId\` in \`open-experiments-before-replay\` (\`supportsExperimentGroups\` is true), skip this step entirely, the page is already showing live results.
-
-If \`supportsExperimentGroups\` is false, navigate Studio to the experiments page. Build the path with **every** \`testRunId\` you've collected across iterations of this phase (comma-separated):
-
-\`\`\`bash
-{{command:openStudio}} "/studio/experiments?testRunIds=<testRunId1>,<testRunId2>,<testRunId3>"
-\`\`\`
-
-In \`benchmark\` mode (with the \`studio\` flag), append \`&mode=benchmark\` here too so the page shows benchmark terminology. Likewise, when \`costRun\` is set (classified in argument routing; see the token-cost lens note in \`open-experiments-before-replay\`), append the token-cost suffix (always with an explicit basis) so the token-cost columns show: \`&tokens=1&tokenType=all\` for \`costBasis = all\`, or \`&tokens=1&tokenType=uncached\` for \`costBasis = uncached\`, e.g. \`/studio/experiments?testRunIds=<testRunId1>,<testRunId2>&tokens=1&tokenType=uncached\`. The command navigates an existing session or opens a new one automatically.`,
+          commandCalls: ["pageLink", "openExperiments"],
+          title: "Share the experiments link",
+          body: 'Skip the link for a benchmark without the `page` flag or a single-trace fix awaiting its verdict, or a full-dataset fix with fixDatasetBitfab false. Otherwise call {{tool:listExperiments}} for the trace function and verify the returned testRunIds exist on the server. If a persisted run belongs to the experimentGroupId prepared before replay, run {{command:pageLink}} "/experiments?experimentGroupId=<experimentGroupId><tokensSuffix>" with that same group ID and relay the URL. Use an empty tokensSuffix for quality runs and &tokens=1&tokenType=<costBasis> for cost runs, preserving the selected all or uncached basis. If the registry did not persist the group, run {{command:openExperiments}} <testRunIds> with the verified IDs instead; include --show-tokens for cost runs, plus --uncached when costBasis is uncached. If no run was persisted, report that fact without emitting a broken link. Both commands exit immediately. Continue to evaluating and persisting replay labels.',
           next: "iterate/evaluate-results"
         },
         {
@@ -18452,7 +17822,7 @@ So the prompt is **two** options when none exist yet (Create a new dataset \xB7 
 
 Once a dataset is chosen (existing or newly created), save the scenario, in order:
 
-1. **Label the original trace as a validated fail.** Using the failure annotation you wrote in Phase Fix \`resolve\` (what the original output got wrong and what correct behavior is), call {{tool:saveHumanLabels}} once with \`[{ traceId, label: false, annotation }]\` on the **original** trace. This records a **validated human verdict** (not an unapproved agent suggestion), so the trace counts as a real regression test the instant it's written, with no Studio approval step. Use \`label: false\` because the original output was the bug; the fix is what now turns it green on replay. (On the rare occasion the user is adding an already-*passing* trace to guard against future regressions, use \`label: true\`.)
+1. **Label the original trace as a validated fail.** Using the failure annotation you wrote in Phase Fix \`resolve\` (what the original output got wrong and what correct behavior is), call {{tool:saveHumanLabels}} once with \`[{ traceId, label: false, annotation }]\` on the **original** trace. This records a **validated human verdict** (not an unapproved agent suggestion), so the trace counts as a real regression test the instant it's written, with no Bitfab approval step. Use \`label: false\` because the original output was the bug; the fix is what now turns it green on replay. (On the rare occasion the user is adding an already-*passing* trace to guard against future regressions, use \`label: true\`.)
 2. **Attach the trace.** Call {{tool:addTracesToDataset}} with the \`datasetId\` and \`[traceId]\` (idempotent, a safe no-op if already present). **Confirm the attach landed**: the trace is in the dataset when it was added now or was already present. If the tool reports it skipped the trace (e.g. a scope mismatch), do **not** claim it was added or set \`fixAddedToDataset\`, re-pick a dataset scoped to this function and attach again before continuing.
 3. **Record whether the dataset has siblings, and load their labels if so.** Note whether the dataset already held other traces besides the one you just attached, and hold that as \`datasetHasSiblings\` (the next step uses it to decide whether re-running the whole dataset is meaningful). If there **are** siblings, the user may next choose to re-run the full dataset, so run \`{{command:readTracesBatched}} <trace-id...> --scope full\` over the dataset's trace IDs and \`Read\` the \`outputFile\` it prints, so every sibling's validated label + annotation is in context for that experiment. **Skip the load** when you just created the dataset or it held only this trace (no siblings).
 
@@ -18466,13 +17836,13 @@ Set \`fixAddedToDataset = true\` (only once the attach above is confirmed) so an
           title: "Ask whether to re-run the full dataset after the target passed",
           body: `**Run only in \`fix\` mode when \`fixReplayScope = "single-trace"\` and the targeted replay passed.** \`fix-add-to-dataset\` has just resolved where the target trace goes: either it was added to dataset \`<name>\` (\`<datasetId>\`) with a validated failing label, or the user chose to continue without saving it (on a re-entry, that choice was made earlier).
 
-Report the result first. Lead with that the target trace went green; this pass intentionally did not run the rest of the dataset and did not open Studio. **Then state what happened to the trace:** if \`fixAddedToDataset\` is set, say it is now saved in dataset \`<name>\` with a validated failing label, so it guards against regressions whenever that dataset runs; if \`fixDatasetSkipped\` is set instead, say it was not added to any dataset (the user chose to continue). The replay labels have been persisted when trace IDs were available, so this fix is queryable on the replay trace.
+Report the result first. Lead with that the target trace went green; this pass intentionally did not run the rest of the dataset and did not request a page review. **Then state what happened to the trace:** if \`fixAddedToDataset\` is set, say it is now saved in dataset \`<name>\` with a validated failing label, so it guards against regressions whenever that dataset runs; if \`fixDatasetSkipped\` is set instead, say it was not added to any dataset (the user chose to continue). The replay labels have been persisted when trace IDs were available, so this fix is queryable on the replay trace.
 
-Then ask what to do next. One option always lets the user **show this fix in Studio** (the single-trace before/after). **Offer the full-dataset option only when \`datasetHasSiblings\` is true (from \`fix-add-to-dataset\`, always false when the user continued without saving):**
-- **The dataset has sibling traces:** the headline choice is whether to re-run the entire dataset now to check the fix against every trace in it (you'll then ask Studio vs terminal-only). Present all four options below and recommend **"Re-run the entire dataset"**.
-- **No siblings** (the added trace is the dataset's only trace, or the user continued without saving so nothing was added): do **NOT** offer "Re-run the entire dataset", there is no other dataset trace to run, and re-running a one-trace dataset would just replay the trace you already proved green. Present only "Show in Studio", "Keep iterating", and "Stop and wrap up", and recommend **"Stop and wrap up"**.
+Then ask what to do next. One option always lets the user **show this fix in Bitfab** (the single-trace before/after). **Offer the full-dataset option only when \`datasetHasSiblings\` is true (from \`fix-add-to-dataset\`, always false when the user continued without saving):**
+- **The dataset has sibling traces:** the headline choice is whether to re-run the entire dataset now to check the fix against every trace in it (you'll then ask Bitfab vs terminal-only). Present all four options below and recommend **"Re-run the entire dataset"**.
+- **No siblings** (the added trace is the dataset's only trace, or the user continued without saving so nothing was added): do **NOT** offer "Re-run the entire dataset", there is no other dataset trace to run, and re-running a one-trace dataset would just replay the trace you already proved green. Present only "Show in Bitfab", "Keep iterating", and "Stop and wrap up", and recommend **"Stop and wrap up"**.
 
-When the user picks **Show in Studio**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`testRunIds\` fallback), then ask this question again. When they pick **Keep iterating**, clear \`fixDatasetSkipped\` if it was set (this is a fresh attempt, so a later green should re-offer the save prompt they declined only on the previous pass), set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`. When they pick **Stop and wrap up**, the saved trace stays if one was added (\`fixAddedToDataset\`); nothing is saved if they continued without adding (\`fixDatasetSkipped\`).
+When the user picks **Show in Bitfab**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`testRunIds\` fallback), then ask this question again. When they pick **Keep iterating**, clear \`fixDatasetSkipped\` if it was set (this is a fresh attempt, so a later green should re-offer the save prompt they declined only on the previous pass), set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`. When they pick **Stop and wrap up**, the saved trace stays if one was added (\`fixAddedToDataset\`); nothing is saved if they continued without adding (\`fixDatasetSkipped\`).
 
 {{branches}}`,
           branches: [
@@ -18480,17 +17850,17 @@ When the user picks **Show in Studio**, open it with \`fixSingleTraceExperimentG
               option: {
                 letter: "A",
                 label: "Re-run the entire dataset",
-                description: "replay the same fix across every trace in the dataset, then ask whether to watch it in Studio or run it terminal-only"
+                description: "replay the same fix across every trace in the dataset, then ask whether to watch it in Bitfab or run it terminal-only"
               },
               next: "iterate/fix-rerun-dataset-mode"
             },
             {
               option: {
                 letter: "B",
-                label: "Show in Studio",
-                description: "open the before/after for this trace in Studio, then come back to this question"
+                label: "View experiments",
+                description: "open the before/after for this trace in Bitfab, then come back to this question"
               },
-              next: "iterate/fix-open-single-trace-studio"
+              next: "iterate/fix-experiment-link"
             },
             {
               option: {
@@ -18514,16 +17884,14 @@ When the user picks **Show in Studio**, open it with \`fixSingleTraceExperimentG
           id: "fix-rerun-dataset-mode",
           kind: "branch",
           toolCalls: ["ask"],
-          title: "Re-run the dataset in Studio or terminal-only",
-          body: `**Run only in \`fix\` mode when the user chose "Re-run the entire dataset" from \`fix-single-trace-passed\`.** The same already-made fix will replay across every trace in the dataset. Ask whether to watch it live in Studio or run it terminal-only (results reported in chat). Either way, set \`fixReplayScope = "dataset"\` and \`fixSkipMakeChange = true\` (the fix is already made; this re-runs it across the dataset without editing again), then route to \`open-experiments-before-replay\`, which honors \`fixDatasetStudio\`. Set \`fixDatasetStudio = true\` if the user picks Studio, \`false\` if they pick terminal-only.
-
-{{branches}}`,
+          title: "Re-run the dataset in Bitfab or terminal-only",
+          body: "Replay the same fix across the dataset. Report progress in chat and provide an experiment link. {{branches}}",
           branches: [
             {
               option: {
                 letter: "A",
-                label: "In Studio",
-                description: "watch the replay live in Studio as each verdict comes in"
+                label: "Replay dataset",
+                description: "watch the replay live in Bitfab as each verdict comes in"
               },
               recommended: true,
               next: "iterate/open-experiments-before-replay"
@@ -18531,8 +17899,8 @@ When the user picks **Show in Studio**, open it with \`fixSingleTraceExperimentG
             {
               option: {
                 letter: "B",
-                label: "Without Studio",
-                description: "run it in the terminal and report the results in chat, with no Studio window"
+                label: "Report in chat",
+                description: "run it in the terminal and report the results in chat, with no page link needed"
               },
               next: "iterate/open-experiments-before-replay"
             }
@@ -18553,17 +17921,17 @@ Report the failed target result first. Say whether the replay produced a real FA
 
 Then ask what to do next. Offer inspection, another fix attempt, saving the trace as a failing test to revisit later, or stopping. Do not offer a full-dataset run here: there is no dataset trace to run unless it was already added earlier, and running one before the target passes would defeat the test-first add-to-dataset flow:
 
-When the user picks **Show in Studio**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`testRunIds\` fallback), then ask this question again. Recommend **Keep iterating** only when the replay produced a real FAIL; for an unreplayable or shape-incompatible result, recommend making the trace replayable or stopping instead. When they pick it, set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`.
+When the user picks **Show in Bitfab**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`testRunIds\` fallback), then ask this question again. Recommend **Keep iterating** only when the replay produced a real FAIL; for an unreplayable or shape-incompatible result, recommend making the trace replayable or stopping instead. When they pick it, set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`.
 
 {{branches}}`,
           branches: [
             {
               option: {
                 letter: "A",
-                label: "Show in Studio",
-                description: "open the before/after for this trace in Studio, then come back to this question"
+                label: "View experiments",
+                description: "open the before/after for this trace in Bitfab, then come back to this question"
               },
-              next: "iterate/fix-open-single-trace-studio"
+              next: "iterate/fix-experiment-link"
             },
             {
               option: {
@@ -18617,28 +17985,12 @@ Set \`fixAddedToDataset = true\` only once the attach above is confirmed. Tell t
           next: "wrap-up/summary"
         },
         {
-          id: "fix-open-single-trace-studio",
+          id: "fix-experiment-link",
           kind: "action",
           toolCalls: ["bash"],
-          commandCalls: ["openStudio"],
-          title: "Open the targeted before/after in Studio",
-          body: `**Run only when the user chose "Show in Studio" from a post-target-replay fix prompt.** Open Studio to the single-trace replay's experiment view so the user can inspect the original failing trace, the replay trace, the verdict, and the code-change before/after.
-
-Use the experiment group from the targeted replay whenever possible. Append \`&autoOpenFirst=1\` so the page lands straight on this one trace's before/after drawer instead of a one-row list the user has to click into:
-
-\`\`\`bash
-{{command:openStudio}} "/studio/experiments?experimentGroupId=<fixSingleTraceExperimentGroupId>&autoOpenFirst=1"
-\`\`\`
-
-If \`supportsExperimentGroups\` was false but you captured \`testRunId\`, use the fallback instead (same \`&autoOpenFirst=1\`):
-
-\`\`\`bash
-{{command:openStudio}} "/studio/experiments?testRunIds=<testRunId>&autoOpenFirst=1"
-\`\`\`
-
-If neither an experiment group nor a test run ID is available, say Studio cannot show this before/after run yet and continue. (\`autoOpenFirst=1\` opens the first trace's comparison once it loads, then respects the user dismissing it; it is meant for this single-trace view, so don't add it to full-dataset experiment opens.)
-
-Studio-opening commands block until the user acts in Studio in some hosts. Launch this command as a background/long-running process, read its JSONL stdout incrementally, and do not block the conversation foreground waiting for the user. After opening, tell the user the before/after is open and return to \`fix-target-replay-status\` so the next prompt still reflects whether the target passed or failed.`,
+          commandCalls: ["pageLink"],
+          title: "Share the targeted before/after link",
+          body: "Run {{command:pageLink}} /experiments?testRunIds=<testRunId>&autoOpenFirst=1 (quote the entire path) and relay the returned URL so the user can inspect the before/after. Return to the fix decision in chat.",
           next: "iterate/fix-target-replay-status"
         },
         {
@@ -18668,9 +18020,9 @@ These figures use the run's basis (\`costBasis\`), already chosen upstream in \`
 
 Show this across the full data set, and highlight the best outcome concisely. Explain why it worked best with references to code, docs, and/or research if needed. Report the outcome plainly, including any traces still failing: name how many remain red so the user knows where things stand, but do not frame it as an invitation to run more experiments and do not propose a new plan to continue iterating.
 
-**If running in text-only mode** (trace IDs were unavailable): append a note that cross-iteration comparison isn't available without trace IDs. Each iteration's results are visible only in-agent for the current run. Upgrading to \`@bitfab/sdk\` 0.13.5+ and updating the server unlocks persistent experiment tracking across iterations, side-by-side comparison in Studio, and the full experiments page.
+**If running in text-only mode** (trace IDs were unavailable): append a note that cross-iteration comparison isn't available without trace IDs. Each iteration's results are visible only in-agent for the current run. Upgrading to \`@bitfab/sdk\` 0.13.5+ and updating the server unlocks persistent experiment tracking across iterations, side-by-side comparison in Bitfab, and the full experiments page.
 
-**In \`fix\` mode with \`fixReplayScope = "dataset"\`, this is the optional full-dataset experiment after the target trace already replayed.** Frame the result around whether the added trace stayed green and what the full dataset revealed: regressions, still-failing sibling traces, and unreplayable items. When the user chose a terminal-only re-run (\`fixDatasetStudio\` false), no Studio is open, so this in-chat report **is** the result surface: give the full per-trace breakdown here rather than pointing them at a Studio page. If the added trace now passes and other dataset traces are still red, do NOT auto-loop through them and do NOT offer to keep iterating: report how many traces are still failing, then wrap up.
+**In \`fix\` mode with \`fixReplayScope = "dataset"\`, this is the optional full-dataset experiment after the target trace already replayed.** Frame the result around whether the added trace stayed green and what the full dataset revealed: regressions, still-failing sibling traces, and unreplayable items. When the user chose a terminal-only re-run (\`fixDatasetBitfab\` false), no page link was requested, so this in-chat report **is** the result surface: give the full per-trace breakdown here rather than pointing them at a Bitfab page. If the added trace now passes and other dataset traces are still red, do NOT auto-loop through them and do NOT offer to keep iterating: report how many traces are still failing, then wrap up.
 
 **In \`fix\` mode, count real regressions and lead with them** (this paragraph is fix-mode only, the optional full-dataset re-run of a single fix; in plan-driven modes report any regression but let the routing below keep running the approved plan, do **not** wrap up early on a mid-plan regression). A regression is a trace that \`evaluate-results\` scored as a **real PASS** before this fix and a **real FAIL** now (\`was-real-PASS \u2192 now-real-FAIL\`). Do **not** count a trace that merely went unreplayable or shape-incompatible (the infra / shape-mismatch buckets from \`replay-against-dataset\`'s classify step): that is replay noise, not a regression the fix caused. When real regressions exist, they lead the report ("Your target trace passes, but the change regressed N previously-passing traces"), not a per-trace footnote: state plainly that the fix is locally correct but net-negative, so the user knows the tradeoff and can back the change out on their own if they want. The flow does not revert anything: do not offer to revert or to keep iterating as flow options, just report it and wrap up. The target trace stays saved in the dataset as a red test to revisit. The dataset keeps this scenario saved regardless.
 
@@ -18685,7 +18037,7 @@ Then route by the approved plan, **without asking the user** (they already confi
             },
             {
               when: "every experiment in the approved plan has already run, or there was no multi-experiment plan (an `experiment`-mode single run, or a fix-mode dataset re-run)",
-              description: "wrap up. Do NOT prompt to run experiments beyond the approved plan and do NOT offer to revert: continue to the Phase 6 wrap-up, which gives the final summary and closes Studio in cleanup so no window is stranded.",
+              description: "wrap up. Do NOT prompt to run experiments beyond the approved plan and do NOT offer to revert: continue to the Phase 6 wrap-up, which gives the final summary.",
               next: "wrap-up/summary"
             }
           ]
@@ -18695,20 +18047,20 @@ Then route by the approved plan, **without asking the user** (they already confi
     {
       id: "quick-replay",
       title: "Phase Replay: Single-Trace Quick Replay",
-      intro: `Reached only from \`replay\` mode. The user already has a trace ID and (usually) already made a fix; they just want to replay that one trace and hear whether it worked. This is the **minimal, atomic** path: no Studio/browser, no dataset, no experiment groups. Locate the replay script, read the trace, run replay against the single trace ID, compare the new output to the original, and report a one-line verdict in chat. **Whenever you derive a pass/fail verdict, persist it onto the replay trace** (the same local label you show in chat, saved via {{command:persistReplayLabels}}) so it isn't silently thrown away. The one exception is an SDK too old to expose replay trace IDs: persistence is then impossible, so the verdict stays in-chat only with an upgrade nudge. The replay itself creates a test run intrinsically (the SDK does this); persistence just adds the agent verdict on top.`,
+      intro: "Reached only from `replay` mode. The user already has a trace ID and (usually) already made a fix; they just want to replay that one trace and hear whether it worked. This is the **minimal, atomic** path: no Bitfab/browser, no dataset, no experiment groups. Locate the replay registry, read the trace, run replay against the single trace ID, compare the new output to the original, and report a one-line verdict in chat. **Whenever you derive a pass/fail verdict, persist it onto the replay trace** (the same local label you show in chat, saved via {{command:persistReplayLabels}}) so it isn't silently thrown away. The one exception is an SDK too old to expose replay trace IDs: persistence is then impossible, so the verdict stays in-chat only with an upgrade nudge. The replay itself creates a test run intrinsically (the SDK does this); persistence just adds the agent verdict on top.",
       stepStyle: "list",
       steps: [
         {
           id: "setup",
           kind: "branch",
           toolCalls: ["bash", "grep", "glob", "getTraces"],
-          title: "Locate the replay script and read the trace",
+          title: "Locate the replay registry and read the trace",
           emit: "Setting up replay",
           body: `**Both sub-steps run without user interaction. No questions, just execute.**
 
 **1. Read the trace (and resolve the function key).** Call {{tool:getTraces}} with the trace ID argument and \`scope: "full"\`. Hold the trace's label, annotation, inputs, and output in context, these are the acceptance criteria for the verdict. **If the user gave only a trace ID and no function key** (common with free-form requests like "did my fix work on \`<id>\`"), take the trace function key from the trace itself, don't ask the user for it. **Decide whether this is a re-seed rather than a replay:** the user said re-seed, or asked for the trace to be run again for real, or the trace errored (\`hasError\` / an error on its root span) and the user wants a good recording of it. A re-seed is not a replay: it runs the function once on the trace's recorded inputs and records the result under the same trace id, with nothing mocked and no experiment. It takes the \`reseed\` step instead of \`run\`.
 
-**2. Find the replay script.** Search for files matching \`scripts/replay.*\`, \`scripts/*replay*\`, or any file importing \`bitfab.replay\` / \`client.replay\`, and confirm it covers that trace function key. (You don't need to grep for capability flags here, this minimal path doesn't use code-change payloads or experiment groups. It does persist the verdict in the \`verdict\` step, straight from the replay output's server trace id, with no extra script capability required.)
+**2. Find the replay registry.** Search for \`scripts/replayRegistry.*\`, \`scripts/replay_registry.*\`, or a module defining \`ReplayRegistry\` / \`defineReplayRegistry\`, then confirm one pipeline maps to that trace function key. Do not grep the registry for CLI flags; this path gets its result and replay trace id from the SDK-installed executable.
 
 ${REPLAY_SAFETY_CHECK}
 
@@ -18722,22 +18074,22 @@ ${REPLAY_SAFETY_CHECK}
             {
               when: "the replay safety check finds any uncovered or unmockable unsafe action",
               description: "report the exact call and why replay interception cannot cover it, then stop without executing replay",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
-              when: "replay script found and trace readable",
+              when: "replay registry entry found and trace readable",
               description: "continue to run the replay",
               next: "quick-replay/run"
             },
             {
-              when: "no replay script found for this function",
-              description: `tell the user: "No replay script found for \`<key>\`. Run \`{{cmd}}setup replay <key>\` to create one, then re-run this command." Stop the flow`,
-              next: "cleanup/close-studio"
+              when: "no replay registry entry found for this function",
+              description: `tell the user: "No replay registry entry found for \`<key>\`. Run \`{{cmd}}setup replay <key>\` to create one, then re-run this command." Stop the flow`,
+              next: "cleanup/finish"
             },
             {
               when: "trace not found or unreadable",
               description: "tell the user the trace ID wasn't found or is inaccessible, stop",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -18747,12 +18099,12 @@ ${REPLAY_SAFETY_CHECK}
           toolCalls: ["bash"],
           title: "Run replay against the single trace",
           emit: "Running replay",
-          body: `**Run the replay against the one trace ID. No user interaction, no extra flags.** Invoke the replay script you located in \`setup\` with the project's own language runner:
+          body: `**Run the replay against the one trace ID. No user interaction, no extra flags.** Invoke the SDK-installed executable with the registry and pipeline located in \`setup\`:
 
 \`\`\`bash
-# TypeScript: cd <project-dir> && npx tsx <replay-script> <function-key> --trace-ids <trace-id>
-# Python:     cd <project-dir> && python <replay-script> <function-key> --trace-ids <trace-id>   (or uv run / poetry run)
-# Ruby:       cd <project-dir> && ruby <replay-script> <function-key> --trace-ids <trace-id>      (or bundle exec)
+# TypeScript: cd <project-dir> && pnpm exec bitfab-replay --registry <registry-path> <pipeline> --trace-ids <trace-id>
+# Python:     cd <project-dir> && uv run bitfab-replay --registry <registry-path> <pipeline> --trace-ids <trace-id>   (or poetry run)
+# Ruby:       cd <project-dir> && bundle exec bitfab-replay --registry <registry-path> <pipeline> --trace-ids <trace-id>
 \`\`\`
 
 This is a single-trace, in-chat path: run the replay directly, no progress-bar wrapper (one item has nothing to track). Do **not** pass \`--code-change\` or \`--experiment-group-id\`, this minimal path skips code-change payloads and experiment groups (persisting the verdict in the next step needs neither). Capture the full replay-result JSON and exit code, and from it hold the run's test-run id (\`testRunId\` in TS, \`test_run_id\` in Python/Ruby) and the completed item's trace id (\`traceId\` in TS, \`trace_id\` in Python/Ruby). **In the final replay result this trace id is already the SERVER replay trace id** (the SDK's \`completeReplay\` overwrites the local id with the server row id before returning), so the verdict step persists against it directly, no \`get_replay_status\` mapping. **If it is \`null\`, persistence is impossible this run** (an old server/SDK that returns no server-trace-id mapping), note that so the verdict step falls back to an in-chat-only verdict.
@@ -18818,7 +18170,7 @@ Then compare the new output against the original trace's assertions, label, and 
   \`\`\`
 
   \`label\` is \`true\` for Pass, \`false\` for Still-failing / Regressed. Read the script's single JSON status line: \`ok\` means the verdict is now on the replay trace, add "\xB7 saved" to your one-line report.
-- **If the completed item's trace id is \`null\`** (old server/SDK that returns no server-trace-id mapping, from the \`run\` step's note): persistence is impossible. Keep the verdict in-chat only and tell the user once: "This replay didn't return a server trace ID, so the verdict can't be saved. Upgrade the SDK/server and run \`{{cmd}}setup replay\` to regenerate the script." Don't block the flow on it.
+  - **If the completed item's trace id is \`null\`** (old server/SDK that returns no server-trace-id mapping, from the \`run\` step's note): persistence is impossible. Keep the verdict in-chat only and tell the user once: "This replay didn't return a server trace ID, so the verdict can't be saved. Upgrade the SDK/server." Don't block the flow on it.
 - **No-label original with no assertions either** (you showed a before/after diff, no pass/fail): there's no verdict to persist, just report the diff. An unlabeled original that HAS assertions is not this case, the assertions are the criteria, so score them one per assertion and persist them.
 
 {{branches}}`,
@@ -18837,7 +18189,7 @@ Then compare the new output against the original trace's assertions, label, and 
                 label: "Done"
               },
               recommended: true,
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -18859,7 +18211,7 @@ Then compare the new output against the original trace's assertions, label, and 
 
 **It runs the function exactly as production does, side effects included.** If the safety check in \`setup\` found any unsafe action (an email, a payment, a write to a live system), say exactly which call would run for real and get an explicit go-ahead before continuing; a re-seed has no mocking to hide behind.
 
-Find the registry the replay script hands to \`--registry\` (a \`bitfab-replay --registry <path>\` line in the script, \`package.json\`, or \`pyproject.toml\`) and the pipeline name in it that covers the function key. Then run the SDK's seed command through that registry, with no other flags:
+Locate the replay registry directly (\`scripts/replayRegistry.*\`, \`scripts/replay_registry.*\`, or a module defining \`ReplayRegistry\` / \`defineReplayRegistry\`) and find the pipeline name that covers the function key. Then run the SDK's seed command through that registry, with no other flags:
 
 \`\`\`bash
 # TypeScript: cd <project-dir> && npx bitfab-seed --registry <registry-path> <pipeline> --from-trace <trace-id>
@@ -18869,7 +18221,7 @@ Find the registry the replay script hands to \`--registry\` (a \`bitfab-replay -
 The Ruby SDK has no seed command yet; tell the user so and stop. If the command is missing or rejects \`--from-trace\`, the SDK predates re-seeding: ask the user to upgrade it, and do not fall back to a replay, which would record an experiment rather than refresh the trace.
 
 Read the JSON result. \`reseeded[0].traceId\` is the trace the user gave, now holding the fresh run, and \`reseeded[0].previousRunTraceId\` is where the old run went. Report one line: "Re-seeded \`<trace id, 8 chars>\`: it now holds a fresh run of the same inputs; the previous run is kept as \`<previous id, 8 chars>\`. Its graders re-run on the next pass." If the function threw, the trace is untouched: report the error the run produced and stop, since a re-seed only adopts a run that completed.`,
-          next: "cleanup/close-studio"
+          next: "cleanup/finish"
         }
       ]
     },
@@ -18897,7 +18249,7 @@ Read the JSON result. \`reseeded[0].traceId\` is the trace the user gave, now ho
 > The changes are in your working tree (not committed). Review the diffs and commit when ready."
 
 If \`Z > 0\`, add one line naming the infra cause (e.g. "Z traces unreplayable, missing DB rows; refresh the dataset or scope to a snapshot next pass") so the user has a next step beyond the code.`,
-          next: "cleanup/close-studio"
+          next: "cleanup/finish"
         }
       ]
     },
@@ -18949,7 +18301,7 @@ Use \u2705 for pass-verdict rows (fixed, still-passing), \u274C for fail-verdict
 **When \`costRun\` is set, add token cost to both tables.** In Table 1, add \`Input tokens | base \u2192 new (\xB1X%)\` and \`Output tokens | base \u2192 new (\xB1Y%)\` rows (total tokens only if the replay output does not split them). In Table 2, add a \`Tokens\` column showing each trace's \`original \u2192 replay\` total and % change. For a cost benchmark the headline is the token delta, not the pass rate alone: report both. Baseline tokens come from each original trace's recorded usage. For originals that errored, failed, or recorded no usage, apply the same cheapest-first recovery as the evaluate step (reuse a clean recorded run, else a one-off per-item backfill replay of the unchanged code), never a dataset-wide baseline arm; new tokens come from the replay output. Where no baseline could be recovered, show the cell as "no baseline" rather than a fabricated delta. Use the run's basis (\`costBasis\`), matching the page lens: on \`uncached\`, the Input row and the Tokens column are the uncached figures (\`(input - cached) + output\`, \`input - cached\` for the input row) and the table labels the row/column "uncached"; on \`all\`, raw \`input + output\`. Don't mix bases within a scorecard.
 
 This is a terminal step. Report the scorecard and stop. Do not offer to iterate or make changes (the user can run \`{{cmd}}assistant experiment <key>\` separately if they want to fix failures).`,
-          next: "cleanup/close-studio"
+          next: "cleanup/finish"
         }
       ]
     },
@@ -18959,18 +18311,12 @@ This is a terminal step. Report the scorecard and stop. Do not offer to iterate 
       stepStyle: "list",
       steps: [
         {
-          id: "close-studio",
+          id: "finish",
           kind: "action",
           toolCalls: ["bash"],
-          commandCalls: ["closeStudio"],
-          title: "Close Studio",
-          body: `Close Studio. Run this unconditionally: it resolves the active session from disk, closes the Studio tab (the daemon ends the session and stops appending to the event file), and exits quietly (\`{"event":"no-active-studio"}\`) when nothing was opened:
-
-\`\`\`bash
-{{command:closeStudio}}
-\`\`\`
-
-No sessionId argument is needed; do not track or look up one. This is silent housekeeping: never narrate it, reason about whether a session was opened, or report the outcome to the user (no "closing Studio", no "nothing to close").`,
+          commandCalls: [],
+          title: "Finish",
+          body: "The requested workflow is complete.",
           next: null
         }
       ]
@@ -18984,43 +18330,38 @@ var setupFlow = Flow.parse({
   id: "setup",
   title: "Bitfab Setup",
   frontmatter: {
-    description: "Set up and maintain Bitfab tracing for AI features. TRIGGER when: user wants to set up Bitfab, instrument code, add tracing/observability for LLM or agent calls, observe AI calls, add evaluation, trace LLM functions, trace a new workflow, change what an existing trace captures, re-instrument an existing traced function (move a database read or other side effect in or out of a span, change what a span records as its input/output), inspect or debug their tracing setup (what's instrumented, why traces aren't showing up), or understand what Bitfab is; or says anything like 'instrument', 'add tracing', 'trace my code', 'set up observability', 'hook up Bitfab', 'start tracking my AI workflow', 'trace a new workflow', 'create a trace plan', 'bitfab create a plan', 'give me the trace plan', 'give me the trace plan for <function>', 'show me the trace plan', 'update my tracing setup', 're-instrument', 're-instrument <function>', 'move the database read out of the span', 'make this trace replayable without a database', 'change what this span records as input', 'why aren't my traces showing up', 'what is Bitfab', 'set up database snapshots', 'replay against my database state at trace time', 'analyze the repo for what to instrument', 'analyze-repo', 'scan the codebase and upload trace plans', 'find the top places to trace and draft plans for them', 'give me the updated plan to instrument the second one', 'instrument the second/next/other one', 'instrument another function', or 'draft the plan to trace <X>'. This trigger applies even mid-conversation and after setup already ran: every additional function to instrument or trace plan to draft must re-enter this skill. Use this skill whenever producing a trace plan; never hand-write one outside its trace-plan flow. SKIP when: user is (a) improving the QUALITY of a traced function's outputs, fixing failures, pass rates, labeling, running experiments (use bitfab:assistant); or (b) upgrading the plugin/SDK to a newer *version* (use bitfab:update)",
+    description: "Set up and maintain Bitfab tracing for AI features. TRIGGER when: user wants to set up Bitfab, instrument code, add tracing/observability for LLM or agent calls, observe AI calls, add evaluation, trace LLM functions, trace a new workflow, change what an existing trace captures, re-instrument an existing traced function (move a database read or other side effect in or out of a span, change what a span records as its input/output), inspect or debug their tracing setup (what's instrumented, why traces aren't showing up), or understand what Bitfab is; or says anything like 'instrument', 'add tracing', 'trace my code', 'set up observability', 'hook up Bitfab', 'start tracking my AI workflow', 'trace a new workflow', 'update my tracing setup', 're-instrument', 're-instrument <function>', 'move the database read out of the span', 'make this trace replayable without a database', 'change what this span records as input', 'why aren't my traces showing up', 'what is Bitfab', 'set up database snapshots', 'replay against my database state at trace time', 'analyze the repo for what to instrument', 'analyze-repo', 'instrument the second/next/other one', 'instrument another function'. This trigger applies even mid-conversation and after setup already ran: every additional function to instrument must re-enter this skill. SKIP when: user is (a) improving the QUALITY of a traced function's outputs, fixing failures, pass rates, labeling, running experiments (use bitfab:assistant); or (b) upgrading the plugin/SDK to a newer *version* (use bitfab:update)",
     argumentHint: {
       deriveFromModes: true,
       suffix: "[<what to do>]"
     }
   },
   commands: BITFAB_PLUGIN_COMMANDS.defineCommands({
+    pageLink: {
+      description: "Print a clickable product page URL and exit.",
+      args: "<path>"
+    },
+    openExperiments: {
+      description: "Print a link to experiments.",
+      args: "<testRunIds>"
+    },
+    startDataset: {
+      description: "Print a dataset link.",
+      args: "<key> <datasetId>"
+    },
     status: {
       description: "Check plugin authentication and connection status"
     },
     login: {
-      description: "Authenticate for setup/instrumentation; standalone browser OAuth (blocks). Studio, dataset, and experiment flows log in inline and need no pre-login."
+      description: "Open a sign-in window and wait for authentication. Relay the printed sign-in link as a fallback."
     },
     switchOrg: {
       description: "List the user's Bitfab orgs (no args), or switch the plugin's active org and replace the local API key (with a <clerkOrganizationId> arg)",
       args: "[<clerkOrganizationId>]"
     },
-    openTracePlan: {
-      description: "Open the trace plan review UI in Studio (stays alive until the user closes or updates the plan)",
-      args: "<planId>"
-    },
-    openStudio: {
-      command: "openStudioTo",
-      description: "Navigate the active Studio session to a path (opens a window when none is active)",
-      args: "<path>"
-    },
     startTemplatePreview: {
-      description: "Open the template editor preview in Studio (blocks until user clicks Done)",
+      description: "Print a template preview link and exit.",
       args: "<functionKey>"
-    },
-    closeStudio: {
-      description: "Close the active Studio session (tab + background event process); no-op when nothing is open",
-      args: "[message]"
-    },
-    clearStudio: {
-      command: "clearStudioSession",
-      description: "Start a fresh Studio window on the next open"
     },
     update: {
       description: "Check plugin + SDK versions and install the latest (used by inspect to detect and fix staleness)",
@@ -19042,11 +18383,6 @@ var setupFlow = Flow.parse({
     ask: { kind: "builtin", name: "AskUserQuestion" },
     apiKey: { kind: "mcp", name: "get_bitfab_api_key" },
     listOrganizations: { kind: "mcp", name: "list_organizations" },
-    saveTracePlan: { kind: "mcp", name: "save_trace_plan" },
-    confirmTracePlan: { kind: "mcp", name: "confirm_trace_plan" },
-    getTracePlan: { kind: "mcp", name: "get_trace_plan" },
-    listTracePlans: { kind: "mcp", name: "list_trace_plans" },
-    cancelTracePlan: { kind: "mcp", name: "cancel_trace_plan" },
     listFunctions: { kind: "mcp", name: "list_trace_functions" },
     dbConnectionStatus: { kind: "mcp", name: "get_database_connection_status" },
     searchTraces: { kind: "mcp", name: "search_traces" },
@@ -19065,28 +18401,11 @@ var setupFlow = Flow.parse({
 - Keep prose between tool calls to one line or none. Save fuller explanation for decision points and the workflow summaries the user acts on.
 - Surfacing a risk, ambiguity, or unexpected finding is never the narration to suppress: raise it immediately, even mid-probe (e.g. unserializable inputs, a shim with lazy init, an ambiguous project root).
 
-**Studio recovery (applies to every Studio-opening command).** Any command that opens or navigates Studio (\`openTracePlan.js\`, \`startTemplatePreview.js\`, etc.) emits \`{"event":"not-responding","sessionId":"..."}\` and exits non-zero when a Studio session is recorded but its window can't be reached (a crash, sleep, or a close no process witnessed). It will NOT open a duplicate window. **Do not retry this blindly.** Recommend the user refresh or reopen the Studio tab, then {{askVerb}} with two options: **Try again** (re-run the same command, the record is still on disk, so a window that came back gets reused) or **Open a new Studio** (run \`{{command:clearStudio}}\`, then re-run the command, which now opens a fresh window). Only run \`{{command:clearStudio}}\` after the user approves. Some commands (e.g. \`login\`) also expose a \`--force\` flag for a user at a terminal to recover the same way; never run \`--force\` yourself, surface the recovery to the user instead.
+This skill has eleven phases: **explain**, **login**, **session-logs**, **instrument**, **modify**, **inspect**, **switch-org**, **replay**, **db-snapshot**, **templates**, and **analyze-repo**. Run individually or through setup (\`wizard\` runs login \u2192 instrument; \`explain\` is a standalone read-only overview that requires no login; \`session-logs\` is standalone and does not require login; \`modify\` is only invoked explicitly or as a branch from Instrument's existing-SDK-usage menu; \`inspect\` is a standalone diagnostic (with optional one-shot fixes) invoked explicitly; \`switch-org\` is a standalone account action (requires auth) invoked explicitly; \`db-snapshot\` is only invoked explicitly; \`templates\` is only invoked explicitly; \`analyze-repo\` is a standalone, **non-interactive** batch action (requires auth) invoked explicitly: it scans, picks the top few candidates, and reports source locations and replay dependencies, asking nothing and editing no code).
 
-**Describe this to the user in terms of their browser window, never the plumbing.** The words in the paragraph above (session, pointer, record, stale, \`not-responding\`, sessionId) are for you, not for them: a user has a Studio tab open, they do not have a session pointer, and naming one tells them nothing they can act on. Say what they can see and what you want them to do, and offer a cause they can check rather than a diagnosis you can't make: the browser may have backgrounded the window (behind another window, minimized, or on another desktop or space), so send them looking for it before you offer a new one. E.g. "The Studio tab I opened earlier isn't responding. Your browser may have backgrounded it. Try switching to it and refreshing it, and if you can't find it I'll open a new one." Same rule for every other internal term you might be tempted to echo (agent session, monitor event file, exec session, daemon): describe the effect, not the mechanism.
+**Natural-language aliases:** "explain Bitfab" \u2192 \`explain\`; "trace a new workflow" / "instrument another function" \u2192 \`instrument\`; "adjust what is captured" / "re-instrument" \u2192 \`modify\`; "why are my traces missing" \u2192 \`inspect\`; "switch org" \u2192 \`switch-org\`; "set up database snapshots" \u2192 \`db-snapshot\`; "analyze the repo" \u2192 \`analyze-repo\` (read-only source recommendations).
 
-**Studio URL surfacing (applies to every fresh Studio open).** If any Studio-opening command emits \`{"event":"window-open-requested","url":"..."}\`, immediately surface that URL to the user in a normal chat message (for example, \`Opening Studio: <url>. Click it if a window doesn't appear\`) so it is copyable from the transcript. This event means the open was *requested* (the browser launch was called), not that a window is confirmed on screen: on a remote/SSH session or with no supported default browser, nothing may surface, so the link is the reliable fallback. Surface it every time the event appears; do not leave the URL only in shell/tool output. If instead the command emits \`{"event":"open-failed","reason":"...","url":"..."}\`, the browser process did not even launch (e.g. \`rate-limited\`, \`spawn-failed\`): tell the user Studio couldn't open a browser (give the \`reason\`) and to click the link to open it (\`<url>\`); the session is live and the command keeps polling, so a manual click connects.
-
-${STUDIO_REUSE_NOTE}
-{{#exec-polling}}
-**\uD83D\uDEA8 Blocking-process rule (applies to any plugin command described as "blocks until the user does X"):** When you launch a plugin CLI that blocks on a Studio interaction (\`login.js\`, \`startDataset.js\`, \`openTracePlan.js\`, etc.), you MUST keep the exec session alive and keep polling it until the process exits on its own.
-
-- The process opens Studio (or navigates an existing Studio session) and polls for the user's action via agent session events. It exits only after the user completes the action in Studio (or after the timeout).
-- After launching the command, keep polling the live shell/exec session every few seconds with your normal "read more output" tool. Do not idle waiting for a user message.
-- The user's confirmation does NOT come back as a chat message; it comes back as the plugin process exiting with output on stdout.
-- Stop polling only when: (a) the process exits 0 with its completion summary, (b) the process exits non-zero, or (c) the user explicitly cancels.
-- When the process exits, immediately continue with the next step, do not wait for another user message.
-- **Exception, \`openTracePlan.js\` only.** Its trace-plan steps (build-trace-plan, present-diff) run it in the background AND ask the user "Continue instrumenting?" in the same turn, because reviewing the plan in Studio is optional there. Keep polling the exec session as above, but a terminal-side answer is a second, equally valid way for that step to finish. Everything else in this rule still holds: never idle on a chat message alone, and when the process exits, act on its stdout, which outranks a stale answer.
-{{/exec-polling}}
-This skill has twelve phases: **explain**, **login**, **session-logs**, **instrument**, **modify**, **inspect**, **switch-org**, **view**, **replay**, **db-snapshot**, **templates**, and **analyze-repo**. Run individually or through setup (\`wizard\` runs login \u2192 instrument; \`explain\` is a standalone read-only overview that requires no login; \`session-logs\` is standalone and does not require login; \`modify\` is only invoked explicitly or as a branch from Instrument's existing-SDK-usage menu; \`inspect\` is a standalone diagnostic (with optional one-shot fixes) invoked explicitly; \`switch-org\` is a standalone account action (requires auth) invoked explicitly; \`view\` is only invoked explicitly; \`db-snapshot\` is only invoked explicitly; \`templates\` is only invoked explicitly; \`analyze-repo\` is a standalone, **non-interactive** batch action (requires auth) invoked explicitly: it scans, picks the top few candidates, and uploads a draft trace plan for each, asking nothing and editing no code).
-
-**Natural-language aliases (these reuse an existing mode, not a separate one):** "explain Bitfab" / "what is Bitfab" \u2192 \`explain\`; "trace a new workflow" / "instrument a new flow" / "create a trace plan" / "give me the trace plan" / "give me the trace plan for <function>" / "show me the trace plan" / "bitfab create a plan" / "instrument the second/next/other one" / "instrument another function" \u2192 \`instrument\` (a bare \`{{cmd}}setup\` with one of these phrasings routes to Instrument, NOT the full \`wizard\`); "update-setup" / "update my tracing setup" / "adjust what's captured" \u2192 \`modify\` (NOT a plugin/SDK *version* bump, that's \`{{cmd}}update\`); "debug-setup" / "debug my tracing setup" / "inspect my tracing" / "why aren't my traces showing up" / "what's instrumented" \u2192 \`inspect\` (for output-*quality* debugging use \`{{cmd}}assistant\` instead); "switch org" / "change org" / "switch to the <name> org" / "I'm in the wrong org" \u2192 \`switch-org\`; "set up db snapshots" / "set up db branching" / "replay against my database" / "replay against the database at trace time" / "database snapshots for replay" \u2192 \`db-snapshot\`; "analyze the repo" / "analyze-repo" / "scan the codebase and draft trace plans" / "find the top things to instrument and upload plans for them" \u2192 \`analyze-repo\` (non-interactive: never prompts, never edits code, just uploads draft plans).
-
-When instrumenting a workflow, **its instrumentation and replay pipeline are written together in the same cycle** once the trace plan is confirmed (see Instrument's write-instrumentation step). The standalone \`replay\` mode remains available for coverage-verification and backfill.
+When instrumenting a workflow, **its instrumentation and replay pipeline are written together in the same cycle** after the workflow is selected (see Instrument's write-instrumentation step). The standalone \`replay\` mode remains available for coverage-verification and backfill.
 {{#plugin-dir-lookup}}
 **Before running plugin commands below**, resolve \`BITFAB_PLUGIN_DIR\` in the shell. {{editor}} does not inject a plugin-root env var, so you must determine it. Copy and run this block verbatim, it auto-detects whichever install is active:
 
@@ -19096,13 +18415,15 @@ If the block prints \`ERROR: Bitfab plugin not installed\`, the user hasn't inst
 {{/plugin-dir-lookup}}
 **SDK reference:** https://docs.bitfab.ai is the source of truth for SDK install, initialization, API surface, and replay. Every docs path below ends in \`.md\`: that suffix returns the page as plain markdown (no HTML chrome), so fetch the URLs exactly as written. Fetch in this order before writing any code, do not improvise from memory:
 - **Canonical API surface (preferred for agents):** the dense reference pages at \`/reference/typescript.md\`, \`/reference/python.md\`, \`/reference/ruby.md\`, \`/reference/go.md\`. These list every public export, signature, type, default, and error semantic, no tutorials, no prose. Read these first.
-- **The client exposes three instrumentation primitives, not one.** Spans are the oldest, not the only one: TypeScript has \`withSpan\`/\`span\`, \`withTrace\`/\`trace\`, and \`withNode\`/\`node\`; Python has \`@client.span\`, \`@client.trace\`, and \`@client.node\`; Ruby and Go have spans only. \`trace\` records a root plus every first-party call beneath it without decorating them (TypeScript needs a \`@bitfab/transform\` adapter, Python needs 3.12+), and \`node\` applies naming, typing, capture, and \`mockOnReplay\`/\`mock_on_replay\` policy to one call discovered inside that subtree. Name all three when you fetch a reference page. The fetch answers the question you asked, so asking only about \`withSpan\`/\`@span\` returns a page that reads as though spans are the whole API.
+- **Default to opt-out tracing.** For TypeScript, install and wire the matching \`@bitfab/transform\` build adapter, then use \`withTrace\`/\`trace\` for the workflow root and \`withNode\`/\`node\` only where a discovered call needs naming, typing, capture, finalization, or replay-mocking policy. For Python 3.12+, use \`@client.trace\` and \`@client.node\` the same way. Opt-in \`withSpan\`/\`span\` remains supported, but setup chooses it only when opt-out is technically impossible: Ruby, Go, Python before 3.12, a TypeScript build path for which the documented transform adapters truly cannot be wired, or a live streaming root whose output opt-out tracing cannot finalize without changing behavior. Framework handlers, processors, and their generated spans are compatible descendants of an opt-out root and are never by themselves a reason to choose spans; keep the framework integration and use \`withNode\`/\`node\` for first-party calls that need explicit policy. Never choose spans merely because the repository already uses them or because adding the transform changes the build configuration. Never put \`withSpan\` beneath \`withTrace\`: the SDK raises \`MixedTracingError\`. Name all three primitives when fetching a reference page so the fetched guidance cannot collapse back to spans alone.
 - **Cross-SDK shared semantics:** \`/reference/overview.md\` (invariants), \`/reference/span-types.md\` (the \`SpanType\` enum), \`/reference/http.md\` (wire protocol).
 - **Framework integrations (fetch when a framework is detected in step 1 of Instrument):** {{frameworkDocsPaths}}. Each page documents the SDK's native handler/processor/wrapper for that framework, which is usually preferable to hand-wrapping every node/agent call with \`withSpan\`/\`@span\`.
 - **Tutorials / walkthroughs / replay registry module template:** the language-specific documentation pages (\`/typescript-sdk.md\`, \`/python-sdk.md\`, \`/ruby-sdk.md\`, \`/go-sdk.md\`). Use these for the copy-pasteable replay registry module and the replay output contract. During Instrument, fetch the Replay section before Instrument's write-instrumentation step so the replay registry module can be written alongside the instrumentation in the same cycle without re-fetching.
 
-**MCP tools:** This skill uses \`get_bitfab_api_key\`, \`save_trace_plan\`, \`get_trace_plan\`, \`list_trace_plans\`, and \`cancel_trace_plan\` (login / instrument / modify / view / \`analyze-repo\`), \`list_trace_functions\` and \`search_traces\` (\`inspect\`, \`templates\`, and the exact-trace smoke test in \`db-snapshot\`), \`list_organizations\` (\`switch-org\`), \`get_database_connection_status\` (\`db-snapshot\` only), and, for the \`templates\` mode only, \`get_template_reference\`, \`get_template\`, and \`save_template\`. {{^amp}}All come from the **local plugin MCP server** (bundled with this plugin){{/amp}}{{#amp}}All are registered by the Bitfab plugin under these bare names{{/amp}}{{#claude}}. Do NOT use the remote Bitfab MCP tools (\`mcp__Simforge__*\` or \`mcp__Bitfab__*\`), use only the \`mcp__plugin_bitfab_Bitfab__*\` variants{{/claude}}{{#cursor}}, exposed under the \`mcp__Bitfab__*\` prefix{{/cursor}}{{#codex}}, exposed under the \`mcp__Bitfab__*\` prefix{{/codex}}.
-`,
+**MCP tools:** Use the plugin tools for authentication, trace functions, trace search, organizations, database connection status, and templates as specified by each step.
+
+
+**Product pages:** Link to the existing app pages for experiments, datasets, and other dashboard features. Use /plugin only for automatic-close login and template previews. Page commands print one JSON line with \`event: "link"\` and \`url\`, then exit. Relay the URL in chat. The user reports review decisions in chat; fetch current saved state with MCP before continuing. Never treat printing a link or closing a browser tab as approval.`,
   entries: {
     wizard: "login/status-check",
     explain: "explain/overview",
@@ -19112,7 +18433,6 @@ If the block prints \`ERROR: Bitfab plugin not installed\`, the user hasn't inst
     modify: "modify/gather-existing",
     inspect: "inspect/status-check",
     "switch-org": "switch-org/status-check",
-    view: "view/gather-existing",
     replay: "replay/gather-keys",
     "db-snapshot": "db-snapshot/preflight",
     templates: "templates/pick-function",
@@ -19122,17 +18442,16 @@ If the block prints \`ERROR: Bitfab plugin not installed\`, the user hasn't inst
   modeHints: {
     wizard: "Run login, then instrument workflows until the user is done.",
     explain: "Explain what Bitfab is and what each mode does (read-only, no login).",
-    login: "Authenticate for setup/instrumentation (Studio/assistant flows log in inline, no pre-login).",
+    login: "Authenticate for setup and instrumentation.",
     "session-logs": "Opt in or out of session log collection (no login required).",
     instrument: "Instrument AI workflows with Bitfab tracing.",
     modify: "Modify an existing trace setup (add context, change depth, or move the root).",
     inspect: "Diagnose (and offer to fix) your tracing setup: auth, what's instrumented, plugin/SDK freshness, replay coverage, trace arrival.",
     "switch-org": "Switch which Bitfab org the plugin reads and writes (replaces the local API key).",
-    view: "Open the trace planner UI for an existing trace function (read-only).",
     replay: "Create or update replay registry modules for instrumented workflows.",
     "db-snapshot": "Set up per-trace database snapshots so replay runs against the DB state at trace time (TypeScript, Python, Ruby).",
     templates: "Iterate on the span-rendering templates for one trace function.",
-    "analyze-repo": "Non-interactively scan the repo, pick the top workflows to trace (default 5, or `limit=<n>`; optional free-text `guidance:` steers what to focus on), and upload a draft trace plan for each (no prompts, no code changes)."
+    "analyze-repo": "Read-only discovery: scan source, rank the top workflows to instrument, and report recommendations without creating artifacts or changing code."
   },
   compile: {
     mode: { default: "monolith", claude: "split-chain" },
@@ -19170,173 +18489,9 @@ Never modify existing code on a refactor path without completing this three-step
     {
       id: "reference",
       title: "Reference",
-      body: `These sections are consulted during the Instrument phase, not executed sequentially.
+      body: `### Instrumentation requirements
 
-### Trace Plan Format
-
-The trace plan is a strict format. Do not improvise, follow the legend, grammar, and template selection rule below. When in doubt, copy the matching canonical example verbatim and substitute names.
-
-#### Legend
-
-| Symbol | Meaning | Where it appears |
-|---|---|---|
-| \`\u25CF\` | Instrumented span | Default + Expanded + Processor views |
-| \`\u25CB\` | Skipped function (not instrumented) | Only when the expand modifier is applied (on top of any base template) |
-| \`[root]\` | Literal label for the trace function entry point | Always, on its own line above the tree |
-| \`[loop]\` | Control-flow group: children execute in a loop | Inside the tree, in place of a span |
-| \`[branch]\` | Control-flow group: children are conditional branches | Inside the tree, in place of a span |
-| \`[parallel]\` | Control-flow group: children execute concurrently | Inside the tree, in place of a span |
-| \`[auto]\` | Auto-captured by a trace processor, no manual instrumentation | Trace-processor view only |
-| \`(function)\` \`(llm)\` \`(tool)\` \`(agent)\` \`(handoff)\` | Span type annotation | Immediately after every \`\u25CF\` span name |
-
-Brackets \`[\u2026]\` are structural labels (not spans). Parens \`(\u2026)\` are span type annotations (only on \`\u25CF\` lines).
-
-#### Grammar rules
-
-1. **Header line**: exactly: \`Trace function: "<trace-function-key>"\` followed by one blank line.
-2. **Root**: the next line is the literal \`[root]\`, with no symbol prefix.
-3. **Tree body**: uses box-drawing characters only:
-   - \`\u251C\u2500\` for every child except the last
-   - \`\u2514\u2500\` for the last child
-   - Children of a \`\u251C\u2500\` node indent with \`\u2502  \` (pipe + two spaces)
-   - Children of a \`\u2514\u2500\` node indent with \`   \` (three spaces, no pipe)
-4. **Span lines**: \`<prefix>\u25CF <name> (<type>)\`. Type annotation is **required** on every \`\u25CF\` line.
-5. **Skipped lines**: \`<prefix>\u25CB <name>\`. No type annotation, no description.
-6. **Control-flow lines**: \`<prefix>[loop]\` / \`[branch]\` / \`[parallel]\`. They take children but have no symbol and no type.
-7. **Footer**: one blank line, then one or both of:
-   - \`Files changed:\` followed by a numbered list, every file the cycle will touch. This always includes the replay registry module path for non-Go projects (\`scripts/replayRegistry.ts\`, \`scripts/replay_registry.py\`, or \`scripts/replay_registry.rb\`, new or edited per step 11b) alongside any instrumented source files. Go-only projects list only the instrumented source files.
-   - \`Setup: <one-line setup description>\` (any plan that registers a trace processor)
-   Hybrid plans (manual spans + processor) include both, with \`Setup:\` first then \`Files changed:\`. A pure-processor plan still lists \`Files changed:\` because the processor-registration file is edited and the replay registry module (non-Go) is written. Go-only pure-processor plans with a single registration file and no manual spans may include only \`Setup:\` plus that one file under \`Files changed:\`.
-8. **No descriptions, no counts, no parameter details, no blank lines between siblings, no trailing whitespace.**
-9. **One trace function per plan.** A trace plan describes exactly one trace function, exactly one \`Trace function: "..."\` header, exactly one \`[root]\`, exactly one tree, exactly one \`Files changed:\` section. If the cycle would require instrumenting two trace functions, that's two cycles, not one plan with two trees.
-
-#### Which template to use (precedence, check top to bottom, stop at first match)
-
-Pick the **base template** from SDK capability and surrounding work:
-
-1. **Trace processor (hybrid) template**: if the framework documentation says to register a processor (e.g. OpenAI Agents SDK \`addTraceProcessor\`) AND there is meaningful work above, alongside, or below the SDK call. The trace function root wraps the broader workflow with manual \`\u25CF\` spans; the SDK call appears as one \`(agent)\` child whose grandchildren are the \`[auto]\` lines; other manual spans capture work outside the SDK. This is the default for any trace processor SDK whenever there's surrounding workflow logic, which is almost always. **The root must take the workflow's serializable input as its argument (the prompt / messages / request), because replay re-runs that root against its recorded input. A bare processor call (plain \`run()\`) with neither a root wrapper nor a manual root records a root span with no input (the agent span carries no recorded input) and is not replayable; the manual \`withSpan\`/\`@span\` root is what makes the broader trace replayable.**
-2. **Trace processor (bare) template**: when the workflow truly is *just* the SDK call with no surrounding work. Use the run wrapper ({{traceProcessorRootWrappers}}) in place of the plain run call: it records a keyed root carrying the run input, and the processor's auto-captured children nest underneath as \`[auto]\` lines, so the bare workflow is **replayable with no hand-written root**. **A plain \`run()\` under the processor alone records an empty-input root (the agent span carries no recorded input): observable but NOT replayable: only acceptable when the user has explicitly accepted an observable-only trace for this workflow.** Confirm before using this, if the workflow has any input prep, orchestration, retries, post-processing, or non-SDK LLM/tool calls, use the hybrid template instead.
-3. **Default view**: every other case (no processor in play). This is the recommended default for SDKs without a processor.
-
-Then apply the **expand modifier**, orthogonally:
-
-- If the user explicitly asks for more detail ("show details", "expand", "include skipped") or selects "Expand details" from the {{askNoun}} preview, add \`\u25CB\` skipped lines to whichever base template was picked. Never drop \`[auto]\` lines when expanding a processor template, skipped lines and auto-captured lines coexist in the tree. Without an explicit ask, do not add skipped lines.
-
-Never mix base templates beyond the hybrid pattern. Never invent a fifth variant.
-
-#### Canonical examples (copy-edit-substitute, do not restructure)
-
-**Default view**: instrumented spans only:
-
-\`\`\`
-Trace function: "<trace-function-key>"
-
-[root]
-\u25CF outerFunction (function)
-\u251C\u2500 \u25CF llmCall (llm)
-\u2514\u2500 [loop]
-   \u251C\u2500 \u25CF anotherLlmCall (llm)
-   \u2514\u2500 \u25CF refinementCall (llm)
-
-Files changed:
-  1. client.ts
-  2. pipeline.ts
-\`\`\`
-
-**Default + expand modifier**: adds skipped (\u25CB) functions in true execution order. The same modifier applies to processor templates (hybrid or bare) when the user asks for expansion, \`\u25CB\` lines coexist with \`[auto]\` lines in that case:
-
-\`\`\`
-Trace function: "<trace-function-key>"
-\u25CF instrumented   \u25CB skipped
-
-[root]
-\u25CF outerFunction (function)
-\u251C\u2500 \u25CB helperFormat
-\u251C\u2500 \u25CF llmCall (llm)
-\u2514\u2500 [loop]
-   \u251C\u2500 \u25CB evaluateBatch
-   \u251C\u2500 \u25CB calculateScore
-   \u251C\u2500 \u25CF anotherLlmCall (llm)
-   \u251C\u2500 \u25CF refinementCall (llm)
-   \u2514\u2500 \u25CB evaluateBatch
-
-Files changed:
-  1. client.ts
-  2. pipeline.ts
-\`\`\`
-
-The legend line \`\u25CF instrumented   \u25CB skipped\` appears **only** in the expanded view, immediately under the header.
-
-**Trace-processor (hybrid) view**: workflow with manual spans wrapping auto-captured agent internals (default for processor SDKs):
-
-\`\`\`
-Trace function: "handle-user-request"
-
-[root]
-\u25CF handleUserRequest (function)
-\u251C\u2500 \u25CF validateAndPrepareInput (function)
-\u251C\u2500 \u25CF runAgent (agent)
-\u2502  \u251C\u2500 LLM calls    [auto]
-\u2502  \u251C\u2500 tool calls   [auto]
-\u2502  \u2514\u2500 handoffs     [auto]
-\u251C\u2500 \u25CF scoreAgentOutput (llm)
-\u2514\u2500 \u25CF persistResult (function)
-
-Setup: addTraceProcessor(processor) registered at startup
-Files changed:
-  1. handler.ts
-  2. tracing/setup.ts
-\`\`\`
-
-The \`[auto]\` lines are auto-captured spans, the processor emits them inside the SDK call without manual instrumentation. They use \`\u251C\u2500\`/\`\u2514\u2500\` like normal children but carry no \`\u25CF\`/\`\u25CB\` symbol because you're not writing the span yourself. Manual \`\u25CF\` spans wrap the broader workflow above, alongside, and below the SDK call.
-
-**Trace-processor (bare) view**: only when the workflow IS just the SDK call:
-
-\`\`\`
-Trace function: "my-agent"
-
-[root]
-\u25CF runAgent (function)
-\u251C\u2500 LLM calls    [auto]
-\u251C\u2500 tool calls   [auto]
-\u2514\u2500 handoffs     [auto]
-
-Setup: addTraceProcessor(processor) registered at startup
-\`\`\`
-
-Use this **only** when there is genuinely no work above, alongside, or below the SDK call. If there's any input prep, orchestration, retry, post-processing, or non-SDK LLM/tool call, use the hybrid view instead.
-
-#### Anti-examples (do NOT do these)
-
-- \u274C \`* outerFunction (function)\`, use \`\u25CF\`, never \`*\` or \`-\` or \`\u2022\`
-- \u274C \`\u25CF outerFunction\`, type annotation is mandatory on every instrumented span
-- \u274C \`\u25CF outerFunction (function), calls the LLM with retries\`, no descriptions, no em dashes
-- \u274C \`\u25CF outerFunction (llm-call)\`, only the listed types are valid; do not invent new ones
-- \u274C \`[Root]\` or \`[ROOT]\`, literal label is lowercase \`[root]\`
-- \u274C Mixed indentation widths (2 spaces in one branch, 4 in another)
-- \u274C Blank lines between siblings inside the tree
-- \u274C Omitting \`Files changed:\` from any plan that has manual \`\u25CF\` spans (hybrid trace-processor plans MUST include both \`Setup:\` and \`Files changed:\`)
-- \u274C Defaulting to the bare trace-processor view when the workflow has work above, alongside, or below the SDK call, use the hybrid view and add manual spans
-- \u274C Putting the SDK's agent call (e.g. \`runAgent\`, \`Runner.run\`) at \`[root]\` when the actual workflow has a clear outer function, the workflow function is the root, the SDK call is a child
-- \u274C Inventing extra sections like \`Notes:\` or \`Estimated coverage:\`
-- \u274C Two \`Trace function: "..."\` headers in one plan, split into two cycles
-- \u274C \`\u25CF someFn (llm)   \u2190 description here\`, no inline descriptions, arrows, or trailing commentary on span lines
-- \u274C \`\u25CF <kind>DocumentCreate (llm)\`, no placeholder/template span names; expand to concrete spans (e.g., three siblings, or under a \`[branch]\`)
-- \u274C \`Files changed\` without the trailing colon
-- \u274C \`1. lib/bitfab.ts (new), Bitfab client + exported pipelines\`, file entries are paths only, no annotations or descriptions
-- \u274C Recommending an approach that requires "a tiny behavior change", disqualified at trace plan construction; restructure the tree instead
-
-#### Presentation step
-
-After building the plan and posting it with {{tool:saveTracePlan}}, render it inline as ASCII (rules above), then {{askVerb}}:
-- **View in browser** (recommended), open the plan in Studio to review and adjust the captured set
-- **Continue**, accept the plan as rendered inline and proceed (no Studio round-trip)
-- **Expand details**: re-render the ASCII using the expanded view template
-- **Adjust**: user wants changes; ask what, then rebuild the tree and save it back onto the SAME plan with {{tool:saveTracePlan}} \`{ planId, ... }\`. Adjusting revises the plan the user is looking at; it never posts a second plan for the key.
-
-### Trace Plan Accuracy
-
-Read function signatures {{^codex}}with the \`Read\` tool {{/codex}}when the trace plan will reference their parameter names or return fields. Skipped leaf functions can be named from grep results if their shape isn't exposed in the plan. Never guess names that appear in the plan.`
+Read function signatures and bodies before instrumenting. Instrument the real production path. Keep additions behavior-preserving; preserve call order, argument and return types, error handling, streaming, and time-to-first-token. Use framework-native handlers/processors where documented. Keep one trace function key per coherent workflow, and implement its replay callable during the same cycle. Mock external reads and unsafe side effects using the SDK replay controls; keep model calls live. For non-additive refactors, follow the refactor-confirmation appendix. No persisted planning document or extra approval is required for authorized additive instrumentation.`
     }
   ],
   phases: [
@@ -19378,19 +18533,7 @@ If **already authenticated**, skip to step {{step:login/get-api-key}}.`,
           toolCalls: ["bash"],
           commandCalls: ["login"],
           title: "Run the login script",
-          body: `If **"not authenticated"**, run the login script yourself, do NOT ask the user to run it manually:
-
-\`\`\`bash
-{{command:login}}
-\`\`\`
-Run with 600000ms (10 minute) timeout. This opens Studio to the sign-in page and polls the server until the user completes authentication in the browser. The process exits when authentication succeeds or the 10-minute timeout fires.
-
-**If the browser fails to open**, \`login.js\` prints the Studio sign-in URL. Surface it to the user verbatim so they can open it manually; do not rely on shell/tool output being visible. The polling loop stays active for the full 10-minute timeout regardless of whether auto-launch worked.
-
-{{#exec-polling}}
-**Per the Blocking-process rule at the top:** after \`login.js\` opens Studio, keep polling the live exec session until it exits. Do not send a "waiting for you to sign in" message and then idle; the user's sign-in will NOT arrive as a chat message; it arrives as \`login.js\` exiting with \`Logged in as <email>\` on stdout.
-{{/exec-polling}}
-If \`login.js\` exits non-zero or the 10-minute timeout elapsed, report the error to the user and stop.`,
+          body: "If not authenticated, run {{command:login}} as a long-running background process. Immediately relay its sign-in URL to the user. Poll the process while keeping the conversation available. The command automatically opens a sign-in window and exits after authentication, or after ten minutes. The printed link is available if the window cannot open. On failure, report the error and let the user retry. Never print or request API keys in chat.",
           branches: [
             {
               when: "login succeeds",
@@ -19398,7 +18541,7 @@ If \`login.js\` exits non-zero or the 10-minute timeout elapsed, report the erro
             },
             {
               when: "login fails, errors, or times out",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -19440,18 +18583,17 @@ Save the answer (replace \`CONSENT\` with \`true\` or \`false\`):
           next: {
             byMode: {
               wizard: "explain/overview",
-              explain: "cleanup/close-studio",
-              login: "cleanup/close-studio",
-              "session-logs": "cleanup/close-studio",
+              explain: "cleanup/finish",
+              login: "cleanup/finish",
+              "session-logs": "cleanup/finish",
               instrument: "instrument/detect-language",
-              modify: "cleanup/close-studio",
-              inspect: "cleanup/close-studio",
-              "switch-org": "cleanup/close-studio",
-              view: "cleanup/close-studio",
-              replay: "cleanup/close-studio",
-              "db-snapshot": "cleanup/close-studio",
-              templates: "cleanup/close-studio",
-              "analyze-repo": "cleanup/close-studio"
+              modify: "cleanup/finish",
+              inspect: "cleanup/finish",
+              "switch-org": "cleanup/finish",
+              replay: "cleanup/finish",
+              "db-snapshot": "cleanup/finish",
+              templates: "cleanup/finish",
+              "analyze-repo": "cleanup/finish"
             }
           }
         }
@@ -19461,13 +18603,13 @@ Save the answer (replace \`CONSENT\` with \`true\` or \`false\`):
       id: "explain",
       title: "Explain",
       stepStyle: "list",
-      intro: 'Teach the two primitives the user has to instrument with. Read-only, no code changes, no Studio. Runs inside `wizard` (right after Login, before the approach question) and standalone via `{{cmd}}setup explain` (or natural-language asks like "what is Bitfab" / "explain Bitfab"), which needs no authentication.',
+      intro: 'Teach the opt-out tracing and replay primitives the user instruments with. Read-only, no code changes, no browser interaction. Runs inside `wizard` (right after Login, before the approach question) and standalone via `{{cmd}}setup explain` (or natural-language asks like "what is Bitfab" / "explain Bitfab"), which needs no authentication.',
       steps: [
         {
           id: "overview",
           kind: "action",
           title: "Explain the primitives, and in `explain` mode the modes too",
-          body: `Render the block below **verbatim** as a single message, as formatted markdown (do **not** wrap it in a code fence, do **not** reword it, and do **not** add a summary or an ASCII diagram). This is the education the rest of setup depends on: a user who does not understand \`withSpan\` and \`replay\` cannot make the per-method decisions instrumentation asks of them. Do **not** authenticate, scan the codebase, {{#ask-user-question}}use AskUserQuestion{{/ask-user-question}}{{^ask-user-question}}ask any questions{{/ask-user-question}}, or edit anything here, in either mode.
+          body: `Render the block below **verbatim** as a single message, as formatted markdown (do **not** wrap it in a code fence, do **not** reword it, and do **not** add a summary or an ASCII diagram). This is the education the rest of setup depends on: a user who does not understand \`withTrace\`, \`withNode\`, and \`replay\` cannot make the capture and replay decisions instrumentation asks of them. Do **not** authenticate, scan the codebase, {{#ask-user-question}}use AskUserQuestion{{/ask-user-question}}{{^ask-user-question}}ask any questions{{/ask-user-question}}, or edit anything here, in either mode.
 
 \`\`\`markdown
 **Purpose**
@@ -19476,14 +18618,15 @@ Bitfab's SDK captures each instrumented method's inputs, outputs, and surroundin
 
 **How to instrument**
 
-Bitfab provides you a way to capture traces and replay them safely during development. The core primitives from the Bitfab SDK are:
+Bitfab provides opt-out tracing and safe replay during development. For TypeScript and Python 3.12+, the core primitives are:
 
-- \`withSpan(...)\`
-- \`replay(...)\`
+- \`withTrace(...)\` / \`trace(...)\` for one workflow root
+- \`withNode(...)\` / \`node(...)\` to configure a discovered call
+- \`replay(...)\` to run recorded scenarios against current code
 
-\`withSpan\` captures traces and sends them to Bitfab by default. It serializes the inputs, outputs, and metadata of the method it wraps (or decorates) and sends them over the OTEL transport layer.
+Default to opt-out tracing. A trace root records its serializable inputs and output plus every first-party call beneath it. Most descendants need no wrapper. Add a node only when a call needs a name, type, capture override, finalizer, or replay-mocking policy. TypeScript requires the matching \`@bitfab/transform\` build adapter; setup installs and configures it. Python requires 3.12+. Opt-in spans remain supported; setup uses them as the fallback for Ruby, Go, unsupported runtimes, and live streaming roots that opt-out tracing cannot finalize without changing behavior. Keep one tracing surface per call stack. Never mix \`withSpan\` beneath \`withTrace\`; the SDK rejects mixed tracing surfaces.
 
-\`replay\` calls into your code and modifies the behavior of \`withSpan\` for each method it wraps (or decorates) in one of five ways:
+\`replay\` calls into your trace root and can modify each captured descendant in one of five ways:
 
 1. Execute as normal
 2. Pass in inputs from the recorded trace
@@ -19507,7 +18650,6 @@ What you can run
   {{cmd}}setup modify     Adjust what an existing trace captures
   {{cmd}}setup inspect    Diagnose + fix setup: auth, what's instrumented, SDK/plugin current, replay coverage, traces arriving
   {{cmd}}setup switch-org Switch which org the plugin reads and writes
-  {{cmd}}setup view       Open one trace function's plan in the browser (read-only)
   {{cmd}}setup replay     Create or update replay registry modules
   {{cmd}}setup templates  Change how a trace function's spans render
   {{cmd}}setup session-logs  Opt in/out of session log collection
@@ -19517,18 +18659,17 @@ then close with one line: to start tracing, run \`{{cmd}}setup\`; to debug an ex
           next: {
             byMode: {
               wizard: "approach/choose-driver",
-              explain: "cleanup/close-studio",
-              login: "cleanup/close-studio",
-              "session-logs": "cleanup/close-studio",
-              instrument: "cleanup/close-studio",
-              modify: "cleanup/close-studio",
-              inspect: "cleanup/close-studio",
-              "switch-org": "cleanup/close-studio",
-              view: "cleanup/close-studio",
-              replay: "cleanup/close-studio",
-              "db-snapshot": "cleanup/close-studio",
-              templates: "cleanup/close-studio",
-              "analyze-repo": "cleanup/close-studio"
+              explain: "cleanup/finish",
+              login: "cleanup/finish",
+              "session-logs": "cleanup/finish",
+              instrument: "cleanup/finish",
+              modify: "cleanup/finish",
+              inspect: "cleanup/finish",
+              "switch-org": "cleanup/finish",
+              replay: "cleanup/finish",
+              "db-snapshot": "cleanup/finish",
+              templates: "cleanup/finish",
+              "analyze-repo": "cleanup/finish"
             }
           }
         }
@@ -19550,7 +18691,7 @@ then close with one line: to start tracing, run \`{{cmd}}setup\`; to debug an ex
 
 {{branches}}
 
-Recommend **A** and say why in one line: it is the whole flow (SDK install, trace plan, spans, replay registry module) with a confirmation before anything is written. Ask this once; do not re-ask it later in the session.`,
+Recommend **A** and say why in one line: it is the whole flow (SDK install, instrumentation, replay registry module). Ask this once; do not re-ask it later in the session.`,
           branches: [
             {
               option: {
@@ -19580,7 +18721,7 @@ Recommend **A** and say why in one line: it is the whole flow (SDK install, trac
 \`\`\`markdown
 **What's about to happen next**
 
-- This wizard will guide {{editor}} on how to use the Bitfab plugin to analyze your repository. {{editor}} will then instrument your AI features and write a \`replay\` script using the Bitfab SDK.
+- This wizard will guide {{editor}} on how to use the Bitfab plugin to analyze your repository. {{editor}} will then instrument your AI features and register their production entrypoints in a replay registry using the Bitfab SDK.
 - Whenever {{editor}} needs your input, it will prompt you
 - Setup takes about 10 - 17 minutes depending on how many features you want to instrument and how complex your AI features are.
 \`\`\`
@@ -19601,7 +18742,7 @@ Then go to {{skill-ref:instrument}} and start at its first step. The guided path
 - **Coming back:** \`{{cmd}}setup\` picks this flow back up, and \`{{cmd}}setup inspect\` diagnoses an instrumentation they wrote themselves (auth, what's instrumented, whether traces are arriving).
 
 Then go to {{skill-ref:cleanup}} and end the run there. Option B is a full stop: do **not** read on into the sections that follow, {{skill-ref:instrument}} included, and do not scan or edit anything on the way out.`,
-          next: "cleanup/close-studio"
+          next: "cleanup/finish"
         }
       ]
     },
@@ -19634,7 +18775,7 @@ Save the answer (replace \`CONSENT\` with \`true\` or \`false\`):
 \`\`\`
 
 Confirm the change to the user.`,
-          next: "cleanup/close-studio"
+          next: "cleanup/finish"
         }
       ]
     },
@@ -19658,7 +18799,7 @@ Confirm the change to the user.`,
           kind: "branch",
           toolCalls: ["grep", "glob", "ask"],
           title: "Search for existing SDK usage",
-          body: `**Search for existing SDK usage** (\`withSpan\`, \`@span\`, \`bitfab_span\`, \`client.Span\`, \`getFunction\`, \`get_function\`, etc.). In a monorepo, search **each application directory separately**: a root-level search can miss subdirectories.
+          body: `**Search for existing SDK usage** (\`withTrace\`, \`trace\`, \`withNode\`, \`node\`, \`withSpan\`, \`@span\`, \`bitfab_span\`, \`client.Span\`, \`getFunction\`, \`get_function\`, and the TypeScript transform/build adapter). In a monorepo, search **each application directory separately**: a root-level search can miss subdirectories. Classify each result as opt-out tracing, framework auto-capture, or opt-in spans. Existing spans elsewhere in the repository do not establish a house style for new instrumentation.
 - If found: {{askVerb}}, **listing the existing trace function keys inside the question's own text** (\`<key>\` \xB7 its root function, or its handler registration site for handler-only keys), so the user picks against the actual list instead of a message scrolled above the prompt:
 
 {{branches}}
@@ -19672,7 +18813,7 @@ Confirm the change to the user.`,
   Routes that are conditions rather than options:
 
 {{whens}}
-- **If usage routes through a project-local shim** (a wrapper file that re-exports \`withSpan\` / \`@span\` / \`bitfab_span\` / \`getCurrentTrace\` / \`getCurrentSpan\` with custom init, often named \`lib/bitfab.*\` or after a predecessor SDK such as \`lib/simforge.*\`), audit the shim before instrumenting anything new. The shim must (a) construct the SDK client (\`new Bitfab(...)\`, \`bitfab_init()\`, \`Bitfab::Client.new\`, etc.) at module load, **synchronously**, never lazily inside the wrapped function; and (b) hand off to the SDK call synchronously, with no \`await\` between the user's entry to the shim and \`client.withSpan(...)\` / \`@bitfab.span(...)\`. Lazy or async client init (e.g. \`await getOrCreateTraceFunction(key)\` inside the wrapped body) breaks the SDK's nesting context (TypeScript \`AsyncLocalStorage\`, Python \`contextvars\`) under any parallel fan-out (\`Promise.all\`, \`Promise.allSettled\`, \`asyncio.gather\`, parallel workers): every span becomes its own top-level trace instead of nesting inside its caller. Fix the shim before instrumenting anything new. (Direct callers of the SDK with no shim already satisfy this rule, skip the audit.)
+- **If usage routes through a project-local shim** (a wrapper file that re-exports \`withTrace\` / \`trace\` / \`withNode\` / \`node\` / \`withSpan\` / \`@span\` / \`bitfab_span\` / \`getCurrentTrace\` / \`getCurrentSpan\` with custom init, often named \`lib/bitfab.*\` or after a predecessor SDK such as \`lib/simforge.*\`), audit the shim before instrumenting anything new. The shim must (a) construct the SDK client (\`new Bitfab(...)\`, \`bitfab_init()\`, \`Bitfab::Client.new\`, etc.) at module load, **synchronously**, never lazily inside the wrapped function; and (b) hand off to the SDK trace, node, or span call synchronously, with no \`await\` between the user's entry to the shim and that SDK call. Lazy or async client init (e.g. \`await getOrCreateTraceFunction(key)\` inside the wrapped body) breaks the SDK's nesting context (TypeScript \`AsyncLocalStorage\`, Python \`contextvars\`) under any parallel fan-out (\`Promise.all\`, \`Promise.allSettled\`, \`asyncio.gather\`, parallel workers): captured calls become separate top-level traces instead of nesting inside their caller. Fix the shim before instrumenting anything new. (Direct callers of the SDK with no shim already satisfy this rule, skip the audit.)
 - If not found: **proceed to step {{step:instrument/get-api-key}}**: no SDK usage does NOT mean nothing to instrument, it means the SDK hasn't been installed yet. NEVER conclude "nothing to instrument" before completing step {{step:instrument/explain-trace-boundary}}.`,
           branches: [
             {
@@ -19708,19 +18849,18 @@ Confirm the change to the user.`,
               when: "the user says in free text that they are done and want no changes",
               next: {
                 byMode: {
-                  wizard: "cleanup/close-studio",
-                  explain: "cleanup/close-studio",
-                  login: "cleanup/close-studio",
-                  "session-logs": "cleanup/close-studio",
-                  instrument: "cleanup/close-studio",
-                  modify: "cleanup/close-studio",
-                  inspect: "cleanup/close-studio",
-                  "switch-org": "cleanup/close-studio",
-                  view: "cleanup/close-studio",
-                  replay: "cleanup/close-studio",
-                  "db-snapshot": "cleanup/close-studio",
-                  templates: "cleanup/close-studio",
-                  "analyze-repo": "cleanup/close-studio"
+                  wizard: "cleanup/finish",
+                  explain: "cleanup/finish",
+                  login: "cleanup/finish",
+                  "session-logs": "cleanup/finish",
+                  instrument: "cleanup/finish",
+                  modify: "cleanup/finish",
+                  inspect: "cleanup/finish",
+                  "switch-org": "cleanup/finish",
+                  replay: "cleanup/finish",
+                  "db-snapshot": "cleanup/finish",
+                  templates: "cleanup/finish",
+                  "analyze-repo": "cleanup/finish"
                 }
               }
             }
@@ -19732,24 +18872,21 @@ Confirm the change to the user.`,
           toolCalls: ["apiKey"],
           title: "Use or retrieve the API key",
           body: "Use the API key from the Login phase (or retrieve it now if already authenticated)",
-          next: "instrument/install-sdk"
+          next: "instrument/read-sdk-reference"
         },
         {
           id: "install-sdk",
           kind: "action",
           toolCalls: ["bash", "read", "edit"],
           title: "Install the SDK",
-          body: `**Say one line before you install anything.** This is the deliberate exception to the "do not pre-announce" execution-style rule, and the only one in this phase: the next few steps install a package, write to the project's env files, and fetch docs, which is the wizard touching the user's repo before it has asked them a single thing about what they want traced. Name what happens now, and end the line with whatever comes next **on the route the user is actually on**, since step {{step:instrument/choose-discovery}} only asks when nothing has settled it yet. Promising a question the flow then skips is worse than saying nothing:
-- **They named a target** at step {{step:instrument/search-existing}}: name it back ("Installing the SDK and setting your API key, then reading the SDK docs, then I'll instrument \`<target>\`"). This confirms you heard them and keeps the target in view across the install and the doc fetches, the stretch where a held answer is easiest to lose.
-- **They chose to search** there: say the scan is next ("...then I'll find the workflows worth tracing").
-- **Nothing settled yet** (this step was reached without that menu, because no existing SDK usage was found): promise the question ("...then I'll ask what you want to instrument").
+          body: `**Say one line before you install anything.** This is the deliberate exception to the "do not pre-announce" execution-style rule, and the only one in this phase. The workflow and application workspace are settled now. Name both, then say that you are installing the SDK and opt-out capture support and setting the API key before instrumenting that workflow. One line, nothing around it, then get on with it.
 
-One line, nothing around it, then get on with it.
+**Install the SDK now.** Detect the project's package manager from its manifest (\`pyproject.toml\` \u2192 \`uv\`/\`poetry\`; \`package.json\` \u2192 \`pnpm\`/\`npm\`/\`yarn\`/\`bun\`; \`Gemfile\` \u2192 \`bundle\`; \`go.mod\` \u2192 \`go get\`; \`requirements.txt\` \u2192 edit file + \`pip install -r\`) and run its canonical add command, do NOT stop to ask about version pinning, dependency groups, package publishing, or whether a supported transform adapter should be added. The user's request to instrument authorizes the dependencies and build wiring required by the selected approach. Prefer \`uv add\`/\`poetry add\` over bare \`pip install\` (bare \`pip install\` doesn't persist to pyproject.toml). In monorepos, scope to the correct workspace (e.g. \`pnpm add --filter <pkg>\`, or cd into the app directory first), running from the repo root will install into the wrong package. Install the SDK as a runtime dependency whenever instrumented code ships or executes from the package, including published libraries and CLIs. Use a development dependency only when the instrumented code is excluded from the published/runtime artifact. Then set the \`BITFAB_API_KEY\` environment variable.
 
-**Install the SDK now.** Detect the project's package manager from its manifest (\`pyproject.toml\` \u2192 \`uv\`/\`poetry\`; \`package.json\` \u2192 \`pnpm\`/\`npm\`/\`yarn\`/\`bun\`; \`Gemfile\` \u2192 \`bundle\`; \`go.mod\` \u2192 \`go get\`; \`requirements.txt\` \u2192 edit file + \`pip install -r\`) and run its canonical add command, do NOT stop to ask about version pinning or dep groups. Prefer \`uv add\`/\`poetry add\` over bare \`pip install\` (bare \`pip install\` doesn't persist to pyproject.toml). In monorepos, scope to the correct workspace (e.g. \`pnpm add --filter <pkg>\`, or cd into the app directory first), running from the repo root will install into the wrong package. Default to a runtime dep for applications; a dev dep for libraries/SDKs where a runtime dep would propagate to downstream users. Then set the \`BITFAB_API_KEY\` environment variable.
+**Install opt-out capture support at the same time.** For TypeScript, add \`@bitfab/transform\` as a development dependency in the same application workspace and wire its adapter into the actual server build before instrumenting. Inspect the build tool and use the matching documented adapter. For Next.js, wrap the existing config with \`@bitfab/transform/next\` while preserving existing wrappers such as Sentry; do not replace or bypass them. For tsup, add the \`@bitfab/transform/esbuild\` plugin to the existing tsup esbuild options. For direct Node or \`tsx\`, update the real start command to register \`@bitfab/transform/register\`. The package also ships documented adapters for Vite, Rollup, webpack, Rspack, Rsbuild, Rolldown, Bun, SWC, Babel, Nest, and the TypeScript compiler. Verify the transformed build path covers the production entrypoint. Do not call a build unsupported until you have checked these adapters and the language guide. For Python, verify the runtime is 3.12+ before choosing \`trace\`/\`node\`. Fall back to opt-in spans only when the language/runtime or build path truly cannot support subtree capture, or when the selected root returns a live stream that opt-out tracing cannot finalize without changing behavior. A published package, a framework-generated span model, or the need to add a supported transform adapter is not a fallback reason. State the concrete technical blocker to the user and keep the whole selected call stack on one tracing surface.
 
 **Tell the user what you did.** Pick the env-handling approach that fits the project's existing convention. Whatever you do, surface it explicitly: name the file (with absolute path) or mechanism you used, so the user knows where the key now lives. Do not print the key value itself. If the key landed in a \`.env\`-style file, additionally tell the user that any already-running dev server, REPL, or test runner may need a restart to pick it up, since most file watchers reload code on save but not env files.`,
-          next: "instrument/read-sdk-reference"
+          next: "instrument/read-signatures"
         },
         {
           id: "read-sdk-reference",
@@ -19763,9 +18900,9 @@ One line, nothing around it, then get on with it.
           id: "explain-trace-boundary",
           kind: "action",
           title: "Establish trace-boundary rules and serializability constraint",
-          body: `**Instrumentation must produce a replayable trace. There are exactly two ways to get one: (1) the root span has serializable inputs, or (2) the workflow runs on a supported framework integration that records a replayable root ({{replayableRootHandlerNames}}), which captures the framework's own serializable input as the root. Establish one of these before writing any instrumentation. Trace-processor integrations ({{traceProcessorNames}}) are a special case: the processor auto-captures the agent run, but on its own records a root span with an empty input (verified against a live run: the OpenAI Agents agent span is the root and carries no recorded input), so the processor ALONE is NOT replayable. Pair it with its run wrapper ({{traceProcessorRootWrappers}}), a drop-in for the run call that opens a keyed root carrying the run input as a serializable argument, with the processor's spans nesting underneath, which turns it into case (1). A hand-written \`withSpan\`/\`@span\` root that takes the run input works too.**
+          body: `**Instrumentation must produce a replayable trace. There are exactly two ways to get one: (1) a \`withTrace\`/\`trace\` root, or an opt-in fallback root span, has serializable inputs; or (2) the workflow runs on a supported framework integration that records a replayable root ({{replayableRootHandlerNames}}), which captures the framework's own serializable input as the root. Establish one of these before writing any instrumentation. Trace-processor integrations ({{traceProcessorNames}}) are a special case: the processor auto-captures the agent run, but on its own records a root span with an empty input (verified against a live run: the OpenAI Agents agent span is the root and carries no recorded input), so the processor ALONE is NOT replayable. Pair it with its run wrapper ({{traceProcessorRootWrappers}}), a drop-in for the run call that opens a keyed root carrying the run input as a serializable argument, with the processor's spans nesting underneath, which turns it into case (1). In an opt-out workflow, use a \`withTrace\`/\`trace\` root and configure descendants with \`withNode\`/\`node\`; use a hand-written \`withSpan\`/\`@span\` root only for a documented opt-in fallback.**
 
-**The root exists so the replay harness can re-invoke it as a plain lambda with serialized inputs**: that's what makes traces searchable (a coherent unit of behavior) and replayable (runnable against current code). The root must own its state setup, not consume a pre-built stateful object the replay registry module can't reconstruct. Frameworks are the sharpest case (LangGraph compiled graphs, Claude Agent SDK clients, LangChain chains all require constructors + special setup), but the rule generalizes to anything stateful, configured SDK clients, prepared models, cached routers, DB sessions. For manually wrapped workflows, the root is therefore the outer workflow function that **builds** the framework / stateful object + invokes it + processes the output (API handler, message processor, job runner, pipeline coordinator), almost never the SDK's \`run()\` / \`invoke()\` itself. For callback-handler integrations that already record a replayable root ({{callbackHandlerNames}}), do not turn this into a mandatory manual outer span: the handler-created framework invocation root is enough when the production workflow is just the graph/chain/agent invocation. The replay callable is where you rebuild the framework/stateful object around the recorded root input. Add a same-key \`withSpan\`/\`@span\` outer root only when there is meaningful production work around the framework call (input prep, non-framework retrieval, post-processing, persistence, downstream service calls) that should be visible in the trace.
+**The root exists so the replay harness can re-invoke it as a plain lambda with serialized inputs**: that's what makes traces searchable (a coherent unit of behavior) and replayable (runnable against current code). The root must own its state setup, not consume a pre-built stateful object the replay registry module can't reconstruct. Frameworks are the sharpest case (LangGraph compiled graphs, Claude Agent SDK clients, LangChain chains all require constructors + special setup), but the rule generalizes to anything stateful, configured SDK clients, prepared models, cached routers, DB sessions. The root is therefore the outer workflow function that **builds** the framework / stateful object + invokes it + processes the output (API handler, message processor, job runner, pipeline coordinator), almost never the SDK's \`run()\` / \`invoke()\` itself. Framework handlers and processors keep their native agent, LLM, and tool spans beneath the opt-out root; their span model complements subtree capture rather than replacing it. The replay callable rebuilds the framework/stateful object around the recorded root input. Put the opt-out trace root around the application workflow boundary whenever the runtime supports it, including when the workflow is mostly one framework invocation. Use \`withNode\`/\`node\` for first-party calls that need explicit naming, typing, capture, finalization, or replay-mocking policy. Use a hand-written root span only for a documented technical fallback, and never put it beneath an opt-out trace.
 
 **Wrap the code path that runs the real workload (serves traffic, processes the actual jobs), not an entrypoint that exists only to test or explore locally.** The test is role, not form: a cron-driven batch script or an ETL job is production and worth wrapping; a dev CLI or notebook that exists only to poke at the workflow is not. Instrument the real path even when you'll run it in dev to generate traces.
 
@@ -19776,14 +18913,14 @@ One line, nothing around it, then get on with it.
 - **live SDK client instances passed as arguments** (LLM clients like \`OpenAI\` / \`Anthropic\` / Bedrock, configured agents, DB connection objects, HTTP agents): class instances whose internals carry circular references, function members, or platform handles all sink superjson and \`JSON.stringify\`. Watch especially for an options/config bag (e.g. \`options.llmProvider\`, \`ctx.db\`) that smuggles a live client into an otherwise-serializable signature.
 
 **Unserializable OUTPUTS (live streams) are a separate case from unserializable inputs, and in the TypeScript SDK they do NOT require a refactor.** A function whose inputs are serializable but which returns a live stream the caller consumes directly (a Vercel AI SDK \`streamText\` result, a \`ReadableStream\`, an SSE / streaming \`Response\`) is the common shape for chat and agent endpoints. Serializing that object as-is captures nothing replayable, and awaiting it to completion before returning would break streaming and first-byte latency. Record a drained, serializable view of the stream as the span output instead:
-- **TypeScript: use the \`withSpan\` \`finalize\` option** (\`withSpan(key, { type, finalize }, fn)\`). The wrapped function returns the live stream to the caller unchanged; the span records \`await finalize(result)\` (e.g. \`{ text, usage, toolCalls }\`). Pass the prebuilt \`finalizers.aiSdk\` for the Vercel AI SDK, or \`finalizers.readableStream\` for a raw \`ReadableStream\` (reading the AI SDK result's promises does not disturb the caller's stream, since it tees internally). This is **purely-additive instrumentation, NOT a refactor**: do it in the write-instrumentation step with no second confirmation. The trace stays replayable as long as the function's *inputs* are serializable. Never push the user into a structural rewrite of a streaming endpoint when \`finalize\` covers it.
+- **TypeScript: treat this root as an explicit opt-in fallback and use the \`withSpan\` \`finalize\` option** (\`withSpan(key, { type, finalize }, fn)\`). Keep this call stack entirely opt-in; never put this span beneath \`withTrace\`. The wrapped function returns the live stream to the caller unchanged; the span records \`await finalize(result)\` (e.g. \`{ text, usage, toolCalls }\`). Pass the prebuilt \`finalizers.aiSdk\` for the Vercel AI SDK, or \`finalizers.readableStream\` for a raw \`ReadableStream\` (reading the AI SDK result's promises does not disturb the caller's stream, since it tees internally). This is **purely-additive instrumentation, NOT a refactor**: do it in the write-instrumentation step with no second confirmation. The trace stays replayable as long as the function's *inputs* are serializable. Never push the user into a structural rewrite of a streaming endpoint when \`finalize\` covers it.
 - **Python: also use the \`finalize\` option** (\`@client.span(key, type=..., finalize=...)\`). The idiomatic, non-destructive shape is an **async generator** that \`yield\`s its chunks (the caller still receives every chunk); \`finalize\` then receives the collected chunks and returns a serializable summary. Pass \`finalizers.openai_chunks\` for OpenAI streaming or \`finalizers.anthropic_events\` for Anthropic. Same rule: **purely-additive, NOT a refactor**, no second confirmation. (Python streams are single-consumer, so prefer the async-generator form over draining a returned stream object.)
 - **Ruby / Go (no \`finalize\` yet): introduce a serializable completion.** Trace a core that runs the turn to completion and returns \`{ text, usage, ... }\`, with the streaming wired around it (the structural refactor below).
 
 Module-level dependencies (DB clients, env vars, config loaders, LLM clients) do **not** count *when accessed via module scope or closure*: replay resolves them from the app's runtime wiring instead of serializing them as span inputs. The same client passed *as a function argument* IS captured as input and WILL fail. The fix when an SDK client is the only unserializable piece is usually trivial: hoist it to module scope (or capture via closure) and drop it from the argument list, leaving the wrapped function's serializable args (issue, request, options-without-the-client) intact. When the natural outer boundary still has unserializable inputs after that, do **one** of the following **before writing code**:
 - **Instrument via the framework handler or processor** (preferred whenever the workflow runs on a supported framework: {{handlerFrameworksWithMethods}}). These split into two replayability cases, do not conflate them:
   - **Integrations that record a replayable root ({{replayableRootHandlerNames}}) are replayable as-is**, via one of two mechanisms. **Callback handlers** ({{callbackHandlerNames}}) record the framework invocation itself as the root span, with the framework's own serializable input (LangGraph initial state, agent prompt) as the recorded root input. **Trace processors** ({{traceProcessorNames}}) don't record the input themselves, so their run wrapper ({{traceProcessorRootWrappers}}) does it: a drop-in for the run call that records a keyed root carrying the run input, with the processor's auto-captured spans nesting underneath. Either way, the unserializable arguments above it (live dependency objects, billing callbacks, request contexts) never enter the trace, and no decorated root function needs to exist in the app code: the replay registry module passes the key to \`replay()\` with a plain callable that re-invokes the same framework entrypoint production calls with the recorded root input plus reconstructed runtime wiring (framework config and dependencies); the SDK wraps the callable internally. Unsafe calls made by that wiring still need replay-mockable marked spans; use no-op values only for replay-only callback slots with no recorded call to mock. On SDKs that predate explicit-key replay, wrap the callable under the same key yourself (Python \`@bitfab.span("<key>")\`, TS \`getFunction(key).withSpan(...)\`). The pattern is documented in the SDK docs' Replay section (handler subsection) and wired up in step {{step:instrument/write-instrumentation}} 11b. Never report one of these workflows as "not replayable" because no \`@span\`-decorated function exists in production code.
-  - **A bare trace processor ({{traceProcessorNames}}) with neither its run wrapper nor a manual root is NOT replayable.** The processor captures the run, but its root span records an empty input (verified against a live run: the OpenAI Agents agent span is the root and carries no recorded input). Pair it with the run wrapper ({{traceProcessorRootWrappers}}), the drop-in for the run call above, or a hand-written \`withSpan\`/\`@span\` root that takes the run input: the processor's auto-captured spans nest under that root, and replay runs against the root's serializable input. Do not treat a bare processor-only trace as replayable.
+  - **A bare trace processor ({{traceProcessorNames}}) with neither its run wrapper nor a manual root is NOT replayable.** The processor captures the run, but its root span records an empty input (verified against a live run: the OpenAI Agents agent span is the root and carries no recorded input). Pair it with the run wrapper ({{traceProcessorRootWrappers}}), the drop-in for the run call above, or, in a supported subtree runtime, a \`withTrace\`/\`trace\` root that takes the run input: the processor's auto-captured spans nest under that root, and replay runs against the root's serializable input. Use a hand-written span root only when opt-out is technically unavailable. Do not treat a bare processor-only trace as replayable.
 - **Move the trace boundary inward** to the first function whose inputs are serializable (e.g. trace \`processTurn(transcript, context)\` instead of \`handleSession(stream, peerConnection)\`). This is not a refactor.
 - **Refactor** so a function with serializable inputs exists. Two flavors, chosen per case in the refactor plan:
   - **Visibility refactor (common)**: the logic that takes serializable inputs already exists inline but isn't importable (embedded in a route handler, not exported). Extract it into a named, exported function at module scope. No semantic change.
@@ -19795,141 +18932,32 @@ Raise this with the user in step {{step:instrument/present-workflows}} (not late
         {
           id: "choose-discovery",
           kind: "branch",
-          toolCalls: ["listTracePlans", "ask"],
-          title: "Reuse an analyze-repo draft, scan, or point to a target",
-          body: `**First, check for reusable draft plans.** Call {{tool:listTracePlans}} with \`{ source: "analyze_repo", status: "awaiting" }\` (it returns only this org's unconfirmed, non-expired \`{{cmd}}setup analyze-repo\` drafts, newest first). This is a silent probe, do not narrate the call itself.
-
-**If drafts came back, print them for the user before asking, so they can choose which to wire up.** List every draft as a numbered item (this is the menu they will pick from in step {{step:instrument/reconcile-existing-plan}}), each showing enough to decide on, straight from the {{tool:listTracePlans}} output:
-- **root name** and its **trace function key**
-- the root **file**
-- **frameworks** detected in the plan (when any)
-- **recommended capture**: N of M nodes
-- how long ago it was drafted
-
-**Evaluate these two routes before you ask anything.** Step {{step:instrument/search-existing}} may already have settled this question, and re-asking several steps and an SDK install later is asking the user to repeat themselves:
-
-{{whens}}
-
-**Awaiting drafts override both**, because they are new information the user has not seen: when the probe returns any, ask instead, and say in one line what their earlier answer was so the re-ask reads as an update rather than a memory lapse.
-
-When neither route fires, {{askVerb}} what to instrument:
-
-{{branches}}
-
-**Option C is a free-text option, not a promise of a second question.** Say in the question's own text that they can type the file, function, or directory instead of picking anything, so a user who already knows their target answers in the same breath and never sees a follow-up prompt. The scan (**B**) is the only option that spends real time, which is why it is worth a fork at all. **An answer that names a file, function, or directory IS option C**, whether it arrives as typed free text, as a note on a selection, or as the label plus a name: route it to C and take the name, never re-ask because no option came back selected.
-
-**Option A (reuse the drafts) is only present when {{tool:listTracePlans}} returned at least one draft.** When drafts exist, offer A first and recommend it, wiring up an existing draft is the whole point of having run \`analyze-repo\` first. **When there are no drafts, omit A entirely and present only the scan and point-to-target options** (the plain two-way choice, with no mention of trace plans); in that case recommend the scan option instead.
-
-If they pick **A**, go to step {{step:instrument/reconcile-existing-plan}} to wire up the picked drafts (a draft is a starting point, not a commitment: it is still presented for review and can be adjusted or cancelled before any code is written). If they pick **B**, do the full codebase scan in step {{step:instrument/identify-workflows}}.
-
-**If they pick C, they have just told you they know what they want; the only thing you are missing is its name, and it usually arrives with the answer.** If they named it anywhere (the free text they typed on this question, their original invocation, or earlier in the session), take that and go straight to step {{step:instrument/read-target}}. Only when C comes back bare, with no target named, do you **ask in plain chat and wait for their next message**, one line, e.g. "Which file, function, or directory should I instrument?". Do NOT turn it into an options question (the answer is free-form, and options would only stand between the user and typing it), and **do NOT read, grep, or list the codebase to assemble candidate targets to offer them**. Scanning for candidates is option B, the option they just declined, and a menu of the three roots you happened to find is worse than an empty prompt: the target they have in mind may not be on it, and offering it reads as ignoring their answer. Once they name it, go to step {{step:instrument/read-target}} to read just that location, skipping the broad scan.`,
+          title: "Choose the workflow to instrument",
+          body: "Use the target or discovery choice already supplied in this conversation. If a target is known, read it directly; if the user already requested a scan, scan now. Ask only when the target is still unclear. {{whens}} {{branches}}",
+          toolCalls: ["ask"],
           branches: [
             {
-              when: "the existing-SDK-usage menu already chose to search for more workflows, and the draft probe returned nothing",
-              description: "skip the question and scan",
-              next: "instrument/identify-workflows"
-            },
-            {
-              when: "the existing-SDK-usage menu already named a target to instrument, and the draft probe returned nothing",
-              description: "skip the question and read the named target",
+              when: "a target file, function, or directory is already known",
               next: "instrument/read-target"
             },
             {
-              option: {
-                letter: "A",
-                label: "Reuse an analyze-repo draft plan",
-                description: "only shown when drafts exist: pick from the printed drafts and wire them up one at a time"
-              },
-              recommended: true,
-              next: "instrument/reconcile-existing-plan"
-            },
-            {
-              option: {
-                letter: "B",
-                label: "Find workflows for me",
-                description: "scan the codebase for every AI call, agent, and LLM-driven decision"
-              },
+              when: "the user already asked to discover workflows",
               next: "instrument/identify-workflows"
             },
             {
               option: {
-                letter: "C",
-                label: "I'll name the target",
-                description: "type the file, function, or directory and I read only that, no codebase scan"
-              },
-              next: "instrument/read-target"
-            }
-          ]
-        },
-        {
-          id: "reconcile-existing-plan",
-          kind: "branch",
-          toolCalls: [
-            "ask",
-            "read",
-            "grep",
-            "getTracePlan",
-            "saveTracePlan",
-            "cancelTracePlan",
-            "listFunctions"
-          ],
-          title: "Reconcile the selected draft against the current code",
-          body: `You reached this step by choosing to reuse a saved trace plan: either option A at step {{step:instrument/choose-discovery}} (the first pass) or the saved-plan option at step {{step:instrument/next-workflow}} (a later loop, after instrumenting something). Both arrive here to wire up drafts one at a time.
-
-**If you do not currently hold an unprocessed batch queue** (a fresh arrival from either step), **{{askVerb}} which of the awaiting drafts you just listed to instrument** (they may pick one or several) and hold the selected plan ids as an ordered **batch queue**. **If you already hold a queue with unprocessed drafts left** (you looped back here from a skip below), do not ask again, just take the next unprocessed draft. Process them **one at a time**, exactly like the discovery loop instruments one workflow per cycle, never several at once. **Only once a queue you were actively processing is fully consumed (every selected draft processed or skipped) do you leave to step {{step:instrument/next-workflow}}** to pick the next move, never bounce back there without a fresh selection.
-
-**For the current draft, reconcile it against the CURRENT code, a draft is a snapshot from analyze-repo time and the code may have moved on** (a prior draft in this same batch, a manual wrap, or an earlier session may already have instrumented this workflow; the root may also have been renamed, moved, or deleted). Reconcile now, before you present or open the plan, so you never surface a plan the user can't act on: presenting a plan you're about to abandon (already instrumented, or stale) just wastes their time on a moot review.
-- Read the draft's tree with {{tool:getTracePlan}} \`{ planId }\` (this reads the draft without confirming it).
-- Read the plan's root file at its recorded \`file\`/\`line\`, and grep the root and captured-node locations for existing SDK instrumentation, the plan's own trace function key (\`getFunction("<key>")\` / \`get_function\` / \`bitfab_function\` / \`WithFunctionName\`) and span wrappers (\`withSpan\` / \`@span\` / \`bitfab_span\` / \`client.Span\`).
-- Cross-check the key against {{tool:listFunctions}}: a key that already appears there is live and sending traces.
-- **While you are in these files, also Read every captured node's signature** (the plan carries \`file\`, \`line\`, \`signature\` on each node) and note the plan's replay dependencies (captured \`external_read\` / \`side_effect\` nodes), so that if this draft proceeds you carry into step {{step:instrument/write-instrumentation}} the same context a discovery cycle would have held (its mock / DB-snapshot follow-ups included), and steps {{step:instrument/build-trace-plan}} and {{step:instrument/write-instrumentation}} do not have to re-read the code.
-
-Then take the branch that matches what you found, **do not blindly wrap**: wrapping a root that is already instrumented would duplicate the trace, you would create a second root span over the same call and the workflow would report twice.
-
-{{branches}}
-
-**A** is the normal reuse case: it carries the existing draft plan id into step {{step:instrument/build-trace-plan}}, which presents the already-built draft (no re-build) and opens/confirms it exactly like a freshly built plan.
-
-**C** repairs the draft instead of throwing it away. The workflow still exists, the draft just describes where it used to be, so rebuild its tree from the current code (the same reconcile rules \`{{cmd}}setup modify\` uses: keep a node's id, samples, and analysis where its implementation identity is clear, mint new ids for genuinely new nodes, and backfill \`sampleInput\` / \`sampleOutput\` / \`analysis\` on anything you added or changed), then save it back onto the SAME draft with {{tool:saveTracePlan}} \`{ planId, tree, capturedNodeIds }\`. A structural update may replace \`tree.rootId\`, so a moved or renamed boundary is a refresh, not a reason for a second plan. Carry that same plan id and your refreshed tree into step {{step:instrument/build-trace-plan}}. Say in one line what moved. Never leave a stale draft in the reuse list for a later session to pick up, and never create a competing plan for a key that already has one.
-
-**B** and **D** retire this draft with {{tool:cancelTracePlan}} and loop back here for the next queued draft, so a moot draft never reaches the user and never resurfaces in a later probe. Cancelling is final, which is right here precisely because there is nothing left to wire up. For **B**, say the workflow is already set up and that you retired the draft, then offer \`{{cmd}}setup modify <key>\` to change what it captures (or \`{{cmd}}assistant\` to iterate on its quality); Modify rebuilds the plan from the live code, so retiring the draft costs the user nothing. For **D**, say the workflow the draft described no longer exists and that you retired the draft.`,
-          branches: [
-            {
-              when: "greenfield: nothing at the root or captured nodes is already wrapped, and the code still matches the plan",
-              option: {
                 letter: "A",
-                label: "Wire up this draft",
-                description: "the normal case: present the draft, confirm it, then instrument"
+                label: "Find workflows for me"
               },
-              recommended: true,
-              next: "instrument/build-trace-plan"
+              next: "instrument/identify-workflows",
+              recommended: true
             },
             {
-              when: "already or partially instrumented under this key (root wrapped, per-node `alreadyTraced`, or the key already live in list_trace_functions)",
               option: {
                 letter: "B",
-                label: "Already instrumented, retire the draft",
-                description: "re-wrapping would duplicate the root span; cancel the draft, offer `setup modify`, move to the next draft"
+                label: "I'll name the target"
               },
-              next: "instrument/reconcile-existing-plan"
-            },
-            {
-              when: "stale but alive: the workflow still exists, and the plan's root or captured nodes moved, were renamed, or were refactored since the draft was written",
-              option: {
-                letter: "C",
-                label: "Refresh this draft in place",
-                description: "rebuild the tree from current code, save it onto the same plan id, then present it"
-              },
-              next: "instrument/build-trace-plan"
-            },
-            {
-              when: "gone: the workflow the draft describes no longer exists (deleted, or its AI calls were removed)",
-              option: {
-                letter: "D",
-                label: "Workflow gone, retire the draft",
-                description: "nothing left to instrument; cancel the draft and move to the next one"
-              },
-              next: "instrument/reconcile-existing-plan"
+              next: "instrument/read-target"
             }
           ]
         },
@@ -19938,7 +18966,7 @@ Then take the branch that matches what you found, **do not blindly wrap**: wrapp
           kind: "action",
           toolCalls: ["read", "grep"],
           title: "Identify all AI workflows in the codebase",
-          body: "Read the codebase to identify ALL AI workflows, every place the app makes LLM calls, runs agents, or makes AI-driven decisions. For each, find the **outer workflow boundary** (per the rule in step {{step:instrument/explain-trace-boundary}}), and also note any meaningful work **above** the agent/LLM call (auth, validation, input prep, retry/orchestration loops, multi-agent coordination), **alongside** it (custom LLM calls outside the SDK, tools that aren't registered with the SDK, downstream services), and **below** it (post-processing, parsing, persistence). These are the manual spans that will sit around any auto-captured SDK content.",
+          body: "Read the codebase to identify ALL AI workflows, every place the app makes LLM calls, runs agents, or makes AI-driven decisions. For each, find the **outer workflow boundary** (per the rule in step {{step:instrument/explain-trace-boundary}}), and also note any meaningful work **above** the agent/LLM call (auth, validation, input prep, retry/orchestration loops, multi-agent coordination), **alongside** it (custom LLM calls outside the SDK, tools that aren't registered with the SDK, downstream services), and **below** it (post-processing, parsing, persistence). In supported TypeScript and Python workflows, this is the opt-out trace subtree; identify only the descendants that need explicit node policy. Only in fallback runtimes, identify the spans needed around auto-captured SDK content. Framework integrations in supported runtimes stay inside the opt-out trace subtree.",
           next: "instrument/present-workflows"
         },
         {
@@ -19946,7 +18974,7 @@ Then take the branch that matches what you found, **do not blindly wrap**: wrapp
           kind: "action",
           toolCalls: ["read", "grep"],
           title: "Read the workflow the user pointed to",
-          body: "The user named a specific file, function, or directory to instrument. Read just that location and its immediate surroundings, do NOT scan the rest of the codebase. Find the **outer workflow boundary** there (per the rule in step {{step:instrument/explain-trace-boundary}}), and note the meaningful work **above** the agent/LLM call (auth, validation, input prep, retry/orchestration loops, multi-agent coordination), **alongside** it (custom LLM calls outside the SDK, tools that aren't registered with the SDK, downstream services), and **below** it (post-processing, parsing, persistence). These are the manual spans that will sit around any auto-captured SDK content. If the location holds more than one distinct AI workflow, note each.",
+          body: "The user named a specific file, function, or directory to instrument. Read just that location and its immediate surroundings, do NOT scan the rest of the codebase. Find the **outer workflow boundary** there (per the rule in step {{step:instrument/explain-trace-boundary}}), and note the meaningful work **above** the agent/LLM call (auth, validation, input prep, retry/orchestration loops, multi-agent coordination), **alongside** it (custom LLM calls outside the SDK, tools that aren't registered with the SDK, downstream services), and **below** it (post-processing, parsing, persistence). In supported TypeScript and Python workflows, this is the opt-out trace subtree; identify only the descendants that need explicit node policy. Only in fallback runtimes, identify the spans needed around auto-captured SDK content. Framework integrations in supported runtimes stay inside the opt-out trace subtree. If the location holds more than one distinct AI workflow, note each.",
           next: "instrument/present-workflows"
         },
         {
@@ -19958,121 +18986,25 @@ Then take the branch that matches what you found, **do not blindly wrap**: wrapp
           body: `Present a numbered list of workflows found, ordered by value (most complex or LLM-heavy first). For each, give:
 - **Trace boundary**: the outer workflow function that will be the trace function root (per step {{step:instrument/explain-trace-boundary}}, NOT the SDK/agent call itself)
 - **Inputs**: the shape of the function's inputs, and an explicit note that they're serializable by the SDK's tracing layer. If the natural outer boundary's inputs are unserializable (live browser/runtime objects, HTTP req/res, stream writers, sockets, opaque request contexts, live dependency/billing objects), state that here and present the three resolutions from step {{step:instrument/explain-trace-boundary}} as part of this workflow's entry: **(a) instrument via the framework handler/processor** (recommended when the workflow runs on {{handlerFrameworkNames}}; for callback handlers, the handler-recorded root stays replayable by passing the key to \`replay()\` with a callable that invokes the same production framework entrypoint, using a same-key wrapper only on SDKs that predate explicit-key replay; for trace processors, {{traceProcessorNames}}, use the run wrapper ({{traceProcessorRootWrappers}}) in place of the run call so it records a replayable keyed root that takes the run input; a bare processor over plain \`run()\` records an empty-input root and is not replayable on its own), **(b) move the boundary inward to \`<specific inner function with serializable inputs>\`** (recommended when no framework handler applies and an obvious candidate exists; not a refactor), or **(c) refactor**. Do not proceed to step {{step:instrument/read-signatures}} until the user picks one, never instrument an unserializable root. **If the user picks (c), present a refactor plan, labeled as *visibility* (extract + export, logic unchanged) or *structural* (new pure-core fn), and get an explicit second confirmation before modifying code. See the "Refactor confirmation" rule below.**
-- **Output**: if the boundary returns a live stream (Vercel AI SDK \`streamText\` result, a \`ReadableStream\`, an SSE / streaming \`Response\`), note it here. In the **TypeScript and Python SDKs this is NOT a refactor**: instrument with the \`finalize\` option (TS \`withSpan(key, { finalize }, fn)\` with \`finalizers.aiSdk\` / \`finalizers.readableStream\`; Python \`@client.span(key, finalize=...)\` over an async generator with \`finalizers.openai_chunks\` / \`finalizers.anthropic_events\`), which records a serializable view while the live stream still reaches the caller (per step {{step:instrument/explain-trace-boundary}}). Present it as the plan, do not offer a structural rewrite for a streaming output when \`finalize\` covers it. On Ruby/Go, fall back to a serializable run-to-completion core.
+- **Sensitive capture**: identify calls whose inputs or outputs can contain secrets, credentials, private file contents, or other values the application's display redaction does not protect at capture time. This is not a reason to switch the workflow to opt-in spans. Keep the opt-out root and apply \`withNode\`/\`node\` capture controls at the smallest sensitive first-party boundary so the call remains in the trace without recording its content. If the sensitive value is inline in the root input/output and cannot be isolated additively, state that concrete blocker before writing instrumentation.
+- **Output**: if the boundary returns a live stream (Vercel AI SDK \`streamText\` result, a \`ReadableStream\`, an SSE / streaming \`Response\`), note it here. In the **TypeScript and Python SDKs this is NOT a refactor**: treat the streaming root as the explicit opt-in fallback, keep its selected call stack entirely opt-in, and instrument with the \`finalize\` option (TS \`withSpan(key, { finalize }, fn)\` with \`finalizers.aiSdk\` / \`finalizers.readableStream\`; Python \`@client.span(key, finalize=...)\` over an async generator with \`finalizers.openai_chunks\` / \`finalizers.anthropic_events\`), which records a serializable view while the live stream still reaches the caller (per step {{step:instrument/explain-trace-boundary}}). Present it as the instrumentation approach, do not offer a structural rewrite for a streaming output when \`finalize\` covers it. On Ruby/Go, fall back to a serializable run-to-completion core.
 - **Replay dependencies**: the external state and side-effecting dependencies the function touches that replay will have to deal with, walk what the boundary and its captured children call into: database reads, third-party APIs, queues, blob/file storage, clocks/RNG, stream writers, request/session/billing objects. Two follow-ups come out of this list, both wired up in step {{step:instrument/write-instrumentation}}:
   - **Replay safety**: every unsafe external action (database write, outbound mutation, queue publish, email, payment, or similar) must be a mockable descendant selected for recorded-output mocking, whether or not the dependency exists at replay time. Verify it executes in the replay root's context: Python worker-thread dispatch requires \`Bitfab(trace_across_threads=True)\`; Ruby child threads, pre-created consumers, and other processes do not inherit replay interception, so move the unsafe boundary into the replay context. For TypeScript, note any synchronous unsafe span because lazy \`mock: "marked"\` cannot substitute it; the replay registry module must use \`mock: "all"\` only when freezing every matched child is acceptable, otherwise the existing boundary must already return a Promise or the workflow is not safely replayable without a behavior-changing refactor. Separately, list runtime values the replay callable must synthesize because no value exists to pass (stream writers, request/session objects, sockets, or replay-only callback slots); these are wiring, not the replay safety boundary.
   - **Database snapshotting**: if the function **reads stored state from the database** (anything where the answer depends on the rows as they were at trace time, a decision over an order/account/document, a retrieval step), plain replay runs against *today's* data and is misleading. Flag it here and recommend \`{{cmd}}setup db-snapshot\` (TypeScript, Python, Ruby) so replay runs against the per-trace DB branch instead. If the function only writes, or never touches the DB, say so and skip it.
 - **What's covered end-to-end**: the work above, alongside, and below any agent/LLM/SDK call that this trace will capture (be specific: list the orchestration, custom LLM calls, tools, downstream services that will become spans)
 - **Why tracing it is valuable**
 
-The description must commit to the actual scope. If the plan will only auto-capture an SDK's internals, say so explicitly, do NOT use language like "complete tracing of X workflow" when the trace will only cover an SDK call's internals.
+The description must commit to the actual scope. If the instrumentation will only auto-capture an SDK's internals, say so explicitly, do NOT use language like "complete tracing of X workflow" when the trace will only cover an SDK call's internals.
 
-Recommend one to start with. **Ask the user to pick exactly ONE workflow to instrument first.** Never accept "multiple" or "all", instrumenting one workflow produces exactly one trace function with one trace plan and one set of code changes. If the user wants to instrument several, they will be done sequentially via the loop in step {{step:instrument/next-workflow}}, one at a time.`,
-          next: "instrument/read-signatures"
+Recommend one to start with. **Ask the user to pick exactly ONE workflow to instrument first.** Never accept "multiple" or "all", instrumenting one workflow produces exactly one trace function with one set of code changes. If the user wants to instrument several, they will be done sequentially via the loop in step {{step:instrument/next-workflow}}, one at a time.`,
+          next: "instrument/install-sdk"
         },
         {
           id: "read-signatures",
           kind: "action",
-          toolCalls: ["read"],
-          refs: ["reference"],
-          title: "Read function signatures referenced by the trace plan",
-          body: `**Read function signatures you'll reference in the trace plan**: root function first, then any whose parameter names or return fields aren't already obvious from the discovery read (the step {{step:instrument/identify-workflows}} scan, or the targeted step {{step:instrument/read-target}} read on the point-to-it path). Skipped leaf functions only need their names; don't Read them unless their shape appears in the plan. Never guess names. See "Trace Plan Format" and "Trace Plan Accuracy" in the Reference section below.`,
-          next: "instrument/build-trace-plan"
-        },
-        {
-          id: "build-trace-plan",
-          kind: "reference",
-          refs: ["reference"],
-          toolCalls: [
-            "ask",
-            "bash",
-            "saveTracePlan",
-            "confirmTracePlan",
-            "getTracePlan",
-            "listTracePlans",
-            "cancelTracePlan"
-          ],
-          commandCalls: ["openTracePlan", "openStudio"],
-          title: "Build and present the trace plan",
-          body: `**\uD83D\uDEA8 A trace plan is always delivered the same way: build the tree in memory, post it with {{tool:saveTracePlan}}, render it inline as ASCII (using the "Trace Plan Format" reference section below), then {{askVerb}} whether the user wants to review it in the browser (Studio) or just continue.** When the user says "create a trace plan", "give me the trace plan", "show me the trace plan", or "bitfab create a plan", that is a request to run this save-plan \u2192 render-ASCII \u2192 ask path, never a request to skip past the plan or to hand-type a plan you made up outside this flow. The inline ASCII IS the plan the user reviews in chat; Studio is an optional richer surface for reviewing and adjusting the captured set, offered every time but never forced. Build the tree in memory first, then call {{tool:saveTracePlan}}, then render.
-
-**Reuse entry (analyze-repo draft):** if you reached this step from step {{step:instrument/reconcile-existing-plan}}, the plan already exists, you hold its plan id, and you hold its tree: the stored one you read there with {{tool:getTracePlan}} (branch **A**), or the refreshed one you rebuilt and already saved onto that same plan id (branch **C**). Either way, **do NOT create a plan here**, and skip the replayability requirement and every tree-construction bullet below: analyze-repo already built and classified the draft, and reconcile already checked it against the current code. Go straight to the "**Render the trace plan inline as ASCII**" bullet using that plan id and tree, then present and confirm it (Continue \u2192 {{tool:confirmTracePlan}} the plan id; View in browser \u2192 {{command:openTracePlan}} the plan id) exactly as for a freshly built plan. Everything from that bullet on is shared, including the revise path: a change the user asks for here is another {{tool:saveTracePlan}} with the same \`planId\`, never a second plan.
-
-**\uD83D\uDEA8 Replayability requirement: verify the root is replayable BEFORE you construct the tree (non-Go projects).** The root you pick becomes the trace function that replay re-invokes with its serialized recorded input, so a plan rooted on an unserializable boundary is a plan the user accepts and then has to unwind into a refactor. That is the failure this requirement exists to prevent: never create such a plan in the first place. Do not build the \`TracePlanTree\` (and do not call {{tool:saveTracePlan}}) until the root you'll actually instrument clears one of these two cases:
-- **(1) Serializable input.** The root's own parameters round-trip through the SDK's tracing serializer (TypeScript/JSON, Python/JSON via Pydantic, Ruby/\`to_json\`, Go/\`json.Marshal\`). Re-check every argument against the unserializable list in step {{step:instrument/explain-trace-boundary}} (live SDK client instances, HTTP \`Request\`/\`Response\`, stream writers, sockets, opaque framework request contexts, an options/config bag smuggling a live client). A single live-client argument does NOT satisfy it: hoist it to module scope or capture it via closure and drop it from the signature first, then re-check the remaining args.
-- **(2) Replayable-root handler/processor.** The workflow runs on a callback handler that records a replayable framework-invocation root ({{callbackHandlerNames}}), OR a trace processor paired with its run wrapper ({{traceProcessorRootWrappers}}) that records a keyed root carrying the serializable run input. A bare processor over plain \`run()\` records an empty-input root and does NOT satisfy it.
-
-If the chosen root clears neither, **STOP, do not build or post the plan.** Return to step {{step:instrument/present-workflows}} and resolve it there first: **(a)** instrument via the framework handler/processor, **(b)** move the boundary inward to the first function whose inputs are serializable (not a refactor), or **(c)** refactor, after presenting the plan and getting an explicit yes (see the "Refactor confirmation" rules below). Only build and post the tree once the root is replayable under (1) or (2). The sole exception is a root the user has EXPLICITLY accepted as observe-only / non-replayable for this workflow; absent that explicit acceptance, an unserializable root is never a plan you create. (Go-only projects don't support replay, so this requirement doesn't apply, skip it.)
-
-**Build the trace plan under a hard constraint: the resulting instrumentation must be purely additive.** If a candidate tree requires *any* behavior change to make spans nest correctly (awaiting a stream that wasn't awaited, delaying a call, reordering operations, blocking a callback, restructuring control flow), the tree is invalid, restructure the *tree* instead (make spans siblings, split into separate trace functions across separate cycles, or accept a flatter shape). Never present a behavior-changing approach as an option, not even as a non-recommended alternative.
-
-**For callback-handler SDKs ({{callbackHandlerNames}}), do not add a manual outer root by default.** The handler records a replayable framework invocation root and auto-captures the framework subtree. If the workflow is only the graph/chain/agent invocation, build a handler-only plan: root = the framework invocation \`(agent)\`, children = \`[auto]\` framework spans. If there is meaningful production work around the framework call (input prep, non-framework retrieval, post-processing, persistence, downstream service calls), use a hybrid plan with a same-key \`withSpan\`/\`@span\` outer root and show the handler-captured subtree beneath it. Never wrap individual framework-managed nodes/tools/retrievers/model calls just to make them visible; the callback handler already captures them.
-
-**For trace processor SDKs (OpenAI Agents SDK, etc.), extend beyond the processor.** The processor only auto-captures what runs *inside* the SDK's instrumented call (LLM calls, tool calls, handoffs). Everything above it (orchestration, retries, input prep), alongside it (non-SDK LLM calls, unregistered tools, downstream services), and below it (post-processing, persistence) is invisible unless you add manual spans. Default to a **hybrid plan**: trace function root wraps the workflow with manual \`\u25CF\` spans, the SDK call appears as one \`(agent)\` child whose grandchildren are \`[auto]\` lines, and other manual spans capture the work around it. A bare auto-only plan (root = the SDK call, no surrounding manual spans) is only valid when the workflow truly is just the SDK call with no surrounding work, confirm there's nothing meaningful above/alongside/below before defaulting to it. **Even then, route the bare call through the run wrapper ({{traceProcessorRootWrappers}}) instead of plain \`run()\`: it records a replayable keyed root carrying the run input with the processor's spans nested underneath. A bare auto-only plan over plain \`run()\` records an empty-input root and is NOT replayable, which conflicts with the serializable-inputs requirement in step {{step:instrument/explain-trace-boundary}}: fall back to it only when the user has explicitly accepted an observable-only trace. Whenever there is surrounding work, use the hybrid plan with a \`withSpan\`/\`@span\` root that takes the run input.**
-
-**One flow = one trace function key.** When an outer \`@bitfab.span\` / \`withSpan\` / \`bitfab_span\` and a framework handler wrap the same work ({{keyedHandlerExamples}}), pass the **same key** to both, a second key splits one flow into two overlapping trace functions. Separate trace functions describe separate flows with their own standalone roots, never a sub-range of an outer flow.
-
-Then post the plan via {{tool:saveTracePlan}}, render it inline as ASCII, and offer Studio as an optional review surface (the render-and-ask sequence is spelled out at the bottom of this step).
-
-- Build a \`TracePlanTree\` (\`{ rootId, nodes: { [id]: TraceNode } }\`) from the same span tree you'd otherwise render. Each \`TraceNode\` carries \`id\` (stable, e.g. hash of \`file:line:name\`), \`name\`, \`kind\` ("manual" | "auto" | "pure"), \`file\`, \`line\`, \`signature\`, \`parentId\`, \`childIds\`, plus \`framework\` (for \`[auto]\` lines).
-- **Every captured node MUST include \`sampleInput\` and \`sampleOutput\`.** Without samples the confirmation page can't show the user what gets captured, which is the whole point. Construct realistic example values from the function's parameter and return types (Read the file and its return-type imports if needed); for SDK calls (\`openai.chat.completions.create\`, \`generateText\`, \`cohere.rerank\`, etc.) use the documented response shape. Do NOT call \`save_trace_plan\` with a captured node missing either field.
-- **Every node in the \`TracePlanTree\` carries an \`analysis\` describing what that node DOES**, including uncaptured surrounding context nodes. \`analysis\` is \`{ classification, innerCall?, sideEffectKind?, readKind?, inputSerializable?, outputSerializable? }\` with \`classification\` one of \`pure\` | \`model_call\` | \`external_read\` | \`side_effect\`. **Never leave a tree node unclassified**; the user may toggle any context node into the captured set in the UI, and it must already have a replay decision. You classify; the server derives \`mockOnReplay\` and the summary from it, so do NOT send them. The idea: mockable \`external_read\` and \`side_effect\` nodes serve their recorded output by default so replay isolates the external world; \`model_call\` and \`pure\` nodes re-run live by default, because improving LLM behavior is the point. The server suppresses that default mock for a broad external parent when mocking it would skip live descendants, so prefer the smallest span that actually crosses the DB/HTTP/write boundary.
-  - **Classify each node by its OWN body** (Read the body, don't guess from the name, a \`processOrder\` that charges a card reads "pure" from its name and is anything but), **excluding work already represented by child nodes in the tree.** A wrapper or orchestrator whose model call / read / write lives in a child is itself \`pure\`, that behavior belongs to the child, so never bubble it up to the parent or root. (An external call sitting **inline** with no child node of its own belongs to the enclosing node.) Prefer small leaf-like external boundaries: if a read/write wrapper contains parsing, ranking, prompt construction, model calls, or other code that should re-run, put the \`external_read\` / \`side_effect\` on the lower DB/HTTP/write call, not the wrapper.
-  - **Decision procedure per node (first match wins):**
-    1. **IS the model call**, the LLM invocation itself: an auto leaf (\`openai.chat.completions.create\`, a \`ChatOpenAI\` span) or a model call inline in this body \u2192 \`model_call\`. A chain \`.invoke\`, a graph node, or an orchestrator whose model call is represented by a child node is \`pure\`, not \`model_call\` (a \`kind: "auto"\` / \`framework\` tag alone does not make a span a model call; don't bubble a child's \`model_call\` up).
-    2. **Own body mutates external state** (DB write, outbound \`POST/PUT/PATCH/DELETE\`, queue, email, payment charge, file or vector write) \u2192 \`side_effect\` + \`sideEffectKind\` (\`db_write\` | \`http_outbound\` | \`queue\` | \`email\` | \`filesystem\` | \`vector_write\`). Defaults to recorded-output mocking when the span is mockable; **wins over \`model_call\`** when one span does both.
-    3. **Own body reads external mutable state** (DB \`SELECT\`, outbound \`GET\`, vector search, cache read) \u2192 \`external_read\` + \`readKind\` (\`db_read\` | \`http_read\` | \`vector_search\` | \`cache_read\` | \`filesystem_read\`).
-    4. **Otherwise** \u2192 \`pure\` (local compute: parsing, formatting, prompt construction, in-memory mutation, orchestration).
-  - **Invariant: a \`model_call\` is the leaf that issues the request, never a wrapper around one.** No \`model_call\` may have a \`model_call\` ancestor or descendant in the captured tree. The real model call is the single auto leaf that hits the API (\`openai.chat.completions.create\`, \`messages.create\`, a \`ChatOpenAI\` / \`ChatAnthropic\` span); every span above it (the chain \`.invoke\`, the LangGraph or agent node, your \`outline()\` / \`summary()\` wrapper) is \`pure\`, even when the framework labels it an LLM, chat, or chain span. After classifying, scan each parent-to-child line: if two \`model_call\`s sit on it, the upper one is wrong, demote it to \`pure\`. Nested \`model_call\`s are always a bug.
-  - **Worked example (LangChain LCEL, the shape agents most often get wrong).** App code: \`outline_chain = prompt | model | parser\` and \`def write_brief(topic): pts = outline_chain.invoke({...}); summary = summary_chain.invoke({...}); return ...\`. The callback handler auto-captures each chain's run tree, so a \`ChatOpenAI\` leaf span exists under each \`chain.invoke\`. **Capture that \`ChatOpenAI\` leaf** so \`model_call\` has a home. **Correct plan:** \`write_brief\` \u2192 \`pure\` (its own body only orchestrates chains; the model call lives in captured descendants), each \`outline_chain.invoke\` / \`summary_chain.invoke\` (RunnableSequence) \u2192 \`pure\` (wrapper), each \`ChatOpenAI\` leaf \u2192 \`model_call\` + \`mockable: false\` (\`kind: "auto"\`). **WRONG (the exact mistakes to avoid):** tagging \`write_brief\` or a \`chain.invoke\` as \`model_call\` (that is the nested-\`model_call\` bug), or leaving the \`ChatOpenAI\` leaf \`mockable\` (it is auto/observed).
-  - **Then set \`mockable\` from the wrapper kind and execution context:**
-    - \`kind: "manual"\` (a \`withSpan\` / \`@span\` you will hand-write) \u2192 mockable only when the call remains a descendant in the same replay context. Python thread pools / \`threading.Thread\` require \`Bitfab(trace_across_threads=True)\`; Ruby child threads, pre-created consumers, and other processes do not inherit replay interception. Move the boundary into the replay context or set \`mockable: false\` with the dispatch reason. **Python async-generator exception:** an async-generator \`@span\` cannot be mocked or overridden and must be marked \`mockable: false\`; move every unsafe operation inside it to a mockable sync or coroutine descendant before replay. **TypeScript synchronous-span exception:** a selected synchronous span cannot consume the lazy output used by \`mock: "marked"\`; record that the replay pipeline requires \`mock: "all"\` when freezing every matched child is acceptable, otherwise set \`mockable: false\` unless the existing boundary already returns a Promise. Never make a production function async just for replay.
-    - \`kind: "auto"\` (captured by a framework handler / processor / stream / collector) \u2192 **\`mockable: false\`** + \`unmockableReason\` (\`"<framework> spans are observed by instrumentation, not wrapped; replay re-runs them and cannot return the recorded output"\`). **Exceptions:** Vercel AI SDK model spans run through \`withSpan\`; LangGraph \`ToolNode\` tool spans configured through the Experimental (alpha) \`getLangGraphIntegration\` / \`get_langgraph_integration\` integration run through an integration-managed replay boundary. Both are mockable, so omit \`mockable\`. Callback-only LangGraph tool spans remain unmockable.
-    - the **root** \u2192 omit (never mockable; it starts the replay).
-    Why (one line, you don't re-derive it per node): mocking returns a span's recorded output *instead of* running the call, which only works when the call goes through a \`withSpan\` wrapper; \`auto\` framework spans are observed, not wrapped. Authoritative per-framework lookup:
-{{frameworkMockabilityBullets}}
-  - **Serializability, two facts separate from \`mockable\`.** Set \`outputSerializable: false\` when the recorded OUTPUT doesn't round-trip through serialization, and \`inputSerializable: false\` when the recorded INPUT doesn't (an argument is a DB client, an open stream, a callback, or a class instance with no JSON form); omit either when it serializes. Two rules the server enforces from these: it forces any \`outputSerializable: false\` node **unmockable** (replay has no recorded value to return), so **don't mock a node whose output isn't serializable**; and it flags the plan **not replayable** when the root's input isn't serializable, so **don't choose a root whose input isn't serializable**, promote the root to a caller that takes the serializable request / prompt / messages instead. Hazard the mechanical \`mockable\` rule above prevents: an \`auto\` \`external_read\` / \`side_effect\` (a framework tool hitting a DB / HTTP) left mockable promises a mock replay can't deliver; its real fix is a manual \`withSpan\` around that call (move the boundary) or a db-snapshot.
-  - Set \`innerCall: { name }\` on a \`model_call\` / \`external_read\` / \`side_effect\`. **Don't compute \`mockOnReplay\`**: the server defaults it to \`true\` for mockable \`external_read\` and \`side_effect\` nodes, except broad external parents with live descendants, and to \`false\` for \`model_call\` and \`pure\` nodes. Read the per-node mock decisions back from {{tool:getTracePlan}} after the user confirms.
-- **Include surrounding code as \`pure\` context nodes** so the captured set is legible inside its codebase context and the user can toggle additional nodes into the capture directly in the UI without leaving the page. The test for inclusion is **"would the user plausibly want this as its own span?"**: anything they might wrap as a deeper child of what is already captured, or add as a peer at the same depth. Walk in two directions:
-  - **~10 callees below each leaf**: candidates for **wrapping deeper spans**. For every captured leaf, walk downward (callees of that leaf, callees of those, etc.) and attach each as a \`pure\` descendant. Include any callee the user might plausibly want as its own span, LLM / tool / agent calls, prompt construction, response parsing, retry loops, fan-outs, post-processing that drives another model. Stop at pure plumbing (pass-through returns, trivial formatting or arithmetic, no further interesting activity) or ~10 nodes per leaf. **Don't stop just because you crossed an SDK / framework / stdlib boundary**: the test is "is this plausibly its own span?", not "is this in our code?".
-  - **~5 siblings per captured node BELOW the root**: candidates for **peer spans at the same depth**. For each captured node whose parent is the root or a descendant of it, include that parent's other callees (other functions invoked from the same wrapper) as \`pure\` siblings. These are the nodes the user might wrap alongside the existing capture to widen the trace sideways. **Don't generate siblings for the root**: a sibling of the root is by definition a child of the root's parent, which sits above the root and can never render. This removes nothing from under the root, the root's other callees still arrive as siblings of its captured children.
-  - **Every context node MUST be a descendant of the root.** The plan tree renders downward from \`rootId\`, so a node above the root, or on a side branch hanging off one of those ancestors, is stored and counted but never drawn. Do not attach callers of the root, and do not attach the root's own siblings.
-  All surrounding nodes get \`kind: "pure"\` and are **not** included in \`capturedNodeIds\`, but they still carry \`analysis\` under the same decision procedure as captured nodes. They serve two ends: **legibility** (the captured set sits inside its surrounding code so the user sees what is and isn't traced) and **modification** (they are the levers in the UI for expanding capture deeper).
-- **First check whether this key already has a plan.** Probe {{tool:listTracePlans}} with \`{ traceFunctionKey: "<the key you are about to use>", status: "awaiting" }\` (silent, don't narrate it). A key can already hold an unconfirmed plan the user never wired up (an \`{{cmd}}setup analyze-repo\` draft they didn't pick, or an earlier cycle they abandoned), and \`get_trace_plan\` by key would not show it because it answers only for confirmed plans. **If one comes back, save onto it** with \`{ planId, tree, capturedNodeIds }\` instead of creating, and say in one line that you refreshed the existing plan. **If several come back, save onto the newest and retire the older ones with {{tool:cancelTracePlan}}**, so the key is left holding exactly one plan rather than the pile a pre-rule run left behind. Only create when the probe is empty. (A *confirmed* plan for the key is different: leave it alone, it records what the code captures today, and changing an instrumented function's capture is \`{{cmd}}setup modify\`, not Instrument.)
-- **Only when that probe came back empty**, create the plan: call {{tool:saveTracePlan}} with \`{ language, tree, capturedNodeIds, traceFunctionKey }\` (and \`stats\` if you have a sample run). **These two bullets are one decision, not two steps: a run that saved onto an existing plan above has already posted this plan and must NOT also create one**, or the key ends up with the rival this probe exists to prevent. Everything below about the tree applies either way. \`capturedNodeIds\` is your initial recommendation, must form a connected sub-tree (selecting any descendant implies its ancestors). \`traceFunctionKey\` is the key you'll pass to \`getFunction\` / \`get_function\` / \`bitfab_function\` / \`WithFunctionName\` in step {{step:instrument/write-instrumentation}}; persisting it lets future Modify cycles recover stable node ids, samples, and confirmed capture intent via \`get_trace_plan({ traceFunctionKey })\` before reconciling that snapshot with current code. The server derives the plan's validation card (status pill + aggregate counts) from the per-node \`analysis\`, so you don't send a summary. The tool returns a plan id (and a \`https://bitfab.ai/studio/trace-plan/<id>\` URL).
-- **Render the trace plan inline as ASCII** using the "Trace Plan Format" reference section below (legend \u2192 grammar \u2192 template precedence \u2192 canonical example; default view unless the user asked to expand). This is the plan the user reviews in chat. Include the \`Files changed:\` footer as usual.
-
-- **Then {{askVerb}}** what they want to do next:
-  - **Open trace plan** (recommended), open the plan in Studio, the richer surface where they can toggle the captured set.
-  - **Continue instrumenting**, accept the plan as rendered inline and go straight to writing instrumentation, no Studio round-trip.
-  (If the user instead asks to "expand" (add \`\u25CB\` skipped lines), "adjust", or otherwise change the plan, rebuild the tree and **revise the plan you already saved**: call {{tool:saveTracePlan}} again with \`{ planId, tree, capturedNodeIds }\`, the same id it returned above. Then re-render the ASCII and ask again. **Never call {{tool:saveTracePlan}} without \`planId\` for a plan you are revising**, that leaves a competing plan for the same key behind, and the one the user reviews may not be the one a later \`{{cmd}}setup view\` or \`{{cmd}}setup modify\` finds.)
-
-- **If they pick Continue instrumenting:** call {{tool:confirmTracePlan}} with the plan id from the {{tool:saveTracePlan}} bullet above and your recommended \`capturedNodeIds\`. This persists the plan as *confirmed* (Studio's Close/Update button does this on the browser path; the continue path MUST do it here, otherwise the plan stays unconfirmed and a later \`{{cmd}}setup view\` or \`{{cmd}}setup modify\` for this key returns "no prior confirmed trace plan" even though setup succeeded). It returns the authoritative \`capturedNodeIds\` and per-node mock decisions, just like {{tool:getTracePlan}}, read those and proceed to step {{step:instrument/write-instrumentation}} using that captured set as-is. Every node should already be classified; if a captured node somehow lacks \`analysis\`, classify it now with the decision procedure above before instrumenting, never wrap a captured span without a mock decision.
-
-- **If they pick Open trace plan:** open the plan by running:
-
-\`\`\`bash
-{{command:openTracePlan}} <planId>
-\`\`\`
-
-(\`{{pluginRoot}}\` resolves to the plugin directory; \`<planId>\` is the id returned by {{tool:saveTracePlan}}.) The script navigates Studio to the trace plan page and stays alive until the user leaves that page{{#exec-polling}} (up to 30 minutes){{/exec-polling}}. Studio offers one button there: **Close** (leave the plan exactly as you drafted it) or **Save** (leave, saving the capture and mock toggles they made). **Nothing on that page is an abort:** Close, Update, and closing the window all mean "keep going", and none of them is a request for another round of plan edits.
-
-**Never wait on this command in the foreground.** Launch it as a background / long-running process, tell the user in one line that the plan is open and that **Close** or **Save** in Studio carries straight on into instrumentation, then {{askVerb}}: a single yes/no question, **"Continue instrumenting?"**, with **Continue** (recommended) and **Not yet**. **Say in the question's own text that Close or Update in Studio finishes it too, and that this question stays on screen the whole time they are over there, so coming back and picking either option is safe: what they saved in Studio is what gets instrumented.** Nothing can take the question down from outside the terminal, so an unexplained leftover prompt is the confusing part to pre-empt. It is a confirm, not a fork, the second option exists only because the ask tool requires at least two; free text is always available to the user on top of them, and anything they type there (e.g. "use a different root") is a change request, so treat it as one. Waiting is never an option, it is what the question sitting on screen already does.
-
-**\uD83D\uDEA8 When the question returns, read the background process's stdout BEFORE acting on the answer.** A terminal line that already landed means the user acted in Studio, and it always wins: they clicked Close or Update and then cleared the leftover question on their way back to the terminal. Acting on the answer first would send your own recommended \`capturedNodeIds\` to {{tool:confirmTracePlan}}, which the server rejects once the plan is confirmed ("Trace plan is confirmed, not awaiting"), and would leave you instrumenting that set while the stored plan holds the one they saved with **Save**: the code and the plan disagree, and the next Modify cycle bootstraps from the plan. Route on what you find:{{#exec-polling}}
-
-**Polling (mandatory, see the Blocking-process rule at the top of this skill):** keep polling the live exec session for its terminal line; the user's Close/Update arrives as stdout on the already-running process, not as a chat message.{{/exec-polling}}
-
-  - **A terminal line already arrived** (\`confirmed\` or \`cancelled\`): ignore the answer entirely and route on the event, per the lines below. A user who clicked Close or Update and then cleared the leftover question has already decided.
-  - **Nothing yet, and they picked Continue:** close the trace plan for them by running \`{{command:openStudio}} "/studio"\` (this navigates Studio off the plan page in place; never use \`{{command:closeStudio}}\` for this, the Studio tab stays open), stop the background \`openTracePlan\` process, then call {{tool:confirmTracePlan}} with the plan id and your recommended \`capturedNodeIds\` and go to step {{step:instrument/write-instrumentation}} with the set it returns. **If that call reports the plan is no longer awaiting, they saved in Studio in the moment between your read and your write:** call {{tool:getTracePlan}} and instrument the set it returns instead, never your own. A capture the user saved always outranks your recommendation, whichever order the two arrived in.
-  - **Nothing yet, and they picked Not yet:** say nothing further and keep reading the background process until it exits, then route on its terminal line. Do not re-ask. If the user types "continue" (or anything equivalent) before the process exits, take the Continue route above: **the user must always be able to finish without touching Studio.**
-  - **Nothing yet, and they typed a change instead:** **leave Studio open and leave the background process running.** Rebuild the tree and revise the plan in place: call {{tool:saveTracePlan}} with \`{ planId, tree, capturedNodeIds }\`, the same id you opened. The plan page re-renders on its own when the update lands, so the user watches their open plan change instead of losing the window, and the reader keeps waiting on the same plan. Re-render the ASCII inline and ask again. **Never create a second plan here**: an update keeps one plan per trace function key, where a fresh {{tool:saveTracePlan}} without \`planId\` would leave the abandoned one to expire and could confirm the wrong one.
-  - The script emits JSONL to stdout. If it emits \`{"event":"window-open-requested","url":"..."}\`, immediately surface the URL in a normal chat message, e.g. \`Opening Studio: <url>. Click it if a window doesn't appear\`, before continuing to read. (This event means the open was *requested*, not that a window is confirmed on screen; the link is the reliable fallback when nothing surfaces.) \`{"event":"session-ready","sessionId":"<uuid>"}\` appears once the Studio session is established (on a logged-out run, an \`{"event":"auth-required",...}\` then \`{"event":"authenticated",...}\` line precede it while the user signs in, keep waiting for \`session-ready\`). On exit, parse the final JSON line:
-    - \`{"event":"confirmed","planId":"<uuid>"}\`, the user clicked **Close** or **Save**. Continue instrumenting, this is not a request to revise the plan. The \`planId\` is normally the one you opened, because a revision updates that plan in place; it differs only when something created a new plan mid-session, and the script then auto-tracks the latest via \`tracePlan:created\` events. Either way, call {{tool:getTracePlan}} with the \`planId\` the event carries to read the authoritative \`capturedNodeIds\` for step {{step:instrument/write-instrumentation}}. If it differs from your initial recommendation (they clicked **Save**), prune \`[auto]\` lines whose ancestor manual span was uncaptured, and drop manual \`\u25CF\` wraps that aren't in the set. Every node should already be classified; if a confirmed captured node somehow lacks \`analysis\`, classify it now with the same decision procedure before instrumenting, never wrap a captured span without a mock decision (the UI renders an unclassified captured node as plain "runs live", which would silently let a side effect fire).
-    - \`{"event":"cancelled","planId":"<uuid>"}\`, the user left the plan page some other way (closed the Studio window, or released a plan that had expired). **Treat this as continue, not as an abort:** call {{tool:confirmTracePlan}} with the plan id and your recommended \`capturedNodeIds\`, then proceed to step {{step:instrument/write-instrumentation}} with the set it returns. If that call reports the plan is no longer awaiting, read it with {{tool:getTracePlan}} first: a **confirmed** plan means their **Save** landed as the window closed, so instrument the set it returns. Only when the stored plan is expired or cancelled (nothing of theirs to honor) do you instrument from the plan you rendered inline, and then say in one line that it wasn't persisted, so a later \`{{cmd}}setup view\` / \`{{cmd}}setup modify\` won't find a stored plan for this key. **Exception:** a \`"reason":"never-connected"\` field on the line means the Studio window never actually opened. Say that instead, and offer to re-run the command: the stale session is auto-cleared, so the re-run opens a fresh window.
-    - non-zero exit (including \`{"event":"timeout",...}\`), surface the error and **STOP**, do not write instrumentation. A timeout or crash means Studio never resolved, that is NOT the user leaving the plan page, so do not auto-proceed. {{askVerb}} whether to retry {{command:openTracePlan}} or to continue instrumenting (which then confirms the plan via {{tool:confirmTracePlan}} and proceeds to step {{step:instrument/write-instrumentation}}). Act only on their choice. The timeout kills the reader, not the page: a user who acts in Studio after it fires still saves their plan, so if that confirm reports the plan is no longer awaiting, instrument the set {{tool:getTracePlan}} returns.
-
-**If {{tool:saveTracePlan}} itself errors** (offline or MCP unreachable, so there is no plan id and no browser option): render the ASCII plan from your in-memory tree using the "Trace Plan Format" reference section, derive the per-node mock decisions yourself with the procedure above, and **STOP**: {{askVerb}} to confirm before writing code. **One error is not that, and it is the one exception to revising in place:** if a revision reports the plan is **cancelled** (the user released it by closing the Studio window), that plan is dead and cannot be revived. Call {{tool:saveTracePlan}} again *without* \`planId\` to create a fresh plan, carry on with the new id, and re-render. An expired plan needs no such handling: saving it revives it.`,
+          title: "Read the selected workflow and its dependencies",
+          body: "Read the selected root function, its exact signature, callers, and stateful dependencies. Choose a stable trace function key from the existing conventions. Preserve the real production entrypoint and caller behavior. Verify that recorded inputs can reconstruct the same root during replay; rebuild clients and framework objects inside the replay callable. For live stream outputs, use the documented finalize support and preserve streaming behavior. Read the SDK reference and use its native integration for the detected framework. Once this is established, proceed directly to instrumentation and replay setup. Ask only if the workflow itself remains ambiguous or a non-additive refactor is required; follow the refactor-confirmation appendix for that case.",
+          toolCalls: ["read", "grep"],
           next: "instrument/write-instrumentation"
         },
         {
@@ -20084,10 +19016,12 @@ Then post the plan via {{tool:saveTracePlan}}, render it inline as ASCII, and of
 
 **Delegate 11b to a subagent only when 11a is itself a large mechanical fan-out** (>10 files) whose generation genuinely overlaps the registry work. The subagent must follow the same registry-only contract.
 
-- **11a. Instrumentation edits**: follow the SDK reference exactly, purely additive. Never change behavior, arguments, return values, error handling, variable names, types, control flow, or code structure. **Wrapping means wrapping, not silently rewriting.** Default to attaching the span to the existing call. Rewriting, re-implementing, inlining, or hand-reconstructing a framework/SDK call to seat a root is sometimes genuinely necessary, but it is a refactor, not additive instrumentation: never do it silently as part of the write step. Any such rewrite must preserve behavior exactly (labeled *visibility* or *structural* in the refactor plan); a rewrite that would change behavior is never allowed, fall back to an additive root or move the boundary inward instead. Try the additive root first, when the natural root is opaque or stream-returning, reach for the framework handler/middleware or the \`finalize\` option wrapped around the *unchanged* call. If none of those fit and a rewrite really is required, STOP, present the refactor plan to the user in plain terms and get an explicit yes before touching the code (the "Refactor confirmation" rules below say what the plan must contain), then proceed once they approve. **Likewise, if the additive wrap doesn't typecheck, STOP and surface it rather than dropping or loosening an argument, weakening validation, or otherwise quietly changing runtime behavior to make it compile** (the same "no type-checker escape hatches, don't paper over it" rule the replay step enforces): a compile error on a purely-additive wrap means the wrap isn't additive, so either find the additive form or present it to the user as a refactor and get approval first. Batch repetitive edits into one message (many Edit calls); for large mechanical fan-outs (>10 files of the same wrapper pattern), validate the pattern on one file, then delegate the rest to a subagent. **For each span the trace plan marked \`mockOnReplay: true\`, pass that SpanOption when you wrap it** (TypeScript \`withSpan(key, { type, mockOnReplay: true }, fn)\`, Python \`@client.span(key, type=..., mock_on_replay=True)\`, Ruby equivalent), so replay's \`mock: "marked"\` strategy serves its recorded output. Spans the plan left not-mocked get the normal wrapper with no \`mockOnReplay\`.
+**Default instrumentation policy:** use opt-out tracing whenever the selected TypeScript or Python workflow supports it. TypeScript setup must install and configure \`@bitfab/transform\` in the application build, then put \`withTrace\`/\`trace\` on the existing workflow root. Python 3.12+ uses \`trace\` on the root. Let first-party descendants be discovered automatically and use \`withNode\`/\`node\` for external reads, unsafe side effects, model calls, naming, typing, capture overrides, finalization, and replay mocking. Do not add \`withSpan\` inside an opt-out trace. Existing \`withSpan\` usage is not a reason to extend the opt-in pattern. Spans remain supported, but during setup choose them only when opt-out is technically impossible: Ruby, Go, unsupported Python runtimes, a TypeScript build path unsupported by every documented transform adapter, or a live streaming root whose output opt-out tracing cannot finalize without changing behavior. Framework integrations and their generated spans remain nested beneath the opt-out root; they do not justify a span root. Adding a supported transform adapter, including the esbuild adapter used by tsup, is required setup work rather than a fallback reason. Report the concrete technical blocker and keep the selected call stack on one tracing surface.
+
+- **11a. Instrumentation edits**: follow the SDK reference exactly, purely additive. Never change behavior, arguments, return values, error handling, variable names, types, control flow, or code structure. **Wrapping means wrapping, not silently rewriting.** Attach the opt-out trace to the existing root and configure only the discovered nodes that need policy. Rewriting, re-implementing, inlining, or hand-reconstructing a framework/SDK call to seat a root is sometimes genuinely necessary, but it is a refactor, not additive instrumentation: never do it silently as part of the write step. Any such rewrite must preserve behavior exactly (labeled *visibility* or *structural* in the refactor plan); a rewrite that would change behavior is never allowed, fall back to an additive root or move the boundary inward instead. Try the additive root first, when the natural root is opaque or stream-returning, reach for the framework handler/middleware or the \`finalize\` option wrapped around the *unchanged* call. If none of those fit and a rewrite really is required, STOP, present the refactor plan to the user in plain terms and get an explicit yes before touching the code (the "Refactor confirmation" rules below say what the plan must contain), then proceed once they approve. **Likewise, if the additive wrap doesn't typecheck, STOP and surface it rather than dropping or loosening an argument, weakening validation, or otherwise quietly changing runtime behavior to make it compile** (the same "no type-checker escape hatches, don't paper over it" rule the replay step enforces): a compile error on a purely-additive wrap means the wrap isn't additive, so either find the additive form or present it to the user as a refactor and get approval first. Batch repetitive edits into one message (many Edit calls); for large mechanical fan-outs (>10 files of the same wrapper pattern), validate the pattern on one file, then delegate the rest to a subagent. **For each external read or unsafe side effect that replay must mock, configure the discovered node with replay mocking** (TypeScript \`withNode({ type, mockOnReplay: true }, fn)\` / \`@client.node(...)\`; Python \`@client.node(type=..., mock_on_replay=True)\`). Under opt-in fallback, put the equivalent option on the span. This lets replay's \`mock: "marked"\` strategy serve its recorded output without mixing tracing surfaces.
 
 - **11b. Replay registry module**: write or update the project registry (\`scripts/replayRegistry.ts\`, \`scripts/replay_registry.py\`, \`scripts/replay_registry.rb\`, or the project equivalent), grounded in the Replay section already fetched.
-  - **Trace function key**: confirmed in the trace plan.
+  - **Trace function key**: chosen for this workflow.
   - **Trace function root**: record the exact production symbol, signature, file, and import the registry entry will reference.
   - **Replay root parity (hard rule)**: register the exact same exported top-level traced wrapper that production/runtime calls to create the root span. You must do this unless it is genuinely impossible in the host app; inconvenience, extra refactoring, an inline wrapper, or needing to move code is not impossible. If production creates it inline, extract it into the nearest appropriate service/module, export it, and update both production and replay to import and call that same symbol. Do not replay a convenient inner helper unless that exact helper is also the production root traced wrapper. Avoid duplicate semantic wrappers split across production and replay with names like \`runX\`, \`processX\`, or \`generateX\`. Handler roots register a plain callable that re-invokes the same framework entrypoint production calls with an explicit trace function key.
   {{handlerReplayBlock}}
@@ -20100,11 +19034,13 @@ Then post the plan via {{tool:saveTracePlan}}, render it inline as ASCII, and of
   - **Side-effect check**: if importing the instrumented function triggers module-level side effects (booting listeners/ports/prod connections), do not work around it silently; flag it to the user (a subagent returns that fact in its report so the main agent can flag it).
   - **Result**: confirm the registry module path and the exact \`bitfab-replay --registry ...\` command. Surface signature mismatches or import side effects.{{/codex}}{{#codex}}**Write instrumentation AND the replay registry module for this trace function in the same cycle.** Skip the registry for Go-only projects.
 
-- **11a. Instrumentation edits**: follow the SDK reference exactly, purely additive. Never change behavior, arguments, return values, error handling, variable names, types, control flow, or code structure. **Wrapping means wrapping, not silently rewriting.** Default to attaching the span to the existing call. Rewriting, re-implementing, inlining, or hand-reconstructing a framework/SDK call to seat a root is sometimes genuinely necessary, but it is a refactor, not additive instrumentation: never do it silently as part of the write step. Any such rewrite must preserve behavior exactly (labeled *visibility* or *structural* in the refactor plan); a rewrite that would change behavior is never allowed, fall back to an additive root or move the boundary inward instead. Try the additive root first, when the natural root is opaque or stream-returning, reach for the framework handler/middleware or the \`finalize\` option wrapped around the *unchanged* call. If none of those fit and a rewrite really is required, STOP, present the refactor plan to the user in plain terms and get an explicit yes before touching the code (the "Refactor confirmation" rules below say what the plan must contain), then proceed once they approve. **Likewise, if the additive wrap doesn't typecheck, STOP and surface it rather than dropping or loosening an argument, weakening validation, or otherwise quietly changing runtime behavior to make it compile** (the same "no type-checker escape hatches, don't paper over it" rule the replay step enforces): a compile error on a purely-additive wrap means the wrap isn't additive, so either find the additive form or present it to the user as a refactor and get approval first. Batch repetitive edits in parallel (one message, many Edit calls); for large mechanical fan-outs (>10 files of the same wrapper pattern), validate the pattern on one file, then do the remaining files. **For each span the trace plan marked \`mockOnReplay: true\`, pass that SpanOption when you wrap it** (TypeScript \`withSpan(key, { type, mockOnReplay: true }, fn)\`, Python \`@client.span(key, type=..., mock_on_replay=True)\`, Ruby equivalent), so replay's \`mock: "marked"\` strategy serves its recorded output. Spans the plan left not-mocked get the normal wrapper with no \`mockOnReplay\`.
+**Default instrumentation policy:** use opt-out tracing whenever the selected TypeScript or Python workflow supports it. TypeScript setup must install and configure \`@bitfab/transform\` in the application build, then put \`withTrace\`/\`trace\` on the existing workflow root. Python 3.12+ uses \`trace\` on the root. Let first-party descendants be discovered automatically and use \`withNode\`/\`node\` for external reads, unsafe side effects, model calls, naming, typing, capture overrides, finalization, and replay mocking. Do not add \`withSpan\` inside an opt-out trace. Existing \`withSpan\` usage is not a reason to extend the opt-in pattern. Spans remain supported, but during setup choose them only when opt-out is technically impossible: Ruby, Go, unsupported Python runtimes, a TypeScript build path unsupported by every documented transform adapter, or a live streaming root whose output opt-out tracing cannot finalize without changing behavior. Framework integrations and their generated spans remain nested beneath the opt-out root; they do not justify a span root. Adding a supported transform adapter, including the esbuild adapter used by tsup, is required setup work rather than a fallback reason. Report the concrete technical blocker and keep the selected call stack on one tracing surface.
+
+- **11a. Instrumentation edits**: follow the SDK reference exactly, purely additive. Never change behavior, arguments, return values, error handling, variable names, types, control flow, or code structure. **Wrapping means wrapping, not silently rewriting.** Attach the opt-out trace to the existing root and configure only the discovered nodes that need policy. Rewriting, re-implementing, inlining, or hand-reconstructing a framework/SDK call to seat a root is sometimes genuinely necessary, but it is a refactor, not additive instrumentation: never do it silently as part of the write step. Any such rewrite must preserve behavior exactly (labeled *visibility* or *structural* in the refactor plan); a rewrite that would change behavior is never allowed, fall back to an additive root or move the boundary inward instead. Try the additive root first, when the natural root is opaque or stream-returning, reach for the framework handler/middleware or the \`finalize\` option wrapped around the *unchanged* call. If none of those fit and a rewrite really is required, STOP, present the refactor plan to the user in plain terms and get an explicit yes before touching the code (the "Refactor confirmation" rules below say what the plan must contain), then proceed once they approve. **Likewise, if the additive wrap doesn't typecheck, STOP and surface it rather than dropping or loosening an argument, weakening validation, or otherwise quietly changing runtime behavior to make it compile** (the same "no type-checker escape hatches, don't paper over it" rule the replay step enforces): a compile error on a purely-additive wrap means the wrap isn't additive, so either find the additive form or present it to the user as a refactor and get approval first. Batch repetitive edits in parallel (one message, many Edit calls); for large mechanical fan-outs (>10 files of the same wrapper pattern), validate the pattern on one file, then do the remaining files. **For each external read or unsafe side effect that replay must mock, configure the discovered node with replay mocking** (TypeScript \`withNode({ type, mockOnReplay: true }, fn)\` / \`@client.node(...)\`; Python \`@client.node(type=..., mock_on_replay=True)\`). Under opt-in fallback, put the equivalent option on the span. This lets replay's \`mock: "marked"\` strategy serve its recorded output without mixing tracing surfaces.
 
 - **11b. Replay registry edits**: write or update the registry module alongside instrumentation, using the registry-only contract above:
   - **Language + SDK replay reference URL**: use \`https://docs.bitfab.ai/<language>-sdk.md\` and re-check the Replay Registry section.
-  - **Trace function key**: as confirmed in the trace plan.
+  - **Trace function key**: as chosen for this workflow.
   - **Trace function root**: record the exact production symbol, signature, file, and import the registry entry will reference.
   - **Replay root parity (hard rule)**: register the exact same exported top-level traced wrapper that production/runtime calls to create the root span. You must do this unless it is genuinely impossible in the host app; inconvenience, extra refactoring, an inline wrapper, or needing to move code is not impossible. If production creates it inline, extract it into the nearest appropriate service/module, export it, and update both production and replay to import and call that same symbol. Do not replay a convenient inner helper unless that exact helper is also the production root traced wrapper. Avoid duplicate semantic wrappers split across production and replay with names like \`runX\`, \`processX\`, or \`generateX\`. Handler roots register a plain callable that re-invokes the same framework entrypoint production calls with an explicit trace function key.
   {{handlerReplayBlock}}
@@ -20116,14 +19052,14 @@ Then post the plan via {{tool:saveTracePlan}}, render it inline as ASCII, and of
   - **Per-item error tolerance**: do not catch errors inside the registered function or replace them with placeholders; the SDK executable preserves replay and trace errors while continuing the batch.
   - **Side-effect check**: if importing the instrumented function triggers module-level side effects (booting listeners/ports or making external calls), stop and surface the blocker. Import-time work runs before replay interception exists; defer every unsafe action behind a replay-mockable marked span instead of choosing a different deployment environment.{{/codex}}
 
-The trace plan's \`Files changed:\` list must include the replay registry module path for this cycle alongside the instrumented files.`,
+Include the replay registry module in the change summary alongside the instrumented files.`,
           next: "instrument/tell-user-how-to-run"
         },
         {
           id: "tell-user-how-to-run",
           kind: "action",
           title: "Tell the user how to generate traces and run replay",
-          body: `Give the user a clear completion message that explains how to run the instrumented workflow and, once traces exist, the SDK-installed replay command with this registry. If the repository reveals an exact command or user action that drives the real instrumented path, provide it. If it does not, name the application path or workflow that must be exercised without inventing a command. Always give the exact \`bitfab-replay --registry ...\` command when a registry was created. Do NOT run either command yourself. (Omit the replay command for Go-only projects.) **If step {{step:instrument/present-workflows}} flagged this function as reading stored DB state (or, on the analyze-repo reuse path where that step was skipped, reconcile at step {{step:instrument/reconcile-existing-plan}} noted a captured node that reads stored database state, an \`external_read\` with \`readKind: db_read\` specifically, not an \`http_read\` / \`vector_search\` / \`cache_read\` / \`filesystem_read\`)** (TypeScript, Python, Ruby), add one line: replay currently reads today's data, run \`{{cmd}}setup db-snapshot\` to make it replay against the database state at trace time.
+          body: `Give the user a clear completion message that explains how to run the instrumented workflow and, once traces exist, the SDK-installed replay command with this registry. If the repository reveals an exact command or user action that drives the real instrumented path, provide it. If it does not, name the application path or workflow that must be exercised without inventing a command. Always give the exact \`bitfab-replay --registry ...\` command when a registry was created. Do NOT run either command yourself. (Omit the replay command for Go-only projects.) **If step {{step:instrument/present-workflows}} flagged this function as reading stored DB state (or reading the workflow at step {{step:instrument/read-signatures}} noted a captured node that reads stored database state, an \`external_read\` with \`readKind: db_read\` specifically, not an \`http_read\` / \`vector_search\` / \`cache_read\` / \`filesystem_read\`)** (TypeScript, Python, Ruby), add one line: replay currently reads today's data, run \`{{cmd}}setup db-snapshot\` to make it replay against the database state at trace time.
 
 **Generate the trace by driving the instrumented path, not by instrumenting a new one.** If the convenient local entrypoint (a dev CLI, script, or REPL) bypasses the wrapped root and calls the inner function directly, common when prod runs behind an orchestrator (Temporal, a job/queue worker), its trace won't match production. Say so, then steer to driving the real path or rerouting the harness through the wrapped entrypoint, never add a span to a dev/test-only entrypoint just to make its trace look right.
 
@@ -20143,48 +19079,31 @@ Replay root parity:
         {
           id: "next-workflow",
           kind: "branch",
-          toolCalls: ["listTracePlans", "ask"],
           title: "Pick the next workflow or finish",
-          body: `After the run instructions from step {{step:instrument/tell-user-how-to-run}}, decide what to instrument next.
-
-**First, silently re-probe {{tool:listTracePlans}} with \`{ source: "analyze_repo", status: "awaiting" }\` on EVERY pass through this step** (always, even if you already probed at step {{step:instrument/choose-discovery}} earlier this session: the remaining-draft set shrinks as you wire them up, so a draft the user hasn't instrumented yet must still surface here). Do not narrate the probe itself. **The probe self-cleans, so take what it returns at face value**: a draft you instrumented this session is \`confirmed\` by then, and a draft you retired at step {{step:instrument/reconcile-existing-plan}} was cancelled with {{tool:cancelTracePlan}}, so neither comes back as awaiting. What does come back is work the user has not dealt with yet. The one case to exclude by hand is a draft the user selected and then abandoned mid-cycle this session: it is still awaiting and legitimately reusable, but re-recommending it in the same breath they dropped it just loops them on it. If nothing remains to offer, treat it as no drafts left (omit option A). Then {{askVerb}} what to do next:
-
-{{branches}}
-
-**Option A (reuse a saved plan) is only present when {{tool:listTracePlans}} returned at least one awaiting draft.** When drafts remain, offer A first and recommend it (say how many remain), wiring up a plan the user already generated with \`{{cmd}}setup analyze-repo\` beats a fresh scan; picking it returns to step {{step:instrument/reconcile-existing-plan}} to reconcile and wire up the next draft (re-ask which of the remaining drafts to take). **When no awaiting drafts remain, omit A entirely.** B starts another cycle with a fresh full discovery scan (keeps the list complete when the previous cycle came from a targeted read that surfaced only one location). C is the free-text option for naming a different file, function, or directory: same rule as option C at step {{step:instrument/choose-discovery}}, say in the question text that they can just type the target, and if C still comes back bare, ask for it in plain chat and wait, never as an options question and never after scanning the codebase to build them a menu of candidates. D exits the Instrument loop.`,
+          body: "After reporting the completed instrumentation and how to run it, continue with another workflow if the user already requested one. Otherwise ask what to do next. {{branches}}",
+          toolCalls: ["ask"],
           branches: [
             {
               option: {
                 letter: "A",
-                label: "Instrument a saved trace plan",
-                description: "reuse one of the remaining analyze-repo drafts (only shown when drafts remain)"
-              },
-              recommended: true,
-              next: "instrument/reconcile-existing-plan"
-            },
-            {
-              option: {
-                letter: "B",
-                label: "Find another workflow for me",
-                description: "scan for the next uninstrumented AI call, agent, or decision and rank"
+                label: "Find another workflow"
               },
               next: "instrument/identify-workflows"
             },
             {
               option: {
-                letter: "C",
-                label: "I'll name the target",
-                description: "type a different file, function, or directory and I read only that, no scan"
+                letter: "B",
+                label: "I'll name another target"
               },
               next: "instrument/read-target"
             },
             {
               option: {
-                letter: "D",
-                label: "Done instrumenting",
-                description: "finish setup"
+                letter: "C",
+                label: "Done"
               },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish",
+              recommended: true
             }
           ]
         }
@@ -20210,11 +19129,11 @@ Every Modify cycle targets **exactly one** trace function. Never batch multiple 
             {
               when: "the key is already settled (passed as `{{cmd}}setup modify <key>`, or named at Instrument's existing-SDK-usage menu)",
               description: "skip the which-function question, the user already answered it",
-              next: "modify/reconstruct-current-plan"
+              next: "modify/read-current-instrumentation"
             },
             {
               when: "no instrumented trace functions exist (nothing to modify)",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               when: "one or more trace functions exist",
@@ -20228,156 +19147,22 @@ Every Modify cycle targets **exactly one** trace function. Never batch multiple 
           toolCalls: ["ask"],
           title: "Pick exactly ONE trace function",
           body: "**Pick exactly ONE trace function to modify.** (You only reach this step when the key is not already settled; a key named at Instrument's existing-SDK-usage menu or passed as `{{cmd}}setup modify <key>` routes past it.) {{askVerbCap}} with the list of existing keys. Recommend the one the user most recently instrumented (or the one most recently referenced in the current session) and explain why in one line.",
-          next: "modify/reconstruct-current-plan"
+          next: "modify/read-current-instrumentation"
         },
         {
-          id: "reconstruct-current-plan",
+          id: "read-current-instrumentation",
           kind: "action",
-          toolCalls: [
-            "getTracePlan",
-            "listTracePlans",
-            "cancelTracePlan",
-            "read",
-            "grep"
-          ],
-          refs: ["reference"],
-          title: "Reconcile the stored trace plan against current code",
-          body: `**Reconcile the most recent confirmed trace plan with the CURRENT code before treating either as the \`before\` \`TracePlanTree\`.** A stored plan preserves historical user intent, sample inputs/outputs, stable node ids, and surrounding context; it is never proof of what the code captures now. Code can add, remove, rename, move, or unwrap spans after confirmation, so every Modify cycle MUST reread and reconcile current instrumentation even when a prior plan exists.
-
-1. Call {{tool:getTracePlan}} with \`{ traceFunctionKey: "<chosen key>" }\` (no \`planId\`). Two outcomes:
-   - **Prior plan found**: parse the JSON block and hold its \`tree\` and \`capturedNodeIds\` as the stored snapshot. **Also record the plan's \`id\`** (the \`Trace plan: <uuid>\` line at the top of the response): step {{step:modify/present-diff}} updates THAT plan in place rather than uploading a competing plan. Do not skip the current-code read below.
-   - **"No prior confirmed trace plan found"**: that answer only rules out a *confirmed* plan, which is not the same as no plan. **Before concluding there is none, probe {{tool:listTracePlans}} with \`{ traceFunctionKey: "<chosen key>", status: "awaiting" }\`** (a silent probe, don't narrate it). An unconfirmed plan for this key is common: an \`{{cmd}}setup analyze-repo\` draft nobody wired up, or a plan whose confirmation never landed because Studio was closed the wrong way.
-     - **An awaiting plan came back**: take the newest, read it with {{tool:getTracePlan}} \`{ planId }\`, and treat it exactly like the prior-plan case above (hold its tree and captured set as the stored snapshot, record its id for step {{step:modify/present-diff}} to update). Say in one line that you are revising the existing unconfirmed plan for this key. **If the probe returned several, retire the ones you did not take with {{tool:cancelTracePlan}}**: a key that already accumulated duplicates should leave this cycle holding one plan, not the newest plus a tail of reusable strays.
-     - **Nothing came back**: there is genuinely no stored snapshot for this key (key created outside the skill, or an older cycle that predates the stored plan). You have no prior plan id, so step {{step:modify/present-diff}} creates a plan after the current-code read.
-2. **Inventory the current instrumentation from code (mandatory in both outcomes).** Search for the exact chosen key's root registration plus every span bound to that trace function/client and every keyed framework handler, run wrapper, middleware, or processor that contributes auto-captured spans. Read every matched implementation and every still-existing file referenced by the stored snapshot. Map what the code captures now into a code-derived \`TracePlanTree\` (\`{ rootId, nodes: { [id]: TraceNode } }\`, same shape used in Instrument's build-trace-plan step). Each \`TraceNode\` carries \`id\`, \`name\`, \`kind\` ("manual" | "auto" | "pure"), \`file\`, \`line\`, \`signature\`, \`parentId\`, \`childIds\`, plus \`framework\` for \`[auto]\` lines. Do not limit the search to filenames in the stored plan: newly added spans often live in files the old plan never mentioned.
-3. **Reconcile the stored snapshot with the code-derived tree.** The reconciled \`before\` tree and capture set must describe the code that would execute today:
-   - **Present in code, absent from the stored plan**: add the node. Current manual and auto-captured spans belong in \`capturedNodeIds\`; new uninstrumented surrounding context stays \`pure\` and uncaptured.
-   - **Present in the stored plan, no longer instrumented in code**: remove it from \`capturedNodeIds\`. Keep it as \`pure\` context only when the function still exists and is useful context; otherwise remove it and repair parent/child links.
-   - **Moved or renamed**: preserve the existing node id only when the implementation identity is clear, then refresh its name, file, line, signature, relationships, and changed analysis. Otherwise treat it as one removed node plus one added node.
-   - **Root changed**: when the current trace boundary is a different function, replace the tree's rootId with that current root's node id and rebuild the tree beneath it. A structural save_trace_plan update supports changing the root while keeping the same plan id, so never retain an obsolete root or create a competing plan merely to preserve the old rootId.
-   - **Unchanged**: preserve the stored node id, samples, analysis, and user-confirmed mock/capture intent.
-
-Before holding the reconciled tree, enforce the same sample completeness as a newly built plan: **every captured node, including each manual or auto span discovered only from current code, MUST include \`sampleInput\` and \`sampleOutput\`.** Preserve stored samples for unchanged nodes. For a drift-discovered captured node, or an older captured node whose stored samples are missing, construct realistic values from its current parameter and return types now. Do this during reconciliation even when the user requested no explicit modifications, because step {{step:modify/build-modified-plan}} may copy the \`before\` tree unchanged.
-
-Enforce analysis completeness at the same boundary: **every node in the reconciled tree MUST carry \`analysis\` before it becomes the \`before\` tree.** Preserve stored analysis only for an unchanged node whose body is unchanged. Read and classify every drift-discovered node, changed node, or older node whose analysis is missing using the decision procedure in step {{step:modify/build-modified-plan}}. Do this during reconciliation even when the user requested no explicit modifications, so copying \`before\` unchanged can never persist an unclassified captured span or context node.
-
-If this comparison finds drift, tell the user in one line what was stale (added, removed, moved, renamed, or unwrapped nodes) before presenting the refreshed plan. Never silently carry an obsolete captured node forward, and never omit a current manual/auto span just because it was absent from the stored snapshot.
-
-Hold the reconciled \`before\` tree in memory. It seeds the \`after\` tree you build in step {{step:modify/build-modified-plan}} and becomes the left-hand side of the inline-fallback diff in step {{step:modify/present-diff}}. Do not present it yet.`,
-          next: "modify/build-modified-plan"
-        },
-        {
-          id: "build-modified-plan",
-          kind: "reference",
-          refs: ["reference"],
+          title: "Read the current instrumentation",
+          body: "Read the chosen function, its root registration, wrappers, framework handler or processor, keyed client, and replay registry module directly from the current source. Inventory the captured calls and replay mocks that actually exist. The code is the source of truth. Reuse the existing function key and preserve unrelated user edits. Apply the requested change after checking the affected call signatures and replay dependencies.",
           toolCalls: ["read", "grep"],
-          title: "Build the modified trace plan (with surrounding context)",
-          body: `**Build the modified trace plan as a \`TracePlanTree\` under the same PURELY ADDITIVE constraint as Instrument's build-trace-plan step.** Start from the \`before\` tree built in step {{step:modify/reconstruct-current-plan}} and produce an \`after\` tree of the same shape (\`{ rootId, nodes: { [id]: TraceNode } }\`) that applies the user's requested modifications. Reuse node ids unchanged for nodes that survive, that lets the trace plan UI show only what actually changes, and mint new ids for added nodes.
-
-**If the user didn't request anything specific** (no modifications were named in the skill invocation or earlier in the conversation), produce an \`after\` tree identical to the \`before\` tree. Don't invent changes. The user will edit the capture set directly in the UI in step {{step:modify/present-diff}}.
-
-The modified tree must be implementable without behavior changes. If a requested modification requires awaiting a stream that wasn't awaited, delaying a call, reordering operations, blocking a callback, or restructuring control flow, tell the user which part doesn't fit and why, and ask them to refine the request (or suggest splitting into multiple cycles). Never present a behavior-changing approach as an option.
-
-**Every captured node MUST include \`sampleInput\` and \`sampleOutput\`**: same hard rule as Instrument's build-trace-plan step. Carry samples forward unchanged for surviving nodes; for newly added nodes (intermediate spans, deeper leaves, a new upstream/downstream root), construct realistic example values from the function's parameter and return types (Read the file and its return-type imports if needed). Do not advance to step {{step:modify/present-diff}} with a captured node missing either field.
-
-**Every node in the modified \`TracePlanTree\` MUST carry an \`analysis\`**, same hard rule and same procedure as Instrument's build-trace-plan step, so any context node the user toggles into capture already has a replay decision. \`analysis\` is \`{ classification, mockable?, unmockableReason?, inputSerializable?, outputSerializable?, innerCall?, sideEffectKind?, readKind? }\` (\`pure\` | \`model_call\` | \`external_read\` | \`side_effect\`); the server derives \`mockOnReplay\` and the summary from it, so you don't send them. Mockable \`external_read\` and \`side_effect\` nodes default to mocked replay, except broad external parents with live descendants; \`model_call\` and \`pure\` nodes default to live replay. Carry existing \`analysis\` forward unchanged for surviving nodes only when it is already present and the node body did not change. For surviving nodes from older prior plans that lack \`analysis\`, or nodes whose body changed, read the node body now and backfill \`analysis\` before presenting the plan. Classify each missing, changed, or **newly added** node from its body, not its name, using that step's decision procedure (first match wins): (1) is itself the model call (an auto-captured model leaf, or a span that invokes the model inline in its own body with no separately-represented model-call child) \u2192 \`model_call\` (re-runs live; never mock); a framework wrapper or orchestrator (a LangChain \`chain.invoke\`, a LangGraph node, the root that just calls model-call children) whose model call is a child node is \`pure\`, not \`model_call\`, don't bubble the child's classification up; (2) own body mutates external state (DB write, outbound \`POST/PUT/DELETE\`, queue/email/charge/file/vector write) \u2192 \`side_effect\` with \`sideEffectKind\`, this wins over model_call when one span does both; (3) own body reads external mutable state (DB \`SELECT\`, \`GET\`, vector search, cache read) \u2192 \`external_read\` with \`readKind\`; (4) otherwise \u2192 \`pure\` (local compute, in-memory). Classify a span by its OWN body, excluding work already represented by child nodes (don't double-count). Prefer the smallest external boundary: if a read/write wrapper contains parsing, ranking, prompt construction, model calls, or other live code, put \`external_read\` / \`side_effect\` on the lower DB/HTTP/write call and classify the wrapper by its remaining own body. **Nested \`model_call\`s are always a bug:** no \`model_call\` may have a \`model_call\` ancestor or descendant, the leaf that hits the API is the only model call and the chain, graph node, or wrapper above it is \`pure\` even when the framework labels it an LLM or chat span; if two \`model_call\`s land on one parent-to-child line, demote the upper to \`pure\`. **Then set mockable from wrapper kind and execution context, using the build-trace-plan rules:** a manual withSpan / @span is mockable only when it remains a descendant in the same replay context. Python thread dispatch requires Bitfab(trace_across_threads=True); Ruby child threads, pre-created consumers, and other processes are unmockable until the boundary moves into replay context. Python async generators are unmockable. A TypeScript synchronous selected span requires mock: "all" when freezing every matched child is acceptable; otherwise it is unmockable unless the existing boundary already returns a Promise. Set mockable: false plus the concrete reason for every exception. Auto framework spans are also mockable: false plus unmockableReason, except Vercel AI SDK model spans whose wrapLanguageModel middleware routes through withSpan and LangGraph \`ToolNode\` tool spans configured through the Experimental (alpha) \`getLangGraphIntegration\` / \`get_langgraph_integration\` replay boundary. Callback-only LangGraph tool spans remain unmockable. The root omits mockable because roots are never mocked. Mocking returns a span's recorded output instead of running the call, which only works through a replay wrapper; ordinary auto framework spans are observed, not wrapped. Authoritative per-framework lookup:
-**Python async-generator exception:** a manual async-generator @span is unmockable even though other manual spans are mockable. Set mockable: false with that reason, and move every unsafe operation inside it to a mockable sync or coroutine descendant before replay.
-{{frameworkMockabilityBullets}}
-**Serializability, two facts separate from \`mockable\`:** set \`outputSerializable: false\` when the recorded OUTPUT doesn't serialize and \`inputSerializable: false\` when the recorded INPUT doesn't (an argument is a DB client, open stream, callback, or class instance with no JSON form); omit either when it serializes. The server forces any \`outputSerializable: false\` node unmockable, so **don't mock a node whose output isn't serializable**, and it flags the plan not replayable when the root's input isn't serializable, so **don't choose a root whose input isn't serializable** (promote the root to a caller taking the serializable request / prompt / messages). The hazard the mechanical \`mockable\` rule prevents: an \`auto\` \`external_read\` / \`side_effect\` (a framework tool hitting a DB / HTTP) left mockable promises a mock replay can't deliver; its real fix is a manual \`withSpan\` around that call or a db-snapshot, never a mock.
-
-**Include surrounding code as \`pure\` context nodes** so the modified capture is legible inside its codebase context and the user can toggle additional nodes into the capture directly in the UI without leaving the page. The test for inclusion is **"would the user plausibly want this as its own span?"**: anything they might wrap as a deeper child of what is already captured, or add as a peer at the same depth. Walk in two directions:
-- **~10 callees below each leaf**: candidates for **wrapping deeper spans**. For every existing leaf in the captured sub-tree, walk downward (callees of that leaf, callees of those, etc.) and attach each as a \`pure\` descendant. Include any callee the user might plausibly want as its own span, LLM / tool / agent calls, prompt construction, response parsing, retry loops, fan-outs, post-processing that drives another model. Stop at pure plumbing (pass-through returns, trivial formatting or arithmetic, no further interesting activity) or ~10 nodes per leaf. **Don't stop just because you crossed an SDK / framework / stdlib boundary**: the test is "is this plausibly its own span?", not "is this in our code?".
-- **~5 siblings per captured node BELOW the root**: candidates for **peer spans at the same depth**. For each captured node whose parent is the root or a descendant of it, include that parent's other callees (other functions invoked from the same wrapper) as \`pure\` siblings. These are the nodes the user might wrap alongside the existing capture to widen the trace sideways. **Don't generate siblings for the root**: a sibling of the root is by definition a child of the root's parent, which sits above the root and can never render. This removes nothing from under the root, the root's other callees still arrive as siblings of its captured children.
-- **Every context node MUST be a descendant of the root.** The plan tree renders downward from \`rootId\`, so a node above the root, or on a side branch hanging off one of those ancestors, is stored and counted but never drawn. Do not attach callers of the root, and do not attach the root's own siblings.
-
-Mark every surrounding node with \`kind: "pure"\` (uncaptured), **do not** add their ids to \`capturedNodeIds\`, and still attach \`analysis\` to each one. They serve two ends: **legibility** (the captured set sits inside its surrounding code so the user sees what is and isn't traced) and **modification** (they are the levers in the UI for expanding capture deeper).
-
-When applying a requested modification, read the relevant signatures so the plan stays accurate: for added context, name the exact keys/values and the span they attach to; for new instrumented spans, read each callee's signature and pick a type annotation (\`function\`, \`llm\`, \`tool\`, \`agent\`, \`handoff\`); for span removals, list each by name and confirm the underlying call is left untouched; for a new upstream/downstream root, read the new function's signature and confirm it still covers the interesting LLM/tool activity (upstream) or remains a common ancestor of every LLM/tool span (downstream).`,
-          next: "modify/present-diff"
-        },
-        {
-          id: "present-diff",
-          kind: "branch",
-          toolCalls: [
-            "ask",
-            "bash",
-            "saveTracePlan",
-            "confirmTracePlan",
-            "getTracePlan"
-          ],
-          commandCalls: ["openTracePlan", "openStudio"],
-          refs: ["reference"],
-          title: "Open the modified plan in the trace plan UI; leaving the plan page applies the diff",
-          body: `**Post the modified plan, render it inline as ASCII, then {{askVerb}} whether to review it in the browser or just continue**, same delivery pattern as Instrument's build-trace-plan step. The inline ASCII is what the user reviews in chat; Studio is the optional richer surface where they can adjust the captured set (selecting/deselecting any of the surrounding \`pure\` context nodes added in step {{step:modify/build-modified-plan}}). Continuing in chat, and every way of leaving the plan page in Studio (**Close**, **Save**, closing the window), applies the diff. None of them is an abort or a request for another round of plan edits.
-
-1. **Post the modified plan.** Do NOT open Studio here, rendering (step 2) and the browser-or-continue ask (step 3) come next. Which tool you call depends on whether step {{step:modify/reconstruct-current-plan}} found a prior plan:
-
-   - **Prior plan id in hand (the normal path): call {{tool:saveTracePlan}}** with \`{ planId, tree, capturedNodeIds }\` (and \`traceFunctionKey\` only if the key is being renamed, \`stats\` if you have a sample run). This revises the EXISTING plan in place. **Always include \`planId\` here:** omitting it creates a second plan for the same key, which competes with the first. Sending \`tree\` + \`capturedNodeIds\` is a **structural** update, which reopens a confirmed plan to \`awaiting\`; that is expected and is why step 3 still has to confirm it.
-     - **Always send the structural form here, even when only the capture set changed.** The targeted form (\`capture\` / \`uncapture\` / \`mockOnReplayByNodeId\`) deliberately leaves a confirmed plan \`confirmed\`, which breaks the rest of this step: {{tool:confirmTracePlan}} then fails as "not awaiting", and Studio renders a confirmed plan read-only so the capture toggles this step offers are disabled. Reopening to \`awaiting\` is what makes the review and confirm below work. Use the targeted form only outside this flow, for a one-off adjustment with no review step.
-   - **No prior plan (neither probe in step {{step:modify/reconstruct-current-plan}} found one, confirmed or awaiting): call {{tool:saveTracePlan}}** with \`{ language, tree, capturedNodeIds, traceFunctionKey }\` (and \`stats\` if you have one), exactly as Instrument does. Persisting the key lets the next Modify cycle bootstrap from this plan.
-
-   In either save mode, \`tree\` is the modified \`after\` \`TracePlanTree\` from step {{step:modify/build-modified-plan}}, with the ~10 surrounding callees and ~5 sibling callees included as \`pure\` context nodes. Every node remains a descendant of \`rootId\`; never include callers above the root. Every node carries the \`analysis\` you set/carried-forward in that step, including uncaptured context nodes. \`capturedNodeIds\` is your initial recommendation and must form a connected sub-tree with exactly one entry point (selecting any descendant implies its ancestors); surrounding \`pure\` context nodes are not included. The server derives the validation card (status pill + aggregate counts) from the per-node \`analysis\`, so you don't send a summary. The tool returns the plan id (and a \`https://bitfab.ai/studio/trace-plan/<id>\` URL); for the update path that is the same id you already held.
-
-2. **Render the modified plan inline as ASCII** using the Default view template from the **Trace Plan Format** reference section (before/after framing: show the current capture and the modified capture, as fits the change). List the \`Files changed:\` footer (paths only, no annotations). This is what the user reviews in chat.
-
-3. **Then {{askVerb}}** what they want to do next. The primary choice is **Open trace plan** (open Studio, the richer surface for reviewing and toggling the captured set) or **Continue** (apply the diff using the plan as rendered). The full option set and routing:
-
-{{branches}}
-
-   - **Open trace plan**: run \`{{command:openTracePlan}} <planId>\` (\`{{pluginRoot}}\` resolves to the plugin directory; \`<planId>\` is the id from step 1) as a background / long-running process, never in the foreground. The script navigates Studio to the trace plan page and stays alive until the user leaves it, by clicking **Close** (keep the plan as drafted) or **Save** (save their toggles), or by closing the window{{#exec-polling}} (up to 30 minutes){{/exec-polling}}. If it emits \`{"event":"window-open-requested","url":"..."}\`, immediately surface the URL in a normal chat message, e.g. \`Opening Studio: <url>. Click it if a window doesn't appear\`, before continuing to read.{{#exec-polling}} Keep polling the live exec session until it exits (see the Blocking-process rule at the top of this skill); the user's decision arrives as stdout, not as a chat message.{{/exec-polling}} Tell the user in one line that the plan is open and that **Close** / **Save** there applies the diff, then {{askVerb}}: a single yes/no question, **"Apply this now?"**, with **Continue** (branch **A**, recommended) and **Not yet** (keep reading the process, do not re-ask). Say in the question's own text that Close or Update in Studio applies it too and that the question stays up while they are over there, so returning and picking either option is safe. It is a confirm, not a fork; a change the user types as free text instead routes to branch **C**. Waiting is never an option, it is what the question on screen already does. **Read the background process's stdout before acting on their answer:** a terminal line that already landed means they acted in Studio and it wins (route on the event, never re-confirm over the toggles they saved with **Save**). Only when nothing has landed do you act on the answer, and the three answers act differently. **Continue** (branch **A**) closes the plan for them with \`{{command:openStudio}} "/studio"\` (navigates Studio off the plan page in place, never \`{{command:closeStudio}}\`) and stops the background process first, because that branch finishes. **A typed change** (branch **C**) does neither: step 1 re-saves onto the same \`planId\`, and the open plan page re-renders itself when that update lands, so the user watches their plan change instead of losing the window, and the reader keeps waiting on the same plan. **Not yet** also does neither: leave Studio and the process alone and keep reading until it exits. A later "continue" typed in chat then takes branch **A**, teardown included: **the user must always be able to finish without touching Studio.** On branch **A**, if {{tool:confirmTracePlan}} reports the plan is no longer awaiting, they saved in Studio between your read and your write: apply the set {{tool:getTracePlan}} returns instead of your own. Otherwise parse the final JSONL line on exit: \`{"event":"confirmed",...}\` (Close or Update) and \`{"event":"cancelled",...}\` (window closed, or an expired plan released) both route to branch **A**, apply the diff; the one exception is a \`"reason":"never-connected"\` field, which means the window never opened, say so and offer to re-run. A non-zero exit (including the 30-minute timeout, which kills the reader but leaves the page usable) surfaces the error, then re-ask below. On \`confirmed\`, call {{tool:getTracePlan}} with the returned \`planId\` (normally the one you opened, since a revision updates that plan in place; it differs only when something created a new plan mid-session, which \`openTracePlan.js\` auto-tracks via \`tracePlan:created\` events) to read the authoritative \`capturedNodeIds\` (the user may have toggled \`pure\` context nodes into the set or removed captured ones) and reconcile your edit plan with it (drop \`\u25CF\` wraps no longer captured, add wraps for newly captured nodes).
-   - **Continue** (branch **A**): call {{tool:confirmTracePlan}} with the plan id from step 1 and your recommended \`capturedNodeIds\` to persist the modified plan as *confirmed* (Studio's Close/Update does this on the browser path; every other path MUST do it here, or a later \`{{cmd}}setup view\`/\`{{cmd}}setup modify\` for this key won't find it), then apply the diff using the authoritative \`capturedNodeIds\` and per-node mock decisions it returns. If that call reports the plan is expired or no longer awaiting, apply the diff from the plan you rendered inline anyway and say in one line that it wasn't persisted. Every node should already be classified; if a captured node somehow lacks \`analysis\`, classify it now with the decision procedure from step {{step:modify/build-modified-plan}} before instrumenting, never wrap a captured span without a mock decision.
-
-**If the save in step 1 itself errors** (e.g. offline or MCP unreachable, so there is no browser option): render the inline before/after ASCII from your in-memory tree, derive the mock decisions yourself, and **STOP**: {{askVerb}} using the options above before writing edits. One error is not fatal in the same way: if {{tool:saveTracePlan}} reports the plan is **cancelled**, that plan is dead and cannot be revived, call {{tool:saveTracePlan}} again without \`planId\` to create a fresh plan and carry on.`,
-          branches: [
-            {
-              option: {
-                letter: "A",
-                label: "Continue",
-                description: "apply the diff using the plan shown above (or the set you confirmed in the browser)"
-              },
-              recommended: true,
-              next: "modify/apply-changes"
-            },
-            {
-              option: {
-                letter: "B",
-                label: "Open trace plan",
-                description: "open the plan in Studio to review and toggle the captured set; leaving that page (Close or Update) applies the diff"
-              },
-              next: "modify/apply-changes"
-            },
-            {
-              option: {
-                letter: "C",
-                label: "Modifications",
-                description: "change something about this plan"
-              },
-              next: "modify/build-modified-plan"
-            },
-            {
-              option: {
-                letter: "D",
-                label: "Abort entirely",
-                description: "discard this plan without writing any edits"
-              },
-              next: "cleanup/close-studio"
-            },
-            {
-              option: {
-                letter: "E",
-                label: "Expand details",
-                description: "re-render the inline ASCII diff in the expanded view"
-              },
-              next: "modify/present-diff"
-            }
-          ]
+          next: "modify/apply-changes"
         },
         {
           id: "apply-changes",
           kind: "action",
           toolCalls: ["edit"],
           title: "Apply the changes (purely additive)",
-          body: "**Apply the changes, purely additive to behavior.** Same rules as Instrument's write-instrumentation step: never change arguments, return values, error handling, variable names, types, control flow, or code structure. Removing a `withSpan`/`@span` wrapper is the only structural edit allowed, and only when it leaves the wrapped call, its arguments, and its return value untouched. The trace function key from step {{step:modify/pick-function}} stays the same, do not rename keys. Batch repetitive edits in parallel (one message, many Edit calls).",
+          body: "Apply the user-requested instrumentation changes to the current source. Follow the SDK reference and the existing framework integration. Preserve behavior, arguments, return values, error handling, and streaming semantics. Keep the same trace function key unless the user requested a rename, and update the replay registry module in the same change so it calls the production traced root with reconstructed dependencies. If the request requires a behavior-changing refactor, follow the refactor-confirmation appendix before making that refactor. Validate the affected code and report exactly what changed.",
           next: "modify/mandatory-stop"
         },
         {
@@ -20392,7 +19177,7 @@ When applying a requested modification, read the relevant signatures so the plan
 
 B returns to step {{step:modify/pick-function}}. A and C exit the Modify loop to cleanup (Modify does not auto-continue to Replay, the user can invoke \`{{cmd}}setup replay\` separately).
 
-**Re-entry rule (applies after you leave this loop).** If, later in the conversation, the user asks to re-instrument or change another function's capture in plain language (\`re-instrument <fn>\`, \`change what this span records\`, \`give me the updated trace plan for <fn>\`), that is a fresh Modify (or Instrument) cycle: re-invoke \`{{cmd}}setup modify\` (name the mode, so it goes straight to Modify rather than falling back to the full \`wizard\`) so it runs through the trace-plan flow. **Never satisfy such a request by hand-writing a trace plan or before/after diff you made up as a chat message, that skips the {{tool:saveTracePlan}} + inline ASCII render (and optional Studio review) this flow runs.**`,
+**Re-entry rule:** If the user requests another instrumentation change, read that workflow from current source and apply the requested change through this skill.`,
           branches: [
             {
               option: {
@@ -20401,7 +19186,7 @@ B returns to step {{step:modify/pick-function}}. A and C exit the Modify loop to
                 description: "present the script to run; allow the user to let you run it"
               },
               recommended: true,
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               option: {
@@ -20417,7 +19202,7 @@ B returns to step {{step:modify/pick-function}}. A and C exit the Modify loop to
                 label: "Done",
                 description: "stop here"
               },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         }
@@ -20427,7 +19212,7 @@ B returns to step {{step:modify/pick-function}}. A and C exit the Modify loop to
       id: "inspect",
       title: "Inspect",
       stepStyle: "list",
-      intro: `Diagnose, and optionally fix, an existing Bitfab tracing setup. Triggered explicitly by \`{{cmd}}setup inspect\` (or natural-language asks like "why aren't my traces showing up" / "what's instrumented" / "debug my tracing setup" / "inspect my tracing"). Reports auth/connection status, what's instrumented in this repo, whether the plugin and SDK are up to date, whether replay registry modules cover every trace function key, and whether traces are actually arriving, then offers to apply the fixes, each confirmed individually before any change. Does **not** open Studio.
+      intro: `Diagnose, and optionally fix, an existing Bitfab tracing setup. Triggered explicitly by \`{{cmd}}setup inspect\` (or natural-language asks like "why aren't my traces showing up" / "what's instrumented" / "debug my tracing setup" / "inspect my tracing"). Reports auth/connection status, what's instrumented in this repo, whether the plugin and SDK are up to date, whether replay registry modules cover every trace function key, and whether traces are actually arriving, then offers to apply the fixes, each confirmed individually before any change. Does **not** open Bitfab.
 
 This is about trace *delivery and setup health* (is the SDK wired up and current, is the key set, are traces landing, are replay registry modules in place). For improving the *quality* of a traced function's outputs (pass rates, failing cases), use \`{{cmd}}assistant\` instead.`,
       steps: [
@@ -20454,7 +19239,7 @@ Report whether they're authenticated and which org/account the plugin is connect
           body: `Search the codebase for SDK usage and trace function keys ({{sdkPatterns}}). In a monorepo, search **each application directory separately**: a root-level search can miss subdirectories. Report:
 - Whether the SDK is installed (check the package manifest) and whether \`BITFAB_API_KEY\` is set (in \`.env\`-style files or the environment), do **not** print the key value.
 - Each trace function key found, alongside its root function and file path.
-- **Trace-processor registrations ({{traceProcessorNames}}) too**, even though they are unkeyed in code: the registration site (\`setTraceProcessors\` / \`set_trace_processors\` with the Bitfab processor) is itself an instrumented workflow whose key is derived server-side from the workflow name. Note whether each run is routed through the run wrapper ({{traceProcessorRootWrappers}}) or wrapped in a manual \`withSpan\`/\`@span\` root, the replayability check in step {{step:inspect/check-freshness}} needs this (a bare processor over plain \`run()\` with neither is not replayable).
+- **Trace-processor registrations ({{traceProcessorNames}}) too**, even though they are unkeyed in code: the registration site (\`setTraceProcessors\` / \`set_trace_processors\` with the Bitfab processor) is itself an instrumented workflow whose key is derived server-side from the workflow name. Note whether each run is routed through the run wrapper ({{traceProcessorRootWrappers}}), enclosed by an opt-out \`withTrace\`/\`trace\` root, or, only in a fallback runtime, wrapped in a manual \`withSpan\`/\`@span\` root. The replayability check in step {{step:inspect/check-freshness}} needs this; a bare processor over plain \`run()\` with none of these is not replayable.
 - Whether instrumentation routes through a project-local shim (e.g. \`lib/bitfab.*\`).
 
 If no SDK usage is found, say so and suggest \`{{cmd}}setup instrument\` to wire up the first workflow. Continue through the remaining steps anyway, with no trace function keys, the trace-arrival check (step {{step:inspect/check-traces}}) has nothing to look up and is a no-op, but the freshness check (step {{step:inspect/check-freshness}}) still matters: plugin and SDK staleness, including the legacy \`bitfab\` \u2192 \`@bitfab/sdk\` migration, apply regardless of whether this repo has any trace functions yet.`,
@@ -20491,7 +19276,7 @@ Mark each key as \u2705 traces arriving (with most recent timestamp), \u26A0\uFE
 3. **Replay registries**: the same coverage check \`{{cmd}}assistant\` runs in its Phase 2: Glob for \`scripts/replayRegistry.*\`, \`scripts/replay_registry.*\`, or another module defining \`ReplayRegistry\` / \`defineReplayRegistry\`, then grep it for each trace function key found in step {{step:inspect/gather-functions}}. Mark replay as \u2705 covers all keys, \u26A0\uFE0F exists but missing keys, or \u274C no replay registry module.
 4. **Replayability of each root**: registry coverage is only half of replay, an entry that points at a non-replayable root still won't run. Determine each key's replayability statically from source (this step does not fetch recorded trace inputs, so reason from signatures, not trace data):
    - **Keyed root-handler keys** (registered through a callback handler or a trace-processor run wrapper, {{replayableRootHandlerNames}}, with no \`@span\`/\`withSpan\`-decorated root in the app) are replayable by design: the handler (or run wrapper, {{traceProcessorRootWrappers}}) records the framework's own serializable input as the root. Never flag these \u26A0\uFE0F, and never treat the absence of a decorated root function as non-replayable (this mirrors Instrument's rule).
-   - **Bare trace-processor keys** ({{traceProcessorNames}} over plain \`run()\`): the processor captures the run but its root span records an empty input, so a processor-only key (neither the run wrapper {{traceProcessorRootWrappers}} nor a manual \`withSpan\`/\`@span\` root) is NOT replayable, flag it \u26A0\uFE0F root not replayable and recommend routing the run through the run wrapper (or adding a manual root that takes the run input). If the key DOES go through the run wrapper or a manual root, check that root's signature like any decorated key (next bullet).
+   - **Bare trace-processor keys** ({{traceProcessorNames}} over plain \`run()\`): the processor captures the run but its root span records an empty input, so a processor-only key without the run wrapper {{traceProcessorRootWrappers}} or an application root is NOT replayable. Flag it \u26A0\uFE0F root not replayable and recommend adding a \`withTrace\`/\`trace\` root that takes the run input in supported subtree runtimes, or routing through the run wrapper. Recommend a manual \`withSpan\`/\`@span\` root only when opt-out is technically unavailable. When an application root exists, check its signature like any decorated key (next bullet).
    - **Decorated/wrapped keys**: read the root function signature and confirm it's replayable per Instrument's trace-boundary serializability requirement (serializable inputs). Flag any key whose root takes unserializable inputs (live SDK/DB clients, HTTP \`Request\`/\`Response\`, stream writers, sockets, opaque request contexts) as \u26A0\uFE0F root not replayable, reasoning from the signature, not the function name. This is independent of the replay-registry coverage in sub-step 3 above: a non-replayable root is \u26A0\uFE0F whether or not a registry exists for it (a key can be \u274C no replay registry module AND \u26A0\uFE0F root not replayable at once), so never roll a non-replayable root up into \u2705 just because it has no registry entry.
 
 Hold these results for the report. (If nothing is instrumented, no trace function keys AND no trace-processor registrations, skip both the **replay** and the **replayability** checks, they are per-workflow, so there's nothing to evaluate; report both as \`n/a (nothing instrumented)\`, never \u2705. Still run the **plugin** and **SDK** checks: the SDK may be installed and stale, or on the legacy \`bitfab\` package needing the \`@bitfab/sdk\` rename, independent of whether any trace functions exist in this repo yet.)`,
@@ -20506,19 +19291,19 @@ Hold these results for the report. (If nothing is instrumented, no trace functio
 - **Plugin**: up to date, or \`v<X> available\` (from step {{step:inspect/check-freshness}}).
 - **SDK**: installed / not installed; \`BITFAB_API_KEY\` set / not set; per workspace, \`current \u2192 latest\` when out of date, **and** call out any workspace on the legacy \`bitfab\` package that should switch to \`@bitfab/sdk\` (TypeScript, from \`renameFrom\`).
 - **Instrumented here**: the list of keys with \u2705 / \u26A0\uFE0F / \u2753 markers from step {{step:inspect/check-traces}}.
-- **Replay**: \u2705 covers all keys / \u26A0\uFE0F missing keys / \u274C none (from the replay-scripts check in step {{step:inspect/check-freshness}}).
+- **Replay**: \u2705 covers all keys / \u26A0\uFE0F missing keys / \u274C none (from the replay-registry check in step {{step:inspect/check-freshness}}).
 - **Replayable**: \u2705 all roots replayable / \u26A0\uFE0F \`<key>\` root not replayable / \`n/a (nothing instrumented)\` (from the per-root replayability check in step {{step:inspect/check-freshness}}; flagged whether or not a replay registry module exists for the key; never \u2705 when nothing is instrumented).
 
 Then, for anything not healthy, name the most likely cause and the fix:
 - **Plugin or SDK out of date, or on the legacy \`bitfab\` package**: apply via the fix prompt below (upgrades the version and/or switches \`bitfab\` \u2192 \`@bitfab/sdk\`; same effect as \`{{cmd}}update\`).
-- **Replay missing or incomplete**: refresh via \`{{cmd}}setup replay\` (non-interactive; creates/extends scripts to cover every key).
-- **Root not replayable**, two failure modes, with the fix matched to each: **(a) the root takes unserializable inputs** (live SDK/DB clients, HTTP req/res, streams, opaque contexts), with or without a replay registry module: move the trace boundary inward to a serializable-input function or refactor to introduce one; **(b) a bare trace-processor-only key** ({{traceProcessorNames}}) whose root is the processor's empty-input span: route the run through the run wrapper ({{traceProcessorRootWrappers}}), or add a manual \`withSpan\`/\`@span\` root that wraps the run and takes its input. Either way, re-instrument via \`{{cmd}}setup modify\` (or \`{{cmd}}setup instrument\` for a fresh boundary). This is a code change, recommended here, not applied blanket.
-- **Instrumented but no traces**: the app hasn't run with tracing enabled, or \`BITFAB_API_KEY\` isn't set in the run environment. Run the app (or the replay registry module) with the key loaded.
+- **Replay missing or incomplete**: refresh via \`{{cmd}}setup replay\` (non-interactive; creates or extends registry entries to cover every key).
+- **Root not replayable**, two failure modes, with the fix matched to each: **(a) the root takes unserializable inputs** (live SDK/DB clients, HTTP req/res, streams, opaque contexts), with or without a replay registry module: move the trace boundary inward to a serializable-input function or refactor to introduce one; **(b) a bare trace-processor-only key** ({{traceProcessorNames}}) whose root is the processor's empty-input span: add a \`withTrace\`/\`trace\` root that wraps the run and takes its input in a supported subtree runtime, or route the run through the run wrapper ({{traceProcessorRootWrappers}}). Use a manual \`withSpan\`/\`@span\` root only when opt-out is technically unavailable. Either way, re-instrument via \`{{cmd}}setup modify\` (or \`{{cmd}}setup instrument\` for a fresh boundary). This is a code change, recommended here, not applied blanket.
+- **Instrumented but no traces**: the app hasn't run with tracing enabled, or \`BITFAB_API_KEY\` isn't set in the run environment. Run the app with the key loaded.
 - **Key set but traces aren't visible in the browser**: the API key is bound to a different Clerk org/tenant than the browser session. A key resolves \`API key \u2192 organization_id \u2192 clerk_organization_id \u2192 Clerk tenant\` at creation time; browser visibility requires both to be the same tenant.
 - **Nothing instrumented**: run \`{{cmd}}setup instrument\`.
-- **Want to change what's captured**: run \`{{cmd}}setup modify\`; to see a plan visually, \`{{cmd}}setup view\`.
+- **Want to change what's captured**: run \`{{cmd}}setup modify\`.
 
-Then continue to the fix prompt. Inspect does not open Studio.`,
+Then continue to the fix prompt. Inspect does not open Bitfab.`,
           next: "inspect/offer-fixes"
         },
         {
@@ -20532,7 +19317,7 @@ Then continue to the fix prompt. Inspect does not open Studio.`,
           branches: [
             {
               when: "everything is already healthy (nothing to fix)",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               option: {
@@ -20549,7 +19334,7 @@ Then continue to the fix prompt. Inspect does not open Studio.`,
                 label: "Just report",
                 description: "make no changes"
               },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -20566,8 +19351,8 @@ Then continue to the fix prompt. Inspect does not open Studio.`,
 - **On the legacy \`bitfab\` package** (\`renameFrom\` non-null), this rewrites import sites, so **preview before touching code**: list every \`from "bitfab"\` / \`require("bitfab")\` site you would change, then {{askVerb}} to proceed. If yes, remove the old package and add the new one in one step (e.g. \`pnpm remove bitfab && pnpm add @bitfab/sdk@latest\`, or the npm / yarn / bun equivalent) and rewrite those imports to \`@bitfab/sdk\`. Do this even when \`current\` already equals \`latest\`, the rename is the fix. (TypeScript-only; Python / Ruby / Go package names don't change.)
 - **Replay missing or incomplete**: {{askVerb}} to refresh; if yes, run \`{{cmd}}setup replay\` to create or extend the scripts so every trace function key is covered (it is non-interactive).
 
-For unusual monorepos or private registries, defer to \`{{cmd}}update\`. Report what was applied and what the user declined. Do not open Studio.`,
-          next: "cleanup/close-studio"
+For unusual monorepos or private registries, defer to \`{{cmd}}update\`. Report what was applied and what the user declined. Do not open Bitfab.`,
+          next: "cleanup/finish"
         }
       ]
     },
@@ -20575,9 +19360,9 @@ For unusual monorepos or private registries, defer to \`{{cmd}}update\`. Report 
       id: "switch-org",
       title: "Switch Org",
       stepStyle: "list",
-      intro: `Switch which Bitfab organization the plugin reads and writes. Triggered explicitly by \`{{cmd}}setup switch-org\` (or natural-language asks like "switch org" / "change org" / "switch to the <name> org" / "I'm in the wrong org"). The plugin's org is set by the API key in \`~/.config/bitfab/credentials.json\`; this lists the user's orgs, switches to the chosen one, and replaces that local key. Requires authentication. Does **not** open Studio.
+      intro: `Switch which Bitfab organization the plugin reads and writes. Triggered explicitly by \`{{cmd}}setup switch-org\` (or natural-language asks like "switch org" / "change org" / "switch to the <name> org" / "I'm in the wrong org"). The plugin's org is set by the API key in \`~/.config/bitfab/credentials.json\`; this lists the user's orgs, switches to the chosen one, and replaces that local key. Requires authentication. Does **not** open Bitfab.
 
-**The live browser does not follow on its own.** Switching persists the new active org server-side (so future sign-ins default to it) and replaces the plugin's key, but a browser tab that's already signed in keeps showing the old org until its session is re-minted. The org actually flips in the browser on the **next** Studio open (a fresh session whose org check runs Clerk's client-side \`setActive\`) or when the user picks the org from the in-app org switcher.
+**The live browser does not follow on its own.** Switching persists the new active org server-side (so future sign-ins default to it) and replaces the plugin's key, but a browser tab that's already signed in keeps showing the old org until its session is re-minted. The org actually flips in the browser on the **next** Bitfab open (a fresh session whose org check runs Clerk's client-side \`setActive\`) or when the user picks the org from the in-app org switcher.
 
 **The plugin key and the app's runtime key are separate.** Switching replaces only the plugin's credential in \`~/.config/bitfab/credentials.json\`. The \`BITFAB_API_KEY\` your application reads at runtime (from a \`.env\`-style file) is untouched, so traces your code sends keep landing in the **old** org until that key is updated too. The last step offers to do that.`,
       steps: [
@@ -20601,7 +19386,7 @@ If **already authenticated**, continue to step {{step:switch-org/pick-org}}. If 
             },
             {
               when: "not authenticated",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -20621,7 +19406,7 @@ Only ever use an \`id\` value returned by {{tool:listOrganizations}}; never inve
           branches: [
             {
               when: "the only org is the one already current (nothing to switch to)",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               when: "a different target org was chosen",
@@ -20642,7 +19427,7 @@ Only ever use an \`id\` value returned by {{tool:listOrganizations}}; never inve
 \`\`\`
 
 The command prints one JSON line; act on it:
-- \`{"event":"switched","status":"switched"|"already-aligned","clerkOrganizationId":"...","organizationName":"...","apiKey":"..."}\`: success. The plugin now reads and writes that org and its API key has been replaced locally. Tell the user in one line: the plugin is now connected to **<organizationName>**. Then add that their **already-open browser tabs won't switch on their own**; to see the new org in Studio they re-open it from a plugin action (an experiments or dataset flow) or use the in-app org switcher. Hold on to the \`apiKey\` value from this JSON; the next step uses it to sync the app's local key, and you must never echo that value to the user.
+- \`{"event":"switched","status":"switched"|"already-aligned","clerkOrganizationId":"...","organizationName":"...","apiKey":"..."}\`: success. The plugin now reads and writes that org and its API key has been replaced locally. Tell the user in one line: the plugin is now connected to **<organizationName>**. Then tell them to select **<organizationName>** with the in-app org switcher to align their browser with the plugin. Opening a plugin page link does not change the browser's active organization. Hold on to the \`apiKey\` value from this JSON; the next step uses it to sync the app's local key, and you must never echo that value to the user.
 - \`{"event":"not-member","clerkOrganizationId":"..."}\`: the user isn't a member of that org. Report it; do not retry.
 - \`{"event":"error","reason":"..."}\`: report the reason.
 
@@ -20658,7 +19443,7 @@ Do not print or ask for the API key, and do not surface the \`apiKey\` value to 
             {
               when: 'the command printed `{"event":"not-member"}` or `{"event":"error"}`',
               description: "the plugin key was not replaced, so there is nothing local to sync",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -20676,99 +19461,7 @@ Check whether this project sets \`BITFAB_API_KEY\` locally: grep for \`BITFAB_AP
 - **If found**, {{askVerb}} whether to update it to the new org's key, naming **all** the files (absolute paths) that hold it. If the user declines, leave them and stop.
 
 If the user agrees, use the \`apiKey\` value from the switch step's JSON output as the new key (use it directly, do **not** call any \`get_*_api_key\` tool here: that resolves a \`BITFAB_API_KEY\` process-env override ahead of the just-switched credential and can hand back the stale pre-switch key). Rewrite that value in place in **every** file you found, replacing the old value, so no loaded env file keeps a stale key. Do **not** print the key value. Then name each file (absolute path) you updated and note that an already-running dev server, REPL, or test runner may need a restart to pick up the new env value, since most file watchers reload code on save but not env files.`,
-          next: "cleanup/close-studio"
-        }
-      ]
-    },
-    {
-      id: "view",
-      title: "View",
-      stepStyle: "list",
-      intro: `Open the trace planner UI for an **existing** trace function, read-only. Triggered explicitly by \`{{cmd}}setup view\`. Useful for inspecting what's currently captured (tree shape, captured node ids, sample inputs/outputs) without making any code edits.
-
-Every View invocation targets **exactly one** trace function. The browser UI's Close control just dismisses the page here, the user is only looking at the plan.`,
-      steps: [
-        {
-          id: "gather-existing",
-          kind: "branch",
-          toolCalls: ["grep", "glob"],
-          title: "Gather existing trace functions",
-          body: "**Gather existing trace functions** by searching for SDK patterns ({{sdkPatterns}}). List each key alongside its root function (or, for keys registered only via a framework handler, the handler registration site, handler keys have no decorated root and that is expected). If none are found, tell the user View needs existing instrumentation and suggest `{{cmd}}setup instrument`.",
-          branches: [
-            {
-              when: "no instrumented trace functions exist (nothing to view)",
-              next: "cleanup/close-studio"
-            },
-            {
-              when: "one or more trace functions exist",
-              next: "view/pick-function"
-            }
-          ]
-        },
-        {
-          id: "pick-function",
-          kind: "action",
-          toolCalls: ["ask"],
-          title: "Pick exactly ONE trace function",
-          body: "**Pick exactly ONE trace function to view.** {{askVerbCap}} with the list of existing keys. Recommend the one the user most recently instrumented (or the one most recently referenced in the current session) and explain why in one line.",
-          next: "view/fetch-plan"
-        },
-        {
-          id: "fetch-plan",
-          kind: "branch",
-          toolCalls: ["getTracePlan", "listTracePlans"],
-          title: "Fetch the latest trace plan for this key",
-          body: `Call {{tool:getTracePlan}} with \`{ traceFunctionKey: "<chosen key>" }\` (no \`planId\`). Two outcomes:
-
-- **Prior plan found**: parse the response for the \`Plan id:\` line and hold that id for the next step. Take branch **A** (Open).
-- **"No prior confirmed trace plan found"**: that rules out a *confirmed* plan, not every plan. **Probe {{tool:listTracePlans}} with \`{ traceFunctionKey: "<chosen key>", status: "awaiting" }\`** before telling the user there is nothing here (a silent probe, don't narrate it):
-  - **An awaiting plan came back**: view the newest one. Read it with {{tool:getTracePlan}} \`{ planId }\`, hold that id **and the fact that it is unconfirmed**, and take branch **A** (Open), saying in one line that this plan is still unconfirmed (an \`{{cmd}}setup analyze-repo\` draft, or a plan whose confirmation never landed) and that \`{{cmd}}setup instrument\` or \`{{cmd}}setup modify\` is what turns it into instrumentation. **An unconfirmed plan is rendered inline only, never opened in Studio** (step {{step:view/open-in-ui}} says why: its Save button would confirm it, and View must not write).
-  - **Nothing came back**: there is genuinely no plan to view (key created outside the skill, or never planned here). Tell the user that and suggest \`{{cmd}}setup modify\` to build and confirm a plan for this key. Take branch **B** (Stop).`,
-          branches: [
-            {
-              when: "prior plan found",
-              option: {
-                letter: "A",
-                label: "View",
-                description: "render the trace plan inline as ASCII, then offer to open it in the browser"
-              },
-              recommended: true,
-              next: "view/open-in-ui"
-            },
-            {
-              when: "no prior plan",
-              option: {
-                letter: "B",
-                label: "Stop",
-                description: "no trace plan exists for this function yet"
-              },
-              next: "cleanup/close-studio"
-            }
-          ]
-        },
-        {
-          id: "open-in-ui",
-          kind: "action",
-          toolCalls: ["ask", "bash"],
-          commandCalls: ["openTracePlan"],
-          title: "Render the plan inline, then optionally open it in the browser",
-          body: `**Render the trace plan inline as ASCII** from the plan fetched in step {{step:view/fetch-plan}}, using the "Trace Plan Format" reference section (default view: the captured spans, their types, and the tree as recorded). This is read-only, do not edit anything.
-
-**\uD83D\uDEA8 If the plan came from the unconfirmed fallback in step {{step:view/fetch-plan}} (its status is \`awaiting\`), the inline ASCII is the whole of View: do NOT offer the browser and do NOT run {{command:openTracePlan}}.** Studio renders a *confirmed* plan read-only, but an awaiting one still shows its **Save** and **Close** buttons, and both persist a confirmation. Opening one "just to look" would let a read-only mode promote a draft into the key's confirmed plan with no code written to match it, which is the opposite of what View promises. Say that the plan is unconfirmed, that reviewing it for real belongs to \`{{cmd}}setup instrument\` (to wire it up) or \`{{cmd}}setup modify\` (to change it), and stop.
-
-For a **confirmed** plan, {{askVerb}} whether to open it in the browser or finish:
-
-- **Done**: the inline ASCII was the view; report that the plan was viewed and stop.
-- **View in browser**: open the plan in Studio for a richer read-only look, by running:
-
-\`\`\`bash
-{{command:openTracePlan}} <planId>
-\`\`\`
-
-(\`{{pluginRoot}}\` resolves to the plugin directory; \`<planId>\` is the id parsed from step {{step:view/fetch-plan}}.) The script emits JSONL to stdout. If it emits \`{"event":"window-open-requested","url":"..."}\`, immediately surface the URL in a normal chat message, e.g. \`Opening Studio: <url>. Click it if a window doesn't appear\`, before continuing to poll. (This event means the open was *requested*, not that a window is confirmed on screen; the link is the reliable fallback when nothing surfaces.) \`{"event":"session-ready","sessionId":"<uuid>"}\` appears once the Studio session is established (on a logged-out run, an \`{"event":"auth-required",...}\` then \`{"event":"authenticated",...}\` line precede it, keep waiting for \`session-ready\`). The script navigates Studio to the trace plan page and stays alive until the user leaves it, by clicking **Close** or by closing the window{{#exec-polling}} (up to 30 minutes){{/exec-polling}}. View is read-only; however the user leaves (the final JSONL line will be \`{"event":"confirmed",...}\` or \`{"event":"cancelled",...}\`), do **not** apply edits or call {{tool:getTracePlan}} again. When the process exits, report that the plan was viewed and stop.{{#exec-polling}}
-
-**Polling (mandatory, see the Blocking-process rule at the top of this skill):** keep polling the live exec session until the process exits. Do NOT wait for a chat message from the user; their dismissal arrives as stdout on the already-running process, not as a new prompt.{{/exec-polling}}`,
-          next: "cleanup/close-studio"
+          next: "cleanup/finish"
         }
       ]
     },
@@ -20852,9 +19545,9 @@ The SDK-installed \`bitfab-replay\` command lets the team regression-test any re
           toolCalls: ["ask", "edit"],
           refs: ["refactor-confirmation"],
           title: "Legacy instrumentation with a non-replayable root",
-          body: `**Legacy instrumentation with a non-replayable root.** First decide whether any instrumented trace function can't be replayed from the replay registry module. Two failure modes: **(1) not invocable**, the function isn't exported or is defined inline in a route handler; **(2) not replayable**, its root takes unserializable inputs (live SDK/DB clients, HTTP \`Request\`/\`Response\`, stream writers, sockets, opaque request contexts), so even an invocable call replays with empty or stubbed args. Such functions were introduced before Instrument's trace-boundary serializability requirement, or via another path. Reason from each function's signature and visibility, and where a captured trace exists for the key, compare the signature against the trace data: an empty or \`<unserializable: ...>\`-stubbed recorded root input confirms the root isn't replayable. Do not execute the script to detect this.
+          body: `**Legacy instrumentation with a non-replayable root.** First decide whether any instrumented trace function can't be replayed from the replay registry module. Two failure modes: **(1) not invocable**, the function isn't exported or is defined inline in a route handler; **(2) not replayable**, its root takes unserializable inputs (live SDK/DB clients, HTTP \`Request\`/\`Response\`, stream writers, sockets, opaque request contexts), so even an invocable call replays with empty or stubbed args. Such functions were introduced before Instrument's trace-boundary serializability requirement, or via another path. Reason from each function's signature and visibility, and where a captured trace exists for the key, compare the signature against the trace data: an empty or \`<unserializable: ...>\`-stubbed recorded root input confirms the root isn't replayable. Do not execute replay to detect this.
 
-**Keyed root-handler keys are not affected.** A key registered only via a callback handler or a trace-processor run wrapper ({{replayableRootHandlerNames}}) has no decorated function by design and records the framework's serializable input as the root; create its pipeline with the key-based replay pattern from step {{step:replay/create-scripts}} instead of offering these resolutions. **Bare trace-processor-only keys ({{traceProcessorNames}} over plain \`run()\`) ARE affected, not exempt:** the processor records an empty-input root, so a processor-only key with neither the run wrapper ({{traceProcessorRootWrappers}}) nor a manual \`withSpan\`/\`@span\` root is not replayable. Offer the resolutions below, with "route the run through the run wrapper, or add a manual root that takes the run input" as the fix.
+**Keyed root-handler keys are not affected.** A key registered only via a callback handler or a trace-processor run wrapper ({{replayableRootHandlerNames}}) has no decorated function by design and records the framework's serializable input as the root; create its pipeline with the key-based replay pattern from step {{step:replay/create-scripts}} instead of offering these resolutions. **Bare trace-processor-only keys ({{traceProcessorNames}} over plain \`run()\`) ARE affected, not exempt:** the processor records an empty-input root, so a processor-only key without the run wrapper or an application root is not replayable. Offer "add a \`withTrace\`/\`trace\` root that takes the run input, or route the run through the run wrapper" in supported subtree runtimes; offer a manual span root only when opt-out is technically unavailable.
 
 {{whens}}
 
@@ -20867,19 +19560,19 @@ If one or more functions can't be invoked or aren't replayable, {{askVerb}} offe
             {
               when: "every instrumented function is invocable from the replay registry module and its root is replayable (nothing left to resolve)",
               description: "nothing to resolve",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               option: {
                 letter: "A",
                 label: "Move the trace to an inner function"
               },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               option: { letter: "B", label: "Refactor" },
               recommended: true,
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               option: {
@@ -20887,7 +19580,7 @@ If one or more functions can't be invoked or aren't replayable, {{askVerb}} offe
                 label: "Leave as-is",
                 description: "add a header comment explaining why this one can't be replayed later (it can't be called directly, or it records no inputs to replay from over plain run() with an empty-input root) and flag that the script will rot"
               },
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         }
@@ -20927,7 +19620,7 @@ If it reports not authenticated, run \`{{command:login}}\` (blocks until the bro
           branches: [
             {
               when: "the project is Go, or there are no replay registry modules to augment yet",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               when: "the project is TypeScript, Python, or Ruby and has a replay registry module to augment",
@@ -21032,14 +19725,14 @@ Leave the live request path untouched: only the replayed function reads the bran
           body: `Verify the wiring end-to-end with one **freshly captured, exactly identified** trace. Capture is automatic in current SDKs, but older traces may have no snapshot reference and would use the normal database path, so \`--limit 1\` is never an acceptable selector here:
 
 1. Resolve the exact fresh trace ID. Before triggering the instrumented function, call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 10 }\` and retain the returned IDs. Record the current timestamp, then run the instrumented function once (or have the user trigger it). Poll the same search once or twice and compare the returned IDs with the before set. Select the ID only when exactly one new root trace has a timestamp after the recorded time. If there are zero new IDs, stop and report that no fresh trace arrived; if concurrent traffic produces more than one candidate, stop and ask the user for the intended trace ID. \`search_traces\` does not return trace inputs, so never guess based on an assumed input match. Confirm the exact ID is eligible by calling {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", traceIds: ["<fresh-trace-id>"], hasDbSnapshot: true, limit: 1 }\`. If it is absent, do not replay it: report that the fresh trace did not capture a snapshot and diagnose SDK freshness/database connection first.
-2. **Mandatory replay-safety check, before any replay command.** Read the replay registry module, the real production root it imports, and every reachable external-action span. Inventory database writes, outbound mutations, queue publishes, email, payments, filesystem writes, and similar unsafe actions. Confirm each one is behind a manual replay-mockable descendant selected by the script's actual strategy and has a serializable recorded output; \`mock: "marked"\` requires \`mockOnReplay\` on that boundary. Confirm the boundary runs in the same replay context: Python worker threads require \`trace_across_threads=True\`; Python async-generator spans cannot be mocked; Ruby child threads, pre-created consumers, and processes do not inherit replay interception; TypeScript synchronous selected spans cannot use lazy \`marked\` output and may use \`all\` only when freezing every matched child is acceptable. Also reject unsafe import-time/module initialization, because it runs before replay interception. Confirm the replay call requests \`dbBranch\` / \`db_branch\`. If any unsafe action is unselected, unmockable, outside context, or uncertain, **do not run the smoke test**; report the exact blocker and required boundary change. Mocking, not the app environment, is the safety boundary.
+2. **Mandatory replay-safety check, before any replay command.** Read the replay registry module, the real production root it imports, and every reachable external-action span. Inventory database writes, outbound mutations, queue publishes, email, payments, filesystem writes, and similar unsafe actions. Confirm each one is behind a manual replay-mockable descendant selected by the registry entry's actual strategy and has a serializable recorded output; \`mock: "marked"\` requires \`mockOnReplay\` on that boundary. Confirm the boundary runs in the same replay context: Python worker threads require \`trace_across_threads=True\`; Python async-generator spans cannot be mocked; Ruby child threads, pre-created consumers, and processes do not inherit replay interception; TypeScript synchronous selected spans cannot use lazy \`marked\` output and may use \`all\` only when freezing every matched child is acceptable. Also reject unsafe import-time/module initialization, because it runs before replay interception. Confirm the replay call requests \`dbBranch\` / \`db_branch\`. If any unsafe action is unselected, unmockable, outside context, or uncertain, **do not run the smoke test**; report the exact blocker and required boundary change. Mocking, not the app environment, is the safety boundary.
 3. Run the SDK-installed replay command against only the verified ID using \`--trace-ids <fresh-trace-id>\` (for example, \`pnpm with-env bitfab-replay --registry scripts/replayRegistry.ts <pipeline> --trace-ids <fresh-trace-id>\`, \`poetry run bitfab-replay --registry scripts/replay_registry.py <pipeline> --trace-ids <fresh-trace-id>\`, or \`bundle exec bitfab-replay --registry scripts/replay_registry.rb <pipeline> --trace-ids <fresh-trace-id>\`, with the app's normal environment loader). Never substitute \`--limit 1\`.
 4. Confirm the branch was injected: inside the replayed function, \`getCurrentReplayBranch()\` (TypeScript), \`get_current_replay_branch()\` (Python), or \`Bitfab.current_replay_branch\` (Ruby) must be non-null. Compare its \`databaseUrl\` / \`database_url\` host and database with the app's normal \`DATABASE_URL\`; they should differ. Print the test run URL from the replay output so the user can open the experiment.
 
 If the branch accessor is null for a freshly captured trace, check that the source database is connected, that the trace actually carries a snapshot reference, and that the SDK supports always-on capture (upgrade with \`{{cmd}}update\` when needed). Re-check the dashboard Database section in step {{step:db-snapshot/connect-db}}; there is no separate replay-environment active flag.
 
 Caveats to surface to the user: each branch lease is short-lived (a few minutes) and is created fresh per replay item; the branch reflects the source database's state at the snapshot instant, bounded by replication lag (typically sub-second to a few seconds).`,
-          next: "cleanup/close-studio"
+          next: "cleanup/finish"
         }
       ]
     },
@@ -21047,9 +19740,7 @@ Caveats to surface to the user: each branch lease is short-lived (a few minutes)
       id: "templates",
       title: "Templates",
       stepStyle: "list",
-      intro: `Iterate on the **span-rendering templates** for one trace function. Each round: the user describes what should look different, you call {{tool:getTemplate}} \u2192 edit \u2192 {{tool:saveTemplate}} **with \`traceFunctionKey\` set to the picked key**, and the change renders live against a real trace. That live surface is either the trace view the user already has open (inline mode: every trace view subscribes to \`template:updated\`, so it re-renders on save without any refresh) or a dedicated chromeless preview page you open for them: step {{step:templates/preview-mode}} picks between them so the user is never yanked off a trace they're already viewing. Loop until the user is satisfied. Triggered explicitly by \`{{cmd}}setup templates [<key>]\`, never reached from \`wizard\`.
-
-Templates control how a span's input / output renders in the Bitfab UI. They are scoped per **span type** (\`llm\`, \`agent\`, \`function\`, \`guardrail\`, \`handoff\`, \`custom\`). This phase **always passes \`traceFunctionKey\`** so edits become **per-function overrides**: they apply only to spans on traces of the picked function, not to other functions in the org. Resolution at render time is per-key row \u2192 org-global \u2192 file default, so the seed you see in {{tool:getTemplate}} reflects whatever is currently rendering for this function. Surface this scope when the user asks for a change so they know nothing else in the org is affected.`,
+      intro: `Iterate on span-rendering templates for one trace function. Read the current template and reference, apply the requested change, then save it with traceFunctionKey set. Provide the regular template-preview link when useful. Keep review decisions in chat.`,
       steps: [
         {
           id: "pick-function",
@@ -21104,7 +19795,7 @@ Hold the reference in your working context for the rest of the loop. Do NOT call
           title: "Verify a trace exists for the function",
           body: `The preview page renders the most recent trace for the function. Without at least one trace it has nothing to render, so check before opening it.
 
-Call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 1 }\`. If the response contains a trace ID, continue. If the response indicates no traces exist (e.g. \`No traces found matching the filter criteria.\`), exit and tell the user in one short line: \`No traces yet for <key>. Run your app (or the replay registry module) to generate one, then re-run \\\`{{cmd}}setup templates <key>\\\` to preview.\` Do NOT block waiting; the user re-invokes when they have a trace.
+Call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 1 }\`. If the response contains a trace ID, continue. If the response indicates no traces exist (e.g. \`No traces found matching the filter criteria.\`), exit and tell the user in one short line: \`No traces yet for <key>. Run your app to generate one, then re-run \\\`{{cmd}}setup templates <key>\\\` to preview.\` Do NOT block waiting; the user re-invokes when they have a trace.
 
 {{whens}}`,
           branches: [
@@ -21116,7 +19807,7 @@ Call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 1 }\`. If 
             {
               when: "no traces yet for this function",
               description: "exit and tell the user to generate a trace and re-run",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             }
           ]
         },
@@ -21125,14 +19816,7 @@ Call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 1 }\`. If 
           kind: "branch",
           toolCalls: ["ask"],
           title: "Edit inline, or open the live preview page",
-          body: `The edit itself is just {{tool:getTemplate}} \u2192 {{tool:saveTemplate}}; the only open question is where the user watches the result. **The normal Studio trace view already re-renders on every save** (it subscribes to the same \`template:updated\` event the preview page does), so if the user is already looking at a trace of \`<key>\`, you do NOT need to open anything: editing in place keeps their current view and avoids yanking them onto a different page.
-
-{{askVerbCap}} with two options. **Recommend inline whenever the context shows the user is already viewing a trace of this function** (e.g. they asked to change templates *while looking at a trace*): that is exactly the case this branch exists to protect.
-
-1. **Edit against the trace I already have open** (inline): skip the preview entirely. The user's open trace view updates live on each save. You give up the click / focus anchors (you'll ask which span type to edit) and the in-page Close button (the loop ends when the user says they're done).
-2. **Open the live preview page**: launch the chromeless template-preview page, which redirects to the most recent trace for \`<key>\` and streams click / focus anchors back to you. Prefer this when the user has no trace of this function on screen, or explicitly wants the dedicated preview.
-
-{{whens}}`,
+          body: `The user can watch template saves in a trace they already have open, or on the template-preview page. Both update through normal template:updated events. Offer a preview link when useful. Ask for requested changes in chat. {{whens}}`,
           branches: [
             {
               when: "edit inline against the trace already on screen",
@@ -21141,7 +19825,7 @@ Call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 1 }\`. If 
             },
             {
               when: "open the live preview page",
-              description: "launch the chromeless preview, then enter the edit loop",
+              description: "provide the preview link, then enter the edit loop",
               next: "templates/open-preview"
             }
           ]
@@ -21151,67 +19835,31 @@ Call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 1 }\`. If 
           kind: "action",
           toolCalls: ["bash"],
           commandCalls: ["startTemplatePreview"],
-          title: "Open the chromeless template-preview page (background)",
-          body: `Launch the preview command **in the background** so the agent can keep iterating while the page stays open:
-
-\`\`\`bash
-{{command:startTemplatePreview}} <functionKey>
-\`\`\`
-
-{{#claude}}Run this with \`run_in_background: true\` on the Bash tool. **Do NOT append \`&\` to the command string** (the \`run_in_background\` parameter handles backgrounding; \`&\` causes the shell to return immediately and kills the process). The harness returns a task id and an output file path, and will deliver a \`<task-notification>\` with \`status: completed\` automatically when the process exits. Capture both: you'll need the output file path to poll between edit rounds.{{/claude}}{{#cursor}}Run this as a background process and capture the handle plus its stdout so you can poll its status between edit rounds.{{/cursor}}{{#codex}}Run this in a long-lived exec session (\`exec_command\` with \`is_background: true\`); capture the session id so you can \`read\` it between edit rounds to check whether it has exited.{{/codex}}
-
-If stdout emits \`{"event":"window-open-requested","url":"..."}\`, immediately surface the URL in a normal chat message, e.g. \`Opening Studio: <url>. Click it if a window doesn't appear\`, before continuing to poll. (This event means the open was *requested*, not that a window is confirmed on screen; the link is the reliable fallback when nothing surfaces.)
-
-The command **blocks until the user clicks Done in Studio**, then exits 0 with a single line like \`Template preview closed [via studio]\`. If the user instead just closes the browser tab without clicking Close, the process keeps running until the 30-minute timeout. The page auto-redirects to the most recent trace for the function and renders it with the org's current templates; it subscribes to SSE \`template:updated\` events and re-renders the affected span automatically, so the user does NOT need to refresh after each edit.
-
-\uD83D\uDEA8 **Stdout is a mixed JSONL + free-form stream.** Two event shapes flow over the same channel as the user interacts with the live preview:
-
-\`\`\`json
-{"event":"click","ts":"...","traceId":"...","spanId":"...","spanType":"...","sectionPath":"metadata","fieldPath":"metadata.tokens","rawText":"1234","selector":"..."}
-{"event":"focus","ts":"...","traceId":"...","spanId":"...","viewMode":"span","expandedSections":["metadata"]}
-\`\`\`
-
-\`click\` events fire when the user clicks a decorated element. \`focus\` events fire on initial load, on every span/trace selection change, and on shadow-root \`<details>\` open / close, so you always know the starting viewport even before any click.
-
-Free-form text (browser-handoff status lines, errors) goes through the same stdout. **You MUST filter to lines that parse as JSON before routing.** Skip anything that doesn't parse, never error out on non-JSON lines. The click event payload follows the template-anchor catalog returned by {{tool:getTemplateReference}}; \`fieldPath\` matches a row there, \`sectionPath\` matches a section id. Unknown anchor values are omitted (the click handler drops them); \`rawText\` and \`selector\` are always present so you can disambiguate. Focus event fields are always present; \`spanId\` is null when the user is on the trace overview, \`viewMode\` is \`"trace"\` or \`"span"\`, and \`expandedSections\` lists the \`data-section\` ids whose \`<details>\` is currently open.`,
+          title: `Provide the template-preview link`,
+          body: "Run {{command:startTemplatePreview}} <key> and relay the returned URL as a clickable link. Continue the template edit loop in chat. Template saves update the preview through normal organization events. The link command exits immediately.",
           next: "templates/edit-loop"
         },
         {
           id: "edit-loop",
           kind: "branch",
           toolCalls: ["ask", "bash", "getTemplate", "saveTemplate"],
-          title: "Edit loop: change \u2192 render \u2192 confirm (poll for Close)",
-          body: `Each round of the loop. **Every {{tool:getTemplate}} and {{tool:saveTemplate}} call must include \`traceFunctionKey: <key>\`** (the key picked in step {{step:templates/pick-function}}); without it you'd edit the org-global instead of this function's override.
+          title: `Edit templates with the user`,
+          body: `Each edit is driven by the user\u2019s request in chat. Include traceFunctionKey: <key> in every template read and save. Ask which span or region they mean when unclear.
 
-**Two modes, set by step {{step:templates/preview-mode}}.** In **preview mode** a background process from step {{step:templates/open-preview}} is streaming the live page, and you tail it for anchors. In **inline mode** there is no such process: **skip every stdout / background-process instruction below** (step 1 and the process-exit check), drive the loop purely by asking, and rely on the user's already-open trace view re-rendering live on each save.
+2. Ask the user what they want changed in the trace view. Identify the span type and rendered region from their answer. If that is ambiguous, clarify it in chat before editing. Both the regular trace view and the linked preview update on save.
 
-1. **(preview mode only) Tail the background process's stdout** for any \`{"event":"click",...}\` or \`{"event":"focus",...}\` JSON lines that arrived since the previous round. Parse each line; skip non-JSON status lines.
-   - **Most recent click** (if any) is ground truth for "what the user is referring to": its \`spanType\` is the template to edit, \`sectionPath\` + \`fieldPath\` (against the anchor catalog from {{tool:getTemplateReference}}) tell you which region to change. If \`fieldPath\` is absent, fall back to \`sectionPath\` + \`rawText\`.
-   - **Most recent focus** tells you what the user is currently looking at, even without a click. Use it to anchor a question when the user's instruction is ambiguous (e.g. "make this less verbose" while their focus is on a specific span) and to pick the span type when no click is available. Focus is also helpful to confirm in your acknowledgement that you're editing the same span the user is viewing.
-   - If neither signal is present since the last round, fall through to step 2 and ask normally.
-2. Ask {{askUser}}: **"Tell me how you want your trace data to look and I'll make the changes in Bitfab. You'll see the changes update live in the Bitfab Studio trace view."** (In **preview mode** that live view is the tab opened from here; in **inline mode** it is the trace the user already had open, which re-renders on save. Phrase the sentence to match the active mode rather than always saying "opened from here".) **If there was a click in the previous round, anchor the question to it** by prepending a one-line acknowledgement (e.g. "You clicked the tokens value in metadata."). Keep the framing open-ended, do NOT list the six span types up front; let the user describe what they want and pick the span type from their answer. If the user names one of the six span types (\`llm\`, \`agent\`, \`function\`, \`guardrail\`, \`handoff\`, \`custom\`), use that. If their answer is unambiguous about the rendered region but doesn't name a span type AND there was no click, fall back to {{askUser}}which of the six span templates they want to edit. Don't guess the span type from a description like "make this less verbose," since the same description fits multiple templates.
 3. Call {{tool:getTemplate}} with \`spanType\` and \`traceFunctionKey: <key>\` to read the **live** content. The response labels its source: \`scoped to traceFunctionKey "<key>"\` (a per-key row already exists), \`org-global override\` (no per-key row yet, this is your seed for the first save), or \`source: file <name>\` (no DB rows at all). **Always** read before write: the prior round may have edited the same template, and overwriting blindly drops that work.
 4. Edit the returned source in-context, **one focused change per round**. Resist the urge to bundle multiple unrelated tweaks into a single save: small steps let the user see each effect land on the preview and redirect mid-loop if the change isn't quite right. Stay inside the documented Nunjucks variables and filters (per the reference). Don't introduce \`{% extends %}\`; the assembler injects into \`base.njk\`'s content block, so extends will break composition. When adding new visible regions, **decorate them with the catalog anchors** (\`data-section\`, \`data-field-path\`, \`data-iter-index\`) so future clicks resolve cleanly.
-5. Call {{tool:saveTemplate}} with \`spanType\`, \`traceFunctionKey: <key>\`, and the full edited body. The tool upserts the per-function row in place (no version bump, no row juggling). On the first save for a span type the row is created; subsequent edits update it. The browser shows a brief "Editing..." status banner while the call is in flight, then a "Saved" flash when it returns, no extra signaling needed from your side.
+5. Call {{tool:saveTemplate}} with \`spanType\`, \`traceFunctionKey: <key>\`, and the full edited body. The tool upserts the per-function row in place (no version bump, no row juggling). On the first save for a span type the row is created; subsequent edits update it. The preview updates when the save completes.
 6. Acknowledge the save in one short line (e.g. "Saved."). The live view (the preview page in preview mode, or the trace the user already has open in inline mode) subscribes to SSE \`template:updated\` events and re-renders automatically, so do NOT tell the user to refresh. Do not paste the template body back into chat. After a non-trivial change you may briefly ask {{askUser}} whether the result looks right before starting the next round; for obvious tweaks (a label rename, a colour swap), skip the check and proceed.
 
-**(preview mode only)** Before asking the user about another change, **check whether the background process from step {{step:templates/open-preview}} has exited**. The terminal signal is a line containing \`Template preview closed\` on stdout (the process exits 0 right after). In **inline mode** there is no background process and no Close button, so this check does not apply: the loop ends only when the user says they're done.
 
-**Detecting Close is a preview-mode step only; inline mode has no background process, so skip this whole paragraph.** {{#claude}}Two equivalent ways to detect it: (a) if you've already received a \`<task-notification>\` for the captured task id with \`status: completed\`, the user has clicked Close; (b) otherwise, use the \`Read\` tool on the captured output file path and look for the \`Template preview closed\` line. Either signal means the loop should exit. **Use the same \`Read\` call to also harvest any new \`{"event":"click",...}\` and \`{"event":"focus",...}\` JSON lines for step 1 of the next round.**{{/claude}}{{#cursor}}Read the background process's stdout; the \`Template preview closed\` line means the user clicked Close and the process has exited. **Use the same read to harvest any new \`{"event":"click",...}\` and \`{"event":"focus",...}\` JSON lines for step 1 of the next round.**{{/cursor}}{{#codex}}Use \`read\` against the captured exec session; the \`Template preview closed\` line on stdout means the user clicked Close and the session has exited. **Use the same read to harvest any new \`{"event":"click",...}\` and \`{"event":"focus",...}\` JSON lines for step 1 of the next round.**{{/codex}}
-
-Two ways the loop ends:
-
-{{whens}}`,
+Continue until the user says they are done. {{whens}}`,
           branches: [
-            {
-              when: "preview mode: background process exited (user clicked Close)",
-              description: "exit the loop and acknowledge that template editing is done",
-              next: "cleanup/close-studio"
-            },
             {
               when: "user explicitly says they're done (the only exit in inline mode)",
               description: "exit the loop and acknowledge",
-              next: "cleanup/close-studio"
+              next: "cleanup/finish"
             },
             {
               when: "user wants another change",
@@ -21225,14 +19873,14 @@ Two ways the loop ends:
     {
       id: "analyze-repo",
       title: "Analyze Repo",
-      intro: `**This whole phase is non-interactive.** Never ask the user a question{{#ask-user-question}} (never emit an \`AskUserQuestion\` call){{/ask-user-question}}, never open Studio, never edit code, and never write a replay registry module.{{#claude}} On this host \`AskUserQuestion\` is not even granted to the phase (it is excluded from \`allowed-tools\`), so a stray prompt is denied outright rather than hanging.{{/claude}}{{^claude}} This host shares one tool set across every setup mode, so there is no per-mode permission split here: honoring non-interactivity is on you, run to completion autonomously and never wait for a human.{{/claude}} Run it start to finish on your own and end with a printed report. The deliverable is a set of **draft trace plans** uploaded to Bitfab (unconfirmed) that the user can review and confirm later in Studio via \`{{cmd}}setup view\`. If anything blocks you (no auth, no valid candidates), stop and say so plainly rather than prompting.`,
+      intro: "Analyze the repository without changing code or asking for confirmation. Read the source, identify the most valuable AI workflows to instrument, and report recommendations with file locations and replay considerations. No server-side planning artifact is created.",
       steps: [
         {
           id: "preflight",
           kind: "action",
           toolCalls: ["apiKey", "bash", "grep", "glob", "read"],
           title: "Confirm auth, then detect the project language and frameworks",
-          body: `**First, confirm authentication non-interactively.** Call {{tool:apiKey}} to retrieve the API key for the plugin's active org. If it returns a key, hold it and continue. If it errors or returns no key, **STOP the whole phase immediately**: this mode cannot run the interactive login (that needs a browser/Studio round-trip). Tell the user to run \`{{cmd}}setup login\` first, then re-run \`{{cmd}}setup analyze-repo\`. Do not prompt, do not retry, do not fall through to scanning.
+          body: `**First, confirm authentication non-interactively.** Call {{tool:apiKey}} to retrieve the API key for the plugin's active org. If it returns a key, hold it and continue. If it errors or returns no key, **STOP the whole phase immediately**: this mode cannot run the interactive login (that needs a browser sign-in). Tell the user to run \`{{cmd}}setup login\` first, then re-run \`{{cmd}}setup analyze-repo\`. Do not prompt, do not retry, do not fall through to scanning.
 
 **Then detect the project language** (TypeScript, Python, Ruby, or Go). In a monorepo, identify which directories are **applications** (services, APIs, agents) vs **libraries** (SDKs, shared packages) and focus on the application directories. Scan imports and package manifests for supported framework signals, and note which framework each application directory uses:
 {{frameworkDetectionBullets}}`,
@@ -21245,11 +19893,11 @@ Two ways the loop ends:
           title: "Scan the codebase for AI workflows",
           body: `**First, check the skill invocation arguments for free-text guidance.** Anything after a \`guidance:\` marker (e.g. \`analyze-repo guidance: focus on the billing and checkout flows\`) is the user's steer on what to prioritize. When present, let it shape this scan: bias toward the areas, directories, or workflow types the guidance names, and still record other candidates you find so selection can fall back to them. When absent, scan the whole codebase evenhandedly as below. Never treat the guidance as a reason to prompt the user or to skip the non-interactive contract.
 
-Read the codebase to identify **every** AI workflow, each place the app makes LLM calls, runs agents, or makes AI-driven decisions. In a monorepo, search each application directory separately (a root-level search misses subdirectories). For each workflow, find the **outer workflow boundary** (the function that builds any framework/stateful object, invokes it, and processes the output, e.g. an API handler, message processor, job runner, or pipeline coordinator, almost never the SDK's own \`run()\`/\`invoke()\` call), and note the meaningful work **above** it (auth, validation, input prep, retry/orchestration loops, multi-agent coordination), **alongside** it (custom LLM calls outside the SDK, unregistered tools, downstream services), and **below** it (post-processing, parsing, persistence). These become the manual spans around any auto-captured SDK content.
+Read the codebase to identify **every** AI workflow, each place the app makes LLM calls, runs agents, or makes AI-driven decisions. In a monorepo, search each application directory separately (a root-level search misses subdirectories). For each workflow, find the **outer workflow boundary** (the function that builds any framework/stateful object, invokes it, and processes the output, e.g. an API handler, message processor, job runner, or pipeline coordinator, almost never the SDK's own \`run()\`/\`invoke()\` call), and note the meaningful work **above** it (auth, validation, input prep, retry/orchestration loops, multi-agent coordination), **alongside** it (custom LLM calls outside the SDK, unregistered tools, downstream services), and **below** it (post-processing, parsing, persistence). In supported TypeScript and Python workflows, this analysis identifies the opt-out trace root and the descendants that need explicit \`withNode\`/\`node\` policy. Only in fallback runtimes does it identify spans to add around auto-captured SDK content. In supported TypeScript and Python framework integrations, the native framework spans stay beneath the opt-out root.
 
 **Record each candidate's replayability up front, because it drives selection in the next step.** A trace is replayable only if either (1) the boundary's inputs are serializable by the SDK's tracing layer, or (2) the workflow runs on a supported framework integration that records a replayable root ({{replayableRootHandlerNames}}). Flag boundaries whose natural inputs are **unserializable**: live SDK client instances passed as arguments (\`OpenAI\`/\`Anthropic\`/Bedrock clients, configured agents, DB connections, often smuggled inside an options/config bag), HTTP \`Request\`/\`Response\`, stream writers, open sockets, browser objects, or genuinely opaque request contexts. Module-scope or closure-captured dependencies do NOT count as unserializable inputs because runtime wiring resolves them without storing them as span arguments; only values passed **as arguments** do. Note, per candidate: the trace function boundary, its input shape and whether it is serializable, and the external state/side effects it touches (DB reads/writes, third-party APIs, queues, blob storage).
 
-**Also record each candidate's existing instrumentation, so the uploaded plan records (for data tracking, not any UI change) the delta between what's already traced and what's recommended.** Grep each workflow for existing Bitfab SDK usage (\`withSpan\`, \`@span\`, \`bitfab_span\`, \`client.Span\`, \`getFunction\`, \`get_function\`, \`bitfab_function\`, \`WithFunctionName\`) the same way Instrument does. For each candidate note whether it is **already instrumented** and, if so: its \`traceFunctionKey\` (the string passed to \`getFunction\` / \`get_function\` / \`bitfab_function\` / \`WithFunctionName\`), **which specific functions/calls already sit inside a span** (a hand-written \`withSpan\`/\`@span\`, or a framework auto-capture), and **which of those spans are already tagged to serve their recorded output on replay** (the SDK's mock-on-replay marker). This per-node "what's traced now" map feeds the \`alreadyTraced\` / \`alreadyMocked\` fields in step {{step:analyze-repo/build-and-upload}}. A candidate being already instrumented does NOT disqualify it: the plan you upload for it is a diff, not a duplicate.`,
+**Also record each candidate's existing instrumentation, so the report describes the delta between what's already traced and what's recommended.** Grep each workflow for existing Bitfab SDK usage (\`withTrace\`, \`trace\`, \`withNode\`, \`node\`, \`withSpan\`, \`@span\`, \`bitfab_span\`, \`client.Span\`, \`getFunction\`, \`get_function\`, \`bitfab_function\`, \`WithFunctionName\`) and for the TypeScript transform/build adapter. For each candidate note whether it is **already instrumented** and, if so: its \`traceFunctionKey\`; whether capture is an opt-out trace tree, framework auto-capture, or an opt-in span tree; whether the TypeScript production entrypoint is transformed; which descendants have explicit node/span configuration; and which captured descendants serve their recorded output on replay. Existing opt-in spans elsewhere in a repository do not establish a house style and are not a reason to recommend more opt-in instrumentation. If the selected call stack already contains spans, recommend a coherent conversion or a disjoint trace root rather than placing \`withTrace\`/\`trace\` around those spans, which would raise \`MixedTracingError\`. Use this map in step {{step:analyze-repo/report}} to distinguish existing instrumentation from recommended changes. An already-instrumented candidate remains eligible when source analysis identifies useful improvements. Do not build or upload planning artifacts.`,
           next: "analyze-repo/select"
         },
         {
@@ -21258,73 +19906,25 @@ Read the codebase to identify **every** AI workflow, each place the app makes LL
           title: "Rank the candidates and pick the top N (default 5)",
           body: `Rank the workflows found in step {{step:analyze-repo/scan}} by tracing value, most valuable first: prefer complex or LLM-heavy workflows, multi-step agents, and high-traffic production paths; deprioritize thin single-call wrappers and anything that only exists to test or explore locally (dev CLIs, notebooks).
 
-**If the invocation carried free-text \`guidance:\` (see step {{step:analyze-repo/scan}}), let it drive this ranking**: candidates matching the user's steer come first, and only fill the remaining slots with the general value ranking above. Treat the guidance as a strong preference, not a hard filter: if it matches fewer than N candidates, top up from the rest rather than uploading fewer plans.
+**If the invocation carried free-text \`guidance:\` (see step {{step:analyze-repo/scan}}), let it drive this ranking**: candidates matching the user's steer come first, and only fill the remaining slots with the general value ranking above. Treat the guidance as a strong preference, not a hard filter: if it matches fewer than N candidates, top up from the rest rather than recommending fewer workflows.
 
-**Pick the top N**, where N is the plan cap for this run. Read N from the skill invocation arguments: if they include a \`limit=<number>\` token (e.g. \`analyze-repo limit=3\`), use that number; otherwise default to **5**. Pick fewer than N only if fewer valid candidates exist; pick more than N only if several are clearly tied for value and cheap to plan (never exceed N when it was explicitly passed).
+**Pick the top N**, where N is the workflow cap for this run. Read N from the skill invocation arguments: if they include a \`limit=<number>\` token (e.g. \`analyze-repo limit=3\`), use that number; otherwise default to **5**. Pick fewer than N only if fewer valid candidates exist; pick more than N only if several are clearly tied for value and cheap to assess (never exceed N when it was explicitly passed).
 
 **Resolve serializability without prompting or editing code**, since this mode never refactors:
 - If the natural boundary's inputs are serializable, keep it as-is.
 - If they are unserializable but an obvious **inner** function with serializable inputs exists, move the boundary inward to that function (not a refactor, just a different, already-importable boundary).
-- If the workflow runs on a framework integration that records a replayable root ({{replayableRootHandlerNames}}), keep it and plan the handler/processor root.
-- If the only cleanly *replayable* boundary would require a **refactor** (extracting/exporting a new function, restructuring call sites), do NOT drop the candidate: plan a **coarser, purely-additive** boundary at the nearest existing function (a root-only span, or a framework handler root) even if its inputs aren't fully serializable, and note in the final report that it needs an interactive \`{{cmd}}setup instrument\` pass to become cleanly replayable. Only **drop** a candidate when there is **no** additive boundary at all - nothing importable or wrappable without editing code. Aim to upload every one of the N selected; dropping should be rare.
+- If the workflow runs on a framework integration ({{replayableRootHandlerNames}}), keep the integration and recommend an opt-out root around the nearest serializable application or framework invocation boundary; its native agent, LLM, and tool spans nest beneath that root.
+- If the only cleanly *replayable* boundary would require a **refactor** (extracting/exporting a new function, restructuring call sites), do NOT drop the candidate and do not recommend an unserializable or root-only span as a substitute. Report that it requires an interactive \`{{cmd}}setup instrument\` pass to create a serializable boundary, then recommend opt-out \`withTrace\`/\`trace\` plus \`withNode\`/\`node\` on that boundary when the runtime supports it. Only **drop** a candidate when there is no identifiable production workflow boundary at all. Report every one of the N selected workflows; dropping should be rare.
 
 If **zero** valid candidates remain, skip to step {{step:analyze-repo/report}} and say so.`,
-          next: "analyze-repo/build-and-upload"
-        },
-        {
-          id: "build-and-upload",
-          kind: "reference",
-          refs: ["reference"],
-          toolCalls: [
-            "read",
-            "listTracePlans",
-            "saveTracePlan",
-            "cancelTracePlan",
-            "getTracePlan"
-          ],
-          title: "Build and upload a draft trace plan for each candidate",
-          body: `For **each** candidate selected in step {{step:analyze-repo/select}}, build a \`TracePlanTree\` and upload it with {{tool:saveTracePlan}}. This is the same plan construction as an interactive run, **minus the browser confirmation**: do NOT run \`openTracePlan.js\`, do NOT open Studio, and do NOT ask the user to confirm the plan ({{#ask-user-question}}no \`AskUserQuestion\`, {{/ask-user-question}}skipping the presentation described in the Reference section){{#claude}} (the phase is not granted that tool){{/claude}}. Consult the **Trace Plan Format** and **Trace Plan Accuracy** rules in the Reference section below for span-type vocabulary and the tree grammar. Read each candidate's root signature (and any function whose parameter names or return fields the plan references) before building its tree; never guess names.
-
-Build each plan under the same hard constraint as Instrument: **the tree must describe purely-additive instrumentation.** If a shape would require a behavior change to nest correctly (awaiting a stream that wasn't awaited, reordering calls, blocking a callback), pick a flatter tree (siblings, or fewer captured nodes) instead. For callback-handler SDKs ({{callbackHandlerNames}}) use a handler-only or hybrid plan; for trace-processor SDKs default to a hybrid plan with a keyed root that carries the run input.
-
-**For each candidate, probe {{tool:listTracePlans}} with \`{ traceFunctionKey: "<that candidate's key>", status: "awaiting" }\`** and hold what comes back: the plan's id **and its source**. An earlier \`{{cmd}}setup analyze-repo\` run on this repo already drafted plans, and a second draft for the same key does not replace the first, it competes with it: both then show up in the reuse menu, and the user picks between two plans for one workflow. **Probe per key, never once for the whole org:** an unfiltered listing is capped (20 by default, 50 at most) and unpaginated, so on an org with many drafts the older ones fall off the end, and a candidate whose draft was silently missing would get a duplicate created for it, which is the exact failure this probe exists to prevent. Do not narrate the probes.
-
-Then for every candidate, take the FIRST of these three moves that matches. **They are ordered, not a menu:** the probe returns every awaiting plan for the key whatever its source, so a key can hand you an \`interactive\` plan and \`analyze_repo\` drafts at once, and reading the bullets as independent would let the refresh below cancel the very plan the first bullet protects.
-
-1. **Any awaiting \`interactive\` plan for the key: skip the candidate entirely.** Touch nothing, not the interactive plan and not the drafts sitting beside it. That plan belongs to a live \`{{cmd}}setup instrument\` or \`{{cmd}}setup modify\` cycle and the user may have it open in Studio right now, so this batch neither overwrites it (their in-flight review would change under them) nor drafts beside it (that is the competing plan this probe exists to prevent). Record it for the report's **Skipped** section as already being worked on interactively.
-2. **Otherwise, one or more awaiting \`analyze_repo\` drafts: refresh the newest.** Call {{tool:saveTracePlan}} with \`{ planId, tree, capturedNodeIds }\` (the id from the probe). This replaces that draft's tree with the one you just built from current code, root included. Do not pass \`language\` or \`source\` on an update. **When the probe returned several, retire the older \`analyze_repo\` siblings with {{tool:cancelTracePlan}}** and say in one line how many. Keys can already carry duplicates from runs that predate this rule, and refreshing one while leaving the rest reusable means the menu still offers the user two plans for one workflow, which is the whole failure being fixed. **Retire only \`analyze_repo\` drafts**; this branch is only reached when no interactive plan exists for the key, and it must never widen beyond that.
-3. **Otherwise (no awaiting plan at all): create the draft.** Call {{tool:saveTracePlan}} with \`{ language, tree, capturedNodeIds, traceFunctionKey, source: "analyze_repo" }\`. **Always pass \`source: "analyze_repo"\`** on these creates so auto-drafted, unconfirmed plans are marked distinctly from interactively-confirmed ones (an interactive run omits \`source\`, which defaults to \`interactive\`).
-
-A key whose only existing plan is **confirmed** counts as no awaiting plan: leave the confirmed one alone (it records what the code captures today) and create a fresh draft beside it. In every case the tree obeys the same rules:
-- Each \`TraceNode\` carries \`id\`, \`name\`, \`kind\` ("manual" | "auto" | "pure"), \`file\`, \`line\`, \`signature\`, \`parentId\`, \`childIds\`, plus \`framework\` for \`[auto]\` lines.
-- **Every captured node MUST include \`sampleInput\` and \`sampleOutput\`** (realistic values built from the function's parameter and return types, or the SDK's documented response shape); the plan is useless without them.
-- **Every captured node MUST include an \`analysis\`** (\`{ classification, innerCall?, sideEffectKind?, readKind? }\`), classified by the node's OWN body (Read it, don't guess from the name), excluding work already in captured children. First match wins: (1) it **is** the model call (an auto model leaf, or a model call inline in this body) \u2192 \`model_call\`; (2) its body mutates external state (DB write, outbound \`POST/PUT/PATCH/DELETE\`, queue, email, charge, file/vector write) \u2192 \`side_effect\` + \`sideEffectKind\`, wins over model_call; (3) its body reads external mutable state (DB \`SELECT\`, outbound \`GET\`, vector search, cache read) \u2192 \`external_read\` + \`readKind\`; (4) otherwise \u2192 \`pure\`. **Nested \`model_call\`s are always a bug**: the leaf that hits the API is the only model call; every wrapper above it (chain \`.invoke\`, graph node, your orchestrator) is \`pure\`. **The same no-bubbling rule applies to \`side_effect\` and \`external_read\`**: when a node's only write or read lives in a **captured child** (an orchestrator whose body just calls a captured \`store.create\` / \`db.query\` / model function), that node excluding the child is \`pure\` - do NOT bubble the child's \`side_effect\`/\`external_read\` up to it. A root or orchestrator is \`side_effect\` or \`external_read\` ONLY if its OWN body writes or reads external state outside every captured child; a root whose write/read is captured as a child span is \`pure\`. Prefer the smallest external boundary: a broad external parent containing parsing, ranking, prompt construction, model calls, or other live code may be forced live by the server so its descendants still run. Do NOT send \`mockOnReplay\`/summary; the server derives them. Mockable \`external_read\` and \`side_effect\` nodes default to mocked replay, except broad external parents with live descendants; \`model_call\` and \`pure\` nodes default to live replay.
-- Include surrounding code as \`pure\` context nodes (callees below each leaf, siblings of each captured node below the root, always descendants of the root, never callers above it or the root's own siblings) so the plan is legible and expandable in the UI. These are NOT in \`capturedNodeIds\`.
-- \`capturedNodeIds\` is your recommended capture set and must form a connected sub-tree (selecting a descendant implies its ancestors). \`traceFunctionKey\` is the key a future Instrument/Modify cycle would wire up.
-- **For an already-instrumented candidate (per step {{step:analyze-repo/scan}}), the plan is a DIFF against what's traced now, expressed per node.** Set \`alreadyTraced\` on **every** node of the tree so the plan is unambiguously a diff: \`true\` where the code **already** wraps that node in a span today (a hand-written \`withSpan\`/\`@span\`, or a framework auto-capture), \`false\` everywhere else (proposed new spans and untraced context nodes alike). Also set \`alreadyMocked: true\` on the \`alreadyTraced\` nodes whose existing span already serves its recorded output on replay. These describe the **current code**, not your recommendation, so keep them independent of \`kind\` and \`capturedNodeIds\`. The three interesting cells then fall out: a captured node with \`alreadyTraced: false\` is a **new span the plan proposes**; an \`alreadyTraced: true\` node **left out of** \`capturedNodeIds\` is **existing instrumentation the plan would drop**; a captured \`alreadyTraced: true\` node is unchanged. Reuse the candidate's **existing \`traceFunctionKey\`** (do not mint a new one) so the diff lands on the right function. **Omit both fields entirely on greenfield (not-yet-instrumented) candidates** - a plan where no node carries \`alreadyTraced\` renders as a plain new-instrumentation plan, exactly as today.
-
-{{tool:saveTracePlan}} returns a plan id and a \`https://bitfab.ai/studio/trace-plan/<id>\` URL (on a refresh, the same id you sent). **Collect the id, trace function key, workflow description, frameworks used, boundary \`file:line\`, refactor complexity to instrument, suggested methods to capture, methods to mock on replay, and real-data improvement for each candidate, but do not print plan URLs in the final report.** Process candidates independently: if one fails to build or upload, record the failure and continue with the rest, do not abort the batch. You may optionally read a plan back with {{tool:getTracePlan}} to confirm it persisted.`,
           next: "analyze-repo/report"
         },
         {
           id: "report",
           kind: "action",
-          title: "Report the uploaded plans",
-          body: `Print one plain-markdown summary (no \`AskUserQuestion\`{{#claude}}; the phase is not granted that tool{{/claude}}). Lead with a one-line count that separates the two kinds of write, because a re-scan of a repo that was analyzed before is mostly the second: "Uploaded N draft trace plans" when they are all new, otherwise "Uploaded N draft trace plans and refreshed M existing ones" (say only the half that happened). Then a table or list with one row per plan:
-- **trace function key**;
-- **description of workflow**: one short phrase naming what the workflow does;
-- **frameworks used**: AI framework(s) and important backing systems visible in the workflow (for example LangGraph, OpenAI Agents SDK, Vercel AI SDK, BAML, Postgres, Redis, S3);
-- **refactor complexity to instrument**: exactly one of \`None\`, \`Low\`, \`Med\`, or \`High\` (implementation effort, not a capture setting);
-- **suggested methods to capture**: comma-separated function/method names from the proposed plan, not prose;
-- **methods to mock on replay**: count plus concise method/span names that should be mocked during replay because they read/write external mutable state or call third-party services;
-- **how this feature would improve by running real data through it**: one sentence focused on the product/debugging value of real traces.
-
-For already-instrumented candidates, include the diff delta when applicable: how many new spans the plan recommends and how many already-traced spans it would drop.
-
-**Do not print plan URLs. Do not add a \`Notes\` section.** After the list, add one compact footer line: "Draft only: no code changed. Review with \`{{cmd}}setup view\`, then run \`{{cmd}}setup instrument\`." If any plan used a coarser boundary because the cleanly-replayable one would need a refactor, add one short line naming the affected trace key and saying it needs an interactive instrument pass. If any candidates were **dropped** (no additive boundary at all, nothing wrappable without editing code), **failed to upload**, or were **left to a live interactive cycle** (an awaiting non-\`analyze_repo\` plan already exists for that key, per step {{step:analyze-repo/build-and-upload}}), include a **Skipped** section with one bullet per candidate and a one-line reason, so the user can follow up interactively.
-
-If preflight found no auth, or selection found zero valid candidates, this report is just that single explanatory message.`,
-          next: "cleanup/close-studio"
+          title: "Report recommended workflows",
+          body: 'Print one plain-markdown report of the selected workflows. Lead with "Identified N workflows to instrument". For each, give the function key, root file and signature, what it does, frameworks, existing instrumentation, tracing value, additive instrumentation approach, replay dependencies, and estimated effort. Distinguish already-instrumented workflows and candidates requiring a refactor. Do not edit code, upload artifacts, wait for review, or claim changes were made. The user can ask setup to instrument a named workflow from this report.',
+          next: "cleanup/finish"
         }
       ]
     },
@@ -21334,18 +19934,12 @@ If preflight found no auth, or selection found zero valid candidates, this repor
       stepStyle: "list",
       steps: [
         {
-          id: "close-studio",
+          id: "finish",
           kind: "action",
           toolCalls: ["bash"],
-          commandCalls: ["closeStudio"],
-          title: "Close Studio",
-          body: `Close Studio. Run this unconditionally: it resolves the active session from disk, closes the Studio tab (the daemon ends the session and stops appending to the event file), and exits quietly (\`{"event":"no-active-studio"}\`) when nothing was opened:
-
-\`\`\`bash
-{{command:closeStudio}}
-\`\`\`
-
-No sessionId argument is needed; do not track or look up one. This is silent housekeeping: never narrate it, reason about whether a session was opened, or report the outcome to the user (no "closing Studio", no "nothing to close").`,
+          commandCalls: [],
+          title: "Finish",
+          body: "The requested setup work is complete.",
           next: null
         }
       ]
@@ -21678,10 +20272,9 @@ After each update, Read the manifest to verify the new version and confirm to th
 // ../bitfab-plugin-lib/dist/flows/setupV2.js
 var FINISH_STEP = "finish/done";
 var STEP_RENAMES = {
-  "cleanup/close-studio": FINISH_STEP,
+  "cleanup/finish": FINISH_STEP,
   "templates/open-preview": "templates/edit-loop",
-  "templates/preview-mode": "templates/edit-loop",
-  "view/open-in-ui": "view/render-inline"
+  "templates/preview-mode": "templates/edit-loop"
 };
 function rewriteStepRef(ref) {
   return STEP_RENAMES[ref] ?? ref;
@@ -21701,7 +20294,7 @@ function rewriteNext(next) {
   };
 }
 function rewriteText(value) {
-  const replace = (text) => text.replaceAll("{{skill-ref:cleanup}}", "{{skill-ref:finish}}").replaceAll("{{step:view/open-in-ui}}", "{{step:view/render-inline}}").replaceAll("{{step:templates/preview-mode}}", "{{step:templates/edit-loop}}").replaceAll("{{step:templates/open-preview}}", "{{step:templates/edit-loop}}").replaceAll("Open one trace function's plan in the browser (read-only)", "Render one trace function's plan in the terminal (read-only)").replaceAll("inline ASCII render (and optional Studio review)", "inline ASCII render and terminal confirmation").replaceAll('If "Modify", jump to the Modify phase. If "Continue", go to Cleanup.', 'If "Modify", jump to the Modify phase. If "Done", finish setup.');
+  const replace = (text) => text.replaceAll("{{skill-ref:cleanup}}", "{{skill-ref:finish}}").replaceAll("{{step:templates/preview-mode}}", "{{step:templates/edit-loop}}").replaceAll("{{step:templates/open-preview}}", "{{step:templates/edit-loop}}").replaceAll('If "Modify", jump to the Modify phase. If "Continue", go to Cleanup.', 'If "Modify", jump to the Modify phase. If "Done", finish setup.');
   if (typeof value === "string") {
     return replace(value);
   }
@@ -21729,123 +20322,15 @@ function rewriteReferences(step) {
   }
   return { ...step, body, next: rewriteNext(step.next) };
 }
-var BUILD_TRACE_PLAN_STEP = {
-  id: "build-trace-plan",
-  title: "Build, review, and confirm the trace plan inline",
-  body: `Build the trace plan using the Trace Plan Format reference and the exact signatures read in the previous step. Keep one trace function per plan, classify every node, and keep the recommended captured set connected.
-
-Save it with {{tool:saveTracePlan}}. Reuse the existing \`planId\` when this cycle started from a saved draft or when the user is revising the current plan; never create competing plans for one key. For framework processors, render dynamic descendants by span category (for example, \`LLM calls [auto]\` and \`tool calls [auto]\`) rather than pretending concrete tool definitions are the only runtime calls. Render the plan as terminal-readable ASCII, including the files that would change, then use {{tool:ask}} to present exactly these choices:
-
-The \`Files changed:\` list is exhaustive for the whole cycle, not only the final source edit. Before asking, reconcile it against repository status and include every file already changed or expected to change: source, replay script, package manifest, lockfile, local environment file, and any compiler configuration needed to verify replay. Do not confirm a plan whose file list omits setup mutations already made.
-
-{{branches}}
-
-- **Continue:** call {{tool:confirmTracePlan}} with the displayed captured set. Carry the authoritative captured nodes and mock decisions it returns into the write step.
-- **Adjust plan:** ask what should change, update the same plan with {{tool:saveTracePlan}}, and return here with the revised ASCII.
-- **Expand details:** render the same plan with skipped context nodes, then return here without saving a duplicate.
-- **Abort:** call {{tool:cancelTracePlan}} when a plan was saved, then finish without editing code.
-
-If persistence is unavailable, render the in-memory plan and still ask before writing. Continue only after explicit terminal confirmation.`,
-  toolCalls: ["ask", "saveTracePlan", "confirmTracePlan", "cancelTracePlan"],
-  refs: ["reference"],
-  kind: "branch",
-  branches: [
-    {
-      next: "instrument/write-instrumentation",
-      recommended: true,
-      option: {
-        letter: "A",
-        label: "Continue",
-        description: "confirm this plan and write the instrumentation"
-      }
-    },
-    {
-      next: "instrument/build-trace-plan",
-      option: {
-        letter: "B",
-        label: "Adjust plan",
-        description: "revise the plan in the terminal before writing code"
-      }
-    },
-    {
-      next: "instrument/build-trace-plan",
-      option: {
-        letter: "C",
-        label: "Expand details",
-        description: "show skipped context nodes in the inline plan"
-      }
-    },
-    {
-      next: FINISH_STEP,
-      option: {
-        letter: "D",
-        label: "Abort",
-        description: "cancel this plan without editing code"
-      }
-    }
-  ]
-};
-var PRESENT_MODIFIED_PLAN_STEP = {
-  id: "present-diff",
-  title: "Review and confirm the modified plan inline",
-  body: `Save the modified tree onto the existing plan with {{tool:saveTracePlan}}, preserving its \`planId\`. Render a terminal-readable before/after ASCII diff with the affected files, then use {{tool:ask}} to present these choices:
-
-{{branches}}
-
-- **Apply changes:** call {{tool:confirmTracePlan}} with the displayed captured set and carry its authoritative result into the apply step.
-- **Adjust plan:** collect the requested change and return to plan construction. The next save must update the same plan id.
-- **Expand details:** re-render the current diff with surrounding context and ask again without creating another plan.
-- **Abort:** call {{tool:cancelTracePlan}} and finish without changing code.
-
-If saving fails, show the in-memory diff and stop at the same terminal decision. Never apply a modification without explicit confirmation.`,
-  toolCalls: ["ask", "saveTracePlan", "confirmTracePlan", "cancelTracePlan"],
-  refs: ["reference"],
-  kind: "branch",
-  branches: [
-    {
-      next: "modify/apply-changes",
-      recommended: true,
-      option: {
-        letter: "A",
-        label: "Apply changes",
-        description: "confirm this diff and update the instrumentation"
-      }
-    },
-    {
-      next: "modify/build-modified-plan",
-      option: {
-        letter: "B",
-        label: "Adjust plan",
-        description: "revise the proposed capture changes"
-      }
-    },
-    {
-      next: "modify/present-diff",
-      option: {
-        letter: "C",
-        label: "Expand details",
-        description: "show surrounding context in the inline diff"
-      }
-    },
-    {
-      next: FINISH_STEP,
-      option: {
-        letter: "D",
-        label: "Abort",
-        description: "cancel the modification without editing code"
-      }
-    }
-  ]
-};
 var VERIFY_INSTRUMENTATION_STEP = {
   id: "verify-instrumentation",
   title: "Verify the generated instrumentation",
   body: `Do not report completion yet. Verify the exact files written in the previous step against the repository's instructions and the SDK reference.
 
-1. Inspect the resulting diff and confirm the implementation still matches the confirmed trace plan, preserves the workflow's public types and behavior, and leaves every edited text file with one trailing newline.
+1. Inspect the resulting diff and confirm the implementation still matches the requested instrumentation, preserves the workflow's public types and behavior, and leaves every edited text file with one trailing newline.
 2. Check replay import safety. Importing the replay callable must not start the application, make an LLM call, open a listener, or perform another module-level side effect. Fix an accidental import-time entrypoint before continuing; if separating it requires a behavior-changing refactor, stop and ask with {{tool:ask}}.
-3. Run the repository's narrowest relevant formatter or lint check and compile/typecheck for the instrumented source. Separately verify the replay script even when the project's default compiler configuration excludes \`scripts/\`. These commands require the terminal's normal Bash approval.
-4. If a check fails because of the instrumentation, repair only the confirmed instrumentation or replay pipeline and rerun the failing check. Never weaken types, validation, or runtime behavior to make a check pass. If the failure is pre-existing or cannot be verified locally, preserve the evidence and report the result as unverified rather than claiming success.
+3. Run the repository's narrowest relevant formatter or lint check and compile/typecheck for the instrumented source. Separately verify the replay registry module even when the project's default compiler configuration excludes \`scripts/\`. These commands require the terminal's normal Bash approval.
+4. If a check fails because of the instrumentation, repair only the requested instrumentation or replay pipeline and rerun the failing check. Never weaken types, validation, or runtime behavior to make a check pass. If the failure is pre-existing or cannot be verified locally, preserve the evidence and report the result as unverified rather than claiming success.
 5. If the user's invocation explicitly requests an end-to-end, app, workflow, or replay run, request normal Bash approval and execute the requested runtime commands after the final edit. Then call {{tool:searchTraces}} for the instrumented function key and confirm the fresh trace reached the configured server. Do not treat process stdout as proof of ingestion. When replay was requested, run it only after the source trace is visible and report its actual result.
 
 Do not run the real workflow or replay in this state unless the user explicitly asked for an end-to-end run; those commands may call paid providers or create external data. The CLI host performs another deterministic verification when you stop and will return concrete failures to repair. Continue only when the generated code passes the applicable static checks, or when you can clearly identify a pre-existing blocker.`,
@@ -21859,39 +20344,6 @@ var VERIFY_MODIFICATION_STEP = {
   title: "Verify the modified instrumentation",
   next: "modify/mandatory-stop"
 };
-var RENDER_PLAN_STEP = {
-  id: "render-inline",
-  title: "Render the trace plan inline",
-  body: `Render the plan fetched in the previous step as read-only terminal ASCII using the Trace Plan Format reference. Include its status, captured spans, span types, and files. Do not confirm, update, or otherwise mutate the plan.`,
-  refs: ["reference"],
-  kind: "action",
-  next: FINISH_STEP
-};
-var FETCH_PLAN_STEP = {
-  id: "fetch-plan",
-  title: "Fetch the latest trace plan for this key",
-  body: `Call {{tool:getTracePlan}} with the chosen \`traceFunctionKey\`.
-
-- If a confirmed plan is found, continue to render it.
-- If no confirmed plan is found, silently call {{tool:listTracePlans}} for awaiting plans with the same key. When one exists, read the newest with {{tool:getTracePlan}}, retain its unconfirmed status, and continue to render it. Tell the user that instrumentation or modify mode is what confirms and applies it.
-- If neither exists, explain that this function has no stored trace plan and recommend \`{{cmd}}setup modify\` to create one, then stop.
-
-{{whens}}`,
-  toolCalls: ["getTracePlan", "listTracePlans"],
-  kind: "branch",
-  branches: [
-    {
-      when: "a confirmed or awaiting plan was found",
-      next: "view/render-inline",
-      description: "render the plan read-only in the terminal"
-    },
-    {
-      when: "no stored plan exists for this function",
-      next: FINISH_STEP,
-      description: "explain how to create one and finish"
-    }
-  ]
-};
 var CHECK_TEMPLATE_TRACE_STEP = {
   id: "check-traces",
   title: "Verify a trace exists for the function",
@@ -21899,7 +20351,7 @@ var CHECK_TEMPLATE_TRACE_STEP = {
 
 {{whens}}
 
-If no trace exists, tell the user to run the app or replay script once and re-run template mode. Do not wait or guess at the rendered data.`,
+If no trace exists, tell the user to run the app once and re-run template mode. Do not wait or guess at the rendered data.`,
   toolCalls: ["searchTraces"],
   kind: "branch",
   branches: [
@@ -21958,9 +20410,6 @@ var FINISH = {
 };
 function adaptStep(phaseId, step) {
   const key = `${phaseId}/${step.id}`;
-  if (key === "instrument/build-trace-plan") {
-    return BUILD_TRACE_PLAN_STEP;
-  }
   if (key === "instrument/write-instrumentation" && step.kind === "action") {
     return {
       ...step,
@@ -21968,21 +20417,12 @@ function adaptStep(phaseId, step) {
       next: "instrument/verify-instrumentation"
     };
   }
-  if (key === "modify/present-diff") {
-    return PRESENT_MODIFIED_PLAN_STEP;
-  }
   if (key === "modify/apply-changes" && step.kind === "action") {
     return {
       ...step,
       body: rewriteText(step.body),
       next: "modify/verify-modification"
     };
-  }
-  if (key === "view/open-in-ui") {
-    return RENDER_PLAN_STEP;
-  }
-  if (key === "view/fetch-plan") {
-    return FETCH_PLAN_STEP;
   }
   if (key === "templates/check-traces") {
     return CHECK_TEMPLATE_TRACE_STEP;
@@ -22027,21 +20467,20 @@ var setupV2Flow = Flow.parse({
   title: "Bitfab Terminal Setup",
   frontmatter: {
     ...setupFlow.frontmatter,
-    description: "Run Bitfab setup and maintenance workflows entirely in the terminal, including instrumentation, trace-plan changes, inspection, replay, database snapshots, and templates."
+    description: "Run Bitfab setup and maintenance workflows entirely in the terminal, including instrumentation, instrumentation changes, inspection, replay, database snapshots, and templates."
   },
   intro: `Run the selected setup mode entirely in this terminal.
 
 - Use AskUserQuestion for every user choice or clarification; never print a question and wait.
 - Recommend one option first and ask one decision at a time.
 - Take agent-decision branches only from directly observed repository or Bitfab state.
-- Render plans, diffs, diagnostics, and templates inline. Product UI review is not part of this flow.
+- Render diffs, diagnostics, and templates inline. Product UI review is not part of this flow.
 - Browser authentication is allowed when login requires it; return to the terminal immediately afterward.
-- Preserve existing user changes, follow repository instructions, and require approval before mutating code or running commands.`,
+- Preserve existing user changes, follow repository instructions, and proceed with the requested instrumentation and replay edits; ask only for missing choices or behavior-changing refactors.`,
   commands: Object.fromEntries(Object.entries(setupFlow.commands).filter(([name]) => SUPPORTED_COMMANDS.has(name))),
   modeHints: {
     ...setupFlow.modeHints,
     login: "Authenticate Bitfab for terminal setup.",
-    view: "Render one trace function's plan in the terminal (read-only).",
     templates: "Iterate on one trace function's span-rendering templates in the terminal."
   },
   phases: setupFlow.phases.map((phase) => {
@@ -22071,32 +20510,7 @@ var setupV2Flow = Flow.parse({
         steps
       };
     }
-    if (phase.id === "view") {
-      return {
-        ...phase,
-        intro: "Read and render exactly one stored trace plan in the terminal without changing or confirming it.",
-        steps
-      };
-    }
-    if (phase.id === "analyze-repo") {
-      return {
-        ...phase,
-        intro: "Run this phase non-interactively from start to finish: never ask a question, open product UI, edit code, or write a replay script. Upload draft trace plans and print a terminal report. The user can inspect them with `bitfab setup --v2 view` and confirm and apply one with `bitfab setup --v2 instrument`.",
-        steps
-      };
-    }
     return { ...phase, steps };
-  }),
-  appendices: setupFlow.appendices.map((appendix) => {
-    if (appendix.id !== "reference" || typeof appendix.body !== "string") {
-      return appendix;
-    }
-    return {
-      ...appendix,
-      body: appendix.body.replace(/#### Presentation step[\s\S]*?(?=\n### Trace Plan Accuracy)/, `#### Terminal presentation step
-
-After saving a trace plan, render it inline as ASCII and use AskUserQuestion with **Continue**, **Adjust plan**, **Expand details**, and **Abort**. Continue confirms the displayed captured set; Adjust updates the same plan id; Expand re-renders without creating another plan; Abort cancels the pending plan. Never write instrumentation before the terminal confirmation.`)
-    };
   }),
   compile: {
     mode: "monolith",
@@ -22104,8 +20518,6 @@ After saving a trace plan, render it inline as ASCII and use AskUserQuestion wit
     continuousStepNumbers: false
   }
 });
-// ../bitfab-plugin-lib/dist/hooks/sessionStart.js
-var STUDIO_BLOCKING_CONTEXT = "Studio commands rule: any Bitfab plugin CLI that opens Studio (the " + "openStudioTo / startDataset / openTracePlan / startTemplatePreview / " + "openExperiments / openDatasetExperiments family) BLOCKS until the user " + "acts in Studio. Never wait on them in the conversation's foreground: " + "launch them as a background / long-running process and read their stdout " + "(JSONL events) incrementally.";
 // ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
 var JSONRPC_VERSION = "2.0";
@@ -22942,8 +21354,8 @@ var platform = {
 var description = "Bitfab: capture real runs of your AI features as traces, replay them against current code, and verify the change helped";
 var SKILLS = ["setup", "assistant", "update"];
 function pluginVersion() {
-  const packageJson = path9.join(import.meta.dir, "package.json");
-  return JSON.parse(fs4.readFileSync(packageJson, "utf-8")).version;
+  const packageJson = path2.join(import.meta.dir, "package.json");
+  return JSON.parse(fs2.readFileSync(packageJson, "utf-8")).version;
 }
 function toolInputSchema(shape) {
   return toJSONSchema(object(shape), {
