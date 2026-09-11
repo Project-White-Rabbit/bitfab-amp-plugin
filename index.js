@@ -13598,6 +13598,10 @@ var searchTraces = {
     drillDown: preprocess(parseJsonString, boolean2()).optional().describe("If true, merge with previous search filters to narrow results"),
     traceIds: preprocess(parseJsonString, array(uuid2())).optional().describe("Specific trace IDs to fetch"),
     environment: string2().optional().describe("Filter by environment (e.g., production, staging, development, preview). Omit to search across all environments."),
+    callerMetadata: record(string2().regex(/^[A-Za-z0-9_.:-]{1,40}$/), string2().max(500)).refine((value) => Object.keys(value).length <= 10).transform((value) => Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key.toLowerCase(),
+      item.toLowerCase()
+    ]))).optional().describe("Filter by up to 10 caller metadata key/value pairs. Matches exact values case-insensitively; all pairs must match."),
     labelSource: _enum(["human", "agent"]).optional().describe('Filter by who authored the label: "human" for human-authored labels only, "agent" for agent-authored labels only. Omit to include any source. This is a pure authorship filter - for trust/validation, use the separate `validated` parameter.'),
     validated: preprocess(parseJsonString, boolean2()).optional().describe('If true, only return traces with a validated label - a label that is either human-authored OR an agent-authored label that a human has approved (`approvedAt` is set). Use this when you want trustworthy/reviewed labels. Combine with `labelSource: "agent"` to get only approved-agent labels (excluding pure-human labels). Omit (or pass false) to include unapproved labels too.'),
     labelResult: preprocess(parseJsonString, boolean2()).optional().describe("Filter by label result: true for passing labels, false for failing labels"),
