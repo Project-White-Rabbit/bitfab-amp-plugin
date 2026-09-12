@@ -13998,7 +13998,7 @@ var getSimPlan = {
   description: "Read one trace function's sim plan: its span nodes overlaid from recent traces, each with its span type, call count, how many traces it appears in, and whether its content (inputs and outputs) is captured. Call it to learn the exact node names before save_sim_plan, or to answer what a workflow records today.",
   inputSchema: {
     traceFunctionKey: string2().min(1).describe("Trace function key, as list_trace_functions prints it."),
-    limit: preprocess(parseJsonString, number2().int().min(1).max(100)).optional().describe("Recent traces to overlay (1-100). Defaults to 20.")
+    limit: preprocess(parseJsonString, number2().int().min(1).max(100)).optional().describe("Recent traces to overlay, taken from the function's own traces and again from its replays (1-100 of each). Defaults to 40.")
   }
 };
 var saveSimPlan = {
