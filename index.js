@@ -13687,6 +13687,10 @@ var assertionTargetShape = discriminatedUnion("kind", [
     ]).optional().describe('Which call to check when the trace runs that span more than once, e.g. a retry loop. "first", "last" (the default), or a 0-based index. Leave it off unless the repetition matters.')
   }).describe("Check one span by name rather than the whole trace, e.g. that a particular tool call was made with the right arguments.")
 ]).describe('SCOPE: what part of the trace under evaluation this assertion is checked against. OMIT IT for the whole trace, which is the common case and the right default when unsure. Pass { "kind": "output" } to check only the final output, or { "kind": "span", "name": "..." } to check one span. Scoping narrows what a judge looks at, so a wrong scope hides real failures. A target naming something the evaluated trace does not contain makes the check ERRORED, never passed, because a check that could not run must never look like a check that succeeded.');
+var justificationShape = preprocess(parseJsonString, array(object({
+  spanId: uuid2().describe("The span this reason comes from, taken from the `[ID: ...]` shown for that span in get_traces output."),
+  text: string2().trim().min(1).max(1e4).describe("What that span shows, in one or two sentences.")
+})).min(1).max(50)).describe("Evidence: one entry per span you are relying on, each with its own reason, so a reviewer can open the span and check the claim. Quote what the span actually shows rather than restating the assertion. 1-50 entries.");
 var saveAssertionCategory = {
   name: "save_assertion_category",
   title: "Save Assertion Category",
@@ -13694,7 +13698,8 @@ var saveAssertionCategory = {
   inputSchema: {
     id: uuid2().optional().describe("Existing category ID to edit. Omit to create a category."),
     title: string2().trim().min(1).describe("The category title."),
-    description: string2().optional().describe("What assertions in this category have in common. Omit on an edit to preserve it. Pass an empty string to clear it.")
+    description: string2().optional().describe("What assertions in this category have in common. Omit on an edit to preserve it. Pass an empty string to clear it."),
+    justification: justificationShape.optional().describe("Why this category is worth having, cited span by span. Omit on an edit to preserve it. A person reviews it in Bitfab and marks the category approved or rejected; editing the title or description sends it back for review.")
   }
 };
 var listAssertionCategories = {
@@ -13728,7 +13733,9 @@ var saveTraceAssertions = {
       humanNote: string2().max(1e4).optional().describe("People-only context attached to this assertion. It is returned by reads but must never be used as evidence when assessing a replay. On an edit, omit to preserve it and pass an empty string to clear it."),
       passCriteria: string2().optional().describe("How a judge should recognise a pass, when the assertion alone leaves room to argue, e.g. 'arrival timestamp is strictly before 09:00 in the destination timezone'. Optional, and only worth writing when it removes real ambiguity. Same field save_grader takes, so an assertion that proves out across many traces is promoted into a grader by copying it. On an edit, omit to keep the current value and pass an empty string to clear it."),
       failCriteria: string2().optional().describe("How a judge should recognise a failure, for cases the pass criteria do not obviously exclude, e.g. 'any leg departing after 09:00, including connections'. Optional. On an edit, omit to keep the current value and pass an empty string to clear it."),
-      targetOnEvaluatedTrace: assertionTargetShape.optional()
+      targetOnEvaluatedTrace: assertionTargetShape.optional(),
+      justification: justificationShape.optional().describe("Why this assertion is right for THIS trace, cited span by span: the spans that show what the run actually did, each with its own reason. Omit on an edit to preserve it. A person reviews it in Bitfab and marks the assertion approved or rejected, so an assertion with no justification is one a reviewer has to reconstruct from scratch. Cite spans on this trace only."),
+      categoryJustification: justificationShape.optional().describe("Why `category_assertion_id` is the right category for this assertion, cited span by span. Omit on an edit to preserve it. Changing the category clears it, since it justified the old one. Cite spans on this trace only.")
     })).min(1).max(MAX_ASSERTIONS_PER_REQUEST)).describe(`One entry per assertion (1-${MAX_ASSERTIONS_PER_REQUEST})`)
   }
 };
