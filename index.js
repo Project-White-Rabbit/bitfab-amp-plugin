@@ -14751,7 +14751,8 @@ var RESERVED_TOKEN_NAMES = [
   "askUser",
   "askVerb",
   "askVerbCap",
-  "askNoun"
+  "askNoun",
+  "argsToken"
 ];
 var MUSTACHE_SECTION_NAMES = Object.keys(SECTION_TARGETS);
 var MODE_SECTION_RE = /\{\{([#^])mode:([a-z0-9-]+)\}\}/g;
