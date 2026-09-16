@@ -13630,13 +13630,12 @@ var getTraceLabels = {
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_TRACE_LABELS_MAX_IDS)).describe(`Trace IDs to read labels for (1-${GET_TRACE_LABELS_MAX_IDS})`)
   }
 };
-var getLabelEvidence = {
-  name: "get_label_evidence",
-  title: "Get Label Evidence",
-  description: "Suggest span-by-span evidence that could support a label on a trace or one of its assertions. This discovery API is currently stubbed and returns an empty evidence list. Saved evidence is read with get_trace_labels instead.",
+var getAssertionEvidence = {
+  name: "get_assertion_evidence",
+  title: "Get Assertion Evidence",
+  description: "Suggest span-by-span evidence that could support a label for one trace assertion. The assertion identifies its trace, so only assertionId is required. The service narrows that trace to spans relevant to the assertion, then returns potential evidence items with traceId, assertionId, spanId, text, spanName, signature-only parameters (names and runtime types, never values), spanType, and isMocked. Use get_trace_assertions to obtain assertion IDs. Saved `{ spanId, text }` evidence is read with get_trace_labels instead.",
   inputSchema: {
-    traceId: uuid2().describe("The trace whose spans could provide evidence"),
-    assertionId: uuid2().optional().describe("The assertion the potential evidence would support. Omit it for the whole-trace label.")
+    assertionId: uuid2().describe("The assertion the potential evidence would support.")
   }
 };
 var getSpanField = {
@@ -14049,7 +14048,7 @@ var ALL_TOOL_CONTRACTS = [
   searchTraces,
   getTraces,
   getTraceLabels,
-  getLabelEvidence,
+  getAssertionEvidence,
   getSpanField,
   saveAgentLabels,
   saveHumanLabels,
