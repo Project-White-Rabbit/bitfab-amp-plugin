@@ -13698,8 +13698,7 @@ var saveAssertionCategory = {
   inputSchema: {
     id: uuid2().optional().describe("Existing category ID to edit. Omit to create a category."),
     title: string2().trim().min(1).describe("The category title."),
-    description: string2().optional().describe("What assertions in this category have in common. Omit on an edit to preserve it. Pass an empty string to clear it."),
-    justification: justificationShape.optional().describe("Why this category is worth having, cited span by span. Omit on an edit to preserve it. A person reviews it in Bitfab and marks the category approved or rejected; editing the title or description sends it back for review.")
+    description: string2().optional().describe("What assertions in this category have in common. Omit on an edit to preserve it. Pass an empty string to clear it.")
   }
 };
 var listAssertionCategories = {
