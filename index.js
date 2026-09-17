@@ -14210,9 +14210,11 @@ var removeGradersFromExperimentGroup = {
 var listExperiments = {
   name: "list_experiments",
   title: "List Experiments",
-  description: "List experiments (replay test runs) for a traced function, with status, pass/fail totals, and delta (fixed/regressed/still-passing/still-failing) for each. Call this to see past experiment results, or at the start of experiment mode to understand what's been tried before.",
+  description: "List experiments (replay test runs) newest first, with status, pass/fail totals, delta (fixed/regressed/still-passing/still-failing), and the git state each ran from. Every filter is optional and they combine: narrow by traced function, git branch, dataset, or any mix; with no filters it lists the organization's most recent experiments. Call this to see past experiment results, or at the start of experiment mode to understand what's been tried before.",
   inputSchema: {
-    traceFunctionKey: string2().min(1).describe("The trace function key to list experiments for"),
+    traceFunctionKey: string2().min(1).optional().describe("Only experiments for this trace function key"),
+    gitBranch: string2().min(1).optional().describe("Only experiments run from this git branch (exact branch name, e.g. feature/shorter-prompt)"),
+    datasetId: uuid2().optional().describe("Only experiments for this dataset, from list_datasets: runs launched against it plus runs that replayed any of its traces"),
     limit: preprocess(parseJsonString, number2().int().min(1).max(50)).optional().describe("Max experiments to return (default 20, max 50)")
   }
 };
