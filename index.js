@@ -13245,6 +13245,9 @@ var ZodEmail = /* @__PURE__ */ $constructor("ZodEmail", (inst, def) => {
   $ZodEmail.init(inst, def);
   ZodStringFormat.init(inst, def);
 });
+function email2(params) {
+  return _email(ZodEmail, params);
+}
 var ZodGUID = /* @__PURE__ */ $constructor("ZodGUID", (inst, def) => {
   $ZodGUID.init(inst, def);
   ZodStringFormat.init(inst, def);
@@ -13842,6 +13845,7 @@ var dateOnlyStringSchema = string2().regex(DATE_PATTERN, "Must be YYYY-MM-DD for
 var GET_TRACE_LABELS_MAX_IDS = 100;
 var GET_TRACE_ASSERTIONS_MAX_IDS = 100;
 var MAX_ASSERTIONS_PER_REQUEST = 50;
+var MAX_ASSIGNEE_EMAIL_LENGTH = 320;
 var GET_GRADER_LABELS_MAX_IDS = 100;
 var DEFAULT_GRADER_LABEL_LIMIT = 50;
 var MAX_GRADER_LABEL_LIMIT = 200;
@@ -14026,6 +14030,12 @@ var listAssertionCategories = {
   description: "List assertion categories in this organization with their IDs, titles, and descriptions. Use the returned ID as category_assertion_id in save_trace_assertions.",
   inputSchema: {}
 };
+var listOrganizationMembers = {
+  name: "list_organization_members",
+  title: "List Organization Members",
+  description: "List the people in this organization, each with their name and email. Call it before save_trace_assertions when routing an assertion to a reviewer, so `assigneeEmail` carries an address someone here actually holds rather than a guess: an email belonging to nobody in the organization fails that call. It also names who an approval or an assertion came from when a read shows only an email. This is the organization the API key belongs to, so it takes no arguments.",
+  inputSchema: {}
+};
 var getAssertionCategory = {
   name: "get_assertion_category",
   title: "Get Assertion Category",
@@ -14041,7 +14051,7 @@ var deleteAssertionCategory = {
 var saveTraceAssertions = {
   name: "save_trace_assertions",
   title: "Save Trace Assertions",
-  description: `Record what SHOULD happen when this trace is replayed. Bitfab stores two kinds of label on a trace. A VERDICT says how a run that already happened turned out, and that is save_agent_labels / save_human_labels. An ASSERTION, which is what this tool writes, says what a correct run looks like for THIS specific input, carries no pass/fail of its own, and is checked against a later replay once a reviewer approves it. A trace holds at most one verdict per author and any number of assertions. Call it when the user describes the right answer for a particular case, for example "this booking should have picked the 6am flight, not the 9am". This is not a verdict on a run that already happened, which is save_agent_labels, and it is not a check that applies to every trace of a function, which is save_grader. Pass \`assertion\` plus optional \`passCriteria\` / \`failCriteria\`, the same trio save_grader takes, so an assertion that proves out across many traces can later be promoted into a grader with no rewriting. \`humanNote\` stores people-only context on the assertion; preserve and return it, but never use it to judge whether a replay passed. Pass an entry's \`id\` to edit an existing assertion, or omit it to add a new one, so two callers adding different assertions to one trace never overwrite each other. What this tool writes is saved awaiting review, so nothing checks it yet; a reviewer approves it, in Bitfab or with \`approvalState\` on a later call here, and from then on every replay of the trace is judged against it. \`approvalState\` decides an assertion that already exists, so deciding one is \`{ id, approvalState }\` with nothing else: an omitted \`assertion\` keeps the current wording. It is refused on a new assertion, so the call that invents a claim is never the call that puts it into force. One decision covers the assertion and the category it is filed under, so set \`category_assertion_id\` and \`approvalState\` in the same entry when you are deciding both; recategorizing on a later call without deciding returns it to not reviewed, since the approval covered the old category. What it gates is whether replays check the assertion at all, so decide from the assertion and the spans it cites rather than from memory of having written it. Rewording an assertion, or changing its criteria, target, or category, returns it to not reviewed unless the same call says otherwise. Call get_trace_assertions first to find the assertion to edit and to avoid creating a duplicate, and read them back before judging a replay, where it lists the approved ones only. Up to ${MAX_ASSERTIONS_PER_REQUEST} per call.`,
+  description: `Record what SHOULD happen when this trace is replayed. Bitfab stores two kinds of label on a trace. A VERDICT says how a run that already happened turned out, and that is save_agent_labels / save_human_labels. An ASSERTION, which is what this tool writes, says what a correct run looks like for THIS specific input, carries no pass/fail of its own, and is checked against a later replay once a reviewer approves it. A trace holds at most one verdict per author and any number of assertions. Call it when the user describes the right answer for a particular case, for example "this booking should have picked the 6am flight, not the 9am". This is not a verdict on a run that already happened, which is save_agent_labels, and it is not a check that applies to every trace of a function, which is save_grader. Pass \`assertion\` plus optional \`passCriteria\` / \`failCriteria\`, the same trio save_grader takes, so an assertion that proves out across many traces can later be promoted into a grader with no rewriting. \`humanNote\` stores people-only context on the assertion; preserve and return it, but never use it to judge whether a replay passed. \`assigneeEmail\` names the member who should review it, which routes the assertion to that person without deciding anything, so it never changes the approval state. Pass an entry's \`id\` to edit an existing assertion, or omit it to add a new one, so two callers adding different assertions to one trace never overwrite each other. What this tool writes is saved awaiting review, so nothing checks it yet; a reviewer approves it, in Bitfab or with \`approvalState\` on a later call here, and from then on every replay of the trace is judged against it. \`approvalState\` decides an assertion that already exists, so deciding one is \`{ id, approvalState }\` with nothing else: an omitted \`assertion\` keeps the current wording. It is refused on a new assertion, so the call that invents a claim is never the call that puts it into force. One decision covers the assertion and the category it is filed under, so set \`category_assertion_id\` and \`approvalState\` in the same entry when you are deciding both; recategorizing on a later call without deciding returns it to not reviewed, since the approval covered the old category. What it gates is whether replays check the assertion at all, so decide from the assertion and the spans it cites rather than from memory of having written it. Rewording an assertion, or changing its criteria, target, or category, returns it to not reviewed unless the same call says otherwise. Call get_trace_assertions first to find the assertion to edit and to avoid creating a duplicate, and read them back before judging a replay, where it lists the approved ones only. Up to ${MAX_ASSERTIONS_PER_REQUEST} per call.`,
   inputSchema: {
     traceId: uuid2().describe("The ORIGINAL trace to attach assertions to. A replay trace id is refused, and the error names the original to retry with, because a replay reads its original's assertions automatically."),
     assertions: preprocess(parseJsonString, array(object({
@@ -14054,14 +14064,15 @@ var saveTraceAssertions = {
       targetOnEvaluatedTrace: assertionTargetShape.optional(),
       justification: justificationShape.optional().describe("Why this assertion is right for THIS trace, cited span by span: the spans that show what the run actually did, each with its own reason. Omit on an edit to preserve it. It is the evidence behind `approvalState`, so an assertion with no justification is one a reviewer has to reconstruct from scratch. Cite spans on this trace only."),
       categoryJustification: justificationShape.optional().describe("Why `category_assertion_id` is the right category for this assertion, cited span by span. Omit on an edit to preserve it. Changing the category clears it, since it justified the old one. Cite spans on this trace only."),
-      approvalState: optionalApprovalState()
+      approvalState: optionalApprovalState(),
+      assigneeEmail: email2().max(MAX_ASSIGNEE_EMAIL_LENGTH).nullish().describe("Email of the organization member who should review this assertion, which routes it into their queue in Bitfab. Assigning decides nothing, so it leaves the approval state alone. The email must belong to a member of this organization, or the call fails naming it. Omit on an edit to preserve the current assignee, and pass null to leave it to nobody.")
     })).min(1).max(MAX_ASSERTIONS_PER_REQUEST)).describe(`One entry per assertion (1-${MAX_ASSERTIONS_PER_REQUEST})`)
   }
 };
 var getTraceAssertions = {
   name: "get_trace_assertions",
   title: "Get Trace Assertions",
-  description: `Read what SHOULD happen when one or more traces are replayed: each trace's approved assertions, their pass/fail criteria, people-only human note, and what part of the evaluated trace each one checks. Only assertions a person has approved are returned, because only those are checked on a replay; a trace whose assertions are all still awaiting review reads the same as one with none. Categorized assertions include category_assertion_id and the category's id, title, and description. A human note is returned so it can be read and edited, but it is never assessment evidence: judge only from the assertion, pass/fail criteria, and evaluated trace. Call this before judging a replay so the verdict is measured against what the user actually asked for rather than a guess, and before save_trace_assertions to find the assertion to edit or to avoid creating a duplicate. No span content is loaded, so one call accepts up to ${GET_TRACE_ASSERTIONS_MAX_IDS} ids. Accepts original trace ids and replay trace ids alike: a replay with no assertions of its own reads its original's, and the response says which original they came from. An assertion whose target cannot be found on the trace being evaluated is errored, never passed, so record it with save_agent_labels \`skip\` rather than a FAIL.`,
+  description: `Read what SHOULD happen when one or more traces are replayed: each trace's approved assertions, their pass/fail criteria, people-only human note, who is assigned to review each one, and what part of the evaluated trace each one checks. Only assertions a person has approved are returned, because only those are checked on a replay; a trace whose assertions are all still awaiting review reads the same as one with none. Categorized assertions include category_assertion_id and the category's id, title, and description. A human note is returned so it can be read and edited, but it is never assessment evidence: judge only from the assertion, pass/fail criteria, and evaluated trace. Call this before judging a replay so the verdict is measured against what the user actually asked for rather than a guess, and before save_trace_assertions to find the assertion to edit or to avoid creating a duplicate. No span content is loaded, so one call accepts up to ${GET_TRACE_ASSERTIONS_MAX_IDS} ids. Accepts original trace ids and replay trace ids alike: a replay with no assertions of its own reads its original's, and the response says which original they came from. An assertion whose target cannot be found on the trace being evaluated is errored, never passed, so record it with save_agent_labels \`skip\` rather than a FAIL.`,
   inputSchema: {
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_TRACE_ASSERTIONS_MAX_IDS)).describe(`Original trace IDs to read assertions for (1-${GET_TRACE_ASSERTIONS_MAX_IDS})`)
   }
@@ -14367,6 +14378,7 @@ var ALL_TOOL_CONTRACTS = [
   saveTraceAssertions,
   getTraceAssertions,
   archiveTraceAssertions,
+  listOrganizationMembers,
   saveGrader,
   listGraders,
   saveDataset,
