@@ -14048,6 +14048,16 @@ var deleteAssertionCategory = {
   description: "Delete an assertion category from this organization. Its assertions are kept and become uncategorized. Their existing verdicts are kept.",
   inputSchema: { id: uuid2().describe("ID of the category to delete.") }
 };
+var generateTraceAssertions = {
+  name: "generate_trace_assertions",
+  title: "Generate Trace Assertions",
+  description: "Generate review-ready assertion drafts from what one original trace actually did. Call this when the user asks Bitfab to generate assertions, infer expected behavior from a trace, or turn a known root cause into regression checks. Bitfab reads the organization's existing assertion categories, selects the categories supported by trace evidence, and generates assertions one category at a time. The generated assertions are saved awaiting human review, so they are not checked on replays until a person approves them. The call is idempotent by default and returns the assertions from the existing generation run instead of spending model calls again. Set regenerate to true to archive the prior generated drafts and replace them. Human-authored assertions are never replaced. Pass rootCause when the user knows why the trace was wrong; it narrows the evidence and produces smaller assertions. A replay trace id is refused because assertions belong to the original trace.",
+  inputSchema: {
+    traceId: uuid2().describe("The ORIGINAL trace to generate assertions for. A replay trace id is refused, and the error names the original to retry with."),
+    rootCause: string2().trim().min(1).max(1e4).optional().describe("Optional known cause of the bad behavior. Use it to focus generation on the smallest assertions that would catch this failure."),
+    regenerate: preprocess(parseJsonString, boolean2()).optional().describe("Set true to rerun generation and replace prior generated drafts. Omit or set false to reuse the existing generation result.")
+  }
+};
 var saveTraceAssertions = {
   name: "save_trace_assertions",
   title: "Save Trace Assertions",
@@ -14375,6 +14385,7 @@ var ALL_TOOL_CONTRACTS = [
   listAssertionCategories,
   getAssertionCategory,
   deleteAssertionCategory,
+  generateTraceAssertions,
   saveTraceAssertions,
   getTraceAssertions,
   archiveTraceAssertions,
