@@ -13939,10 +13939,10 @@ var getTraceLabels = {
 var generateLabelEvidence = {
   name: "generate_label_evidence",
   title: "Generate Label Evidence",
-  description: "Suggest span-by-span evidence that could support a label for one assertion on a specific evaluated trace. Pass the original or replay trace being judged; an inherited assertion is checked against that replay's spans. The service narrows the selected trace to spans relevant to the assertion, then returns potential evidence items with traceId, assertionId, spanId, text, spanName, signature-only parameters (names and runtime types, never values), spanType, and isMocked. Use get_trace_assertions to obtain assertion IDs. Saved `{ spanId, text }` evidence is read with get_trace_labels instead.",
+  description: "Suggest span-by-span evidence that could support a label for one assertion on a specific evaluated trace. Pass the original or replay trace being judged; an inherited assertion is checked against that replay's spans. The service narrows the selected trace to spans relevant to the assertion, then returns evidence items with traceId, assertionId, spanId, text, spanName, signature-only parameters (names and runtime types, never values), spanType, and isMocked. Use get_trace_assertions to obtain assertion IDs. Saved `{ spanId, text }` evidence is read with get_trace_labels instead.",
   inputSchema: {
     traceId: uuid2().describe("The original or replay trace whose spans should be evaluated."),
-    assertionId: uuid2().describe("The assertion the potential evidence would support.")
+    assertionId: uuid2().describe("The assertion the evidence would support.")
   }
 };
 var getSpanField = {
