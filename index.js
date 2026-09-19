@@ -13892,7 +13892,7 @@ var listTraceFunctions = {
 var searchTraces = {
   name: "search_traces",
   title: "Search Traces",
-  description: "Search and filter traces for a traced function. Returns matching traces with IDs, status, timestamps, total duration (ms), total token usage (in/out/cached/total), model, and output preview (all when available). Replay traces (from test runs) carry the same totals. Use get_traces for per-span duration, tokens, time-to-first-token, and model. Supports keyword search, date range, status filter, and regex matching. Use drillDown to refine previous results.",
+  description: "Search and filter traces for a traced function. Returns matching traces with IDs, status, timestamps, total duration (ms), total token usage (in/out/cached/total), model, and output preview (all when available). Replay traces (from experiments) carry the same totals. Use get_traces for per-span duration, tokens, time-to-first-token, and model. Supports keyword search, date range, status filter, and regex matching. Use drillDown to refine previous results.",
   inputSchema: {
     traceFunctionKey: string2().describe("The trace function key to search"),
     searchQuery: string2().optional().describe("Full-text keyword search"),
@@ -13913,8 +13913,8 @@ var searchTraces = {
     labelSource: _enum(["human", "agent"]).optional().describe('Filter by who authored the label: "human" for human-authored labels only, "agent" for agent-authored labels only. Omit to include any source. This is a pure authorship filter - for trust/validation, use the separate `validated` parameter.'),
     validated: preprocess(parseJsonString, boolean2()).optional().describe('If true, only return traces with a validated label - a label that is either human-authored OR an agent-authored label that a human has approved (`approvedAt` is set). Use this when you want trustworthy/reviewed labels. Combine with `labelSource: "agent"` to get only approved-agent labels (excluding pure-human labels). Omit (or pass false) to include unapproved labels too.'),
     labelResult: preprocess(parseJsonString, boolean2()).optional().describe("Filter by label result: true for passing labels, false for failing labels"),
-    includeReplays: preprocess(parseJsonString, boolean2()).optional().describe("Include replayed traces (traces from test runs) in results. Defaults to false because replays have new inputs, not the original production inputs, so they're not useful when selecting traces to label or when sampling real user behavior. Set to true only when you specifically want to inspect replay results."),
-    testRunId: uuid2().optional().describe("Filter to traces from a specific experiment (test run). Automatically sets includeReplays to true."),
+    includeReplays: preprocess(parseJsonString, boolean2()).optional().describe("Include replayed traces (traces from experiments) in results. Defaults to false because replays have new inputs, not the original production inputs, so they're not useful when selecting traces to label or when sampling real user behavior. Set to true only when you specifically want to inspect replay results."),
+    experimentId: uuid2().optional().describe("Filter to traces from a specific experiment ID. Automatically sets includeReplays to true."),
     datasetId: uuid2().optional().describe("Filter to traces belonging to a specific dataset. Combine with other filters (status, labelResult, etc.) to narrow within the dataset."),
     hasDbSnapshot: preprocess(parseJsonString, boolean2()).optional().describe("Filter by whether the trace captured a database snapshot reference. true returns only traces that can be replayed against a pinned historical DB branch (the 'Snapshot captured' traces); false returns only traces with no snapshot. Omit to include both.")
   }
@@ -13963,13 +13963,13 @@ var labelEvidenceShape = preprocess(parseJsonString, array(object({
 var saveAgentLabels = {
   name: "save_agent_labels",
   title: "Save Agent Labels",
-  description: 'Set, skip, or archive the agent\'s pass/fail verdict on one or more traces (`labelSource="agent"`). Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `label` (true=PASS, false=FAIL) and `annotation` (your reasoning, shown to the human reviewer in the labeling UI). Add `evidence` as `{ spanId, text }` entries to ground that reasoning in spans on the evaluated trace. Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are - surfaced in the labeling UI so reviewers can prioritize low-confidence verdicts. To explicitly skip a trace you cannot decide on (instead of leaving it unlabeled), pass `skip: true` and omit label/annotation - this records an explicit skip so coverage checks know you intentionally did not verdict it. To clear a previously-set agent verdict (e.g., you changed your mind or labeled the wrong trace), pass `archive: true` and omit label/annotation. New verdicts start unapproved (`approvedAt=null`); once a human approves one, it joins the validated dataset (queryable via `search_traces` with `validated: true`). Archiving is non-destructive - the row is hidden from all reads but kept for audit, and you can immediately re-label the trace from scratch. For replay results, key each label by the replay item\'s `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `testRunId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item\'s `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective label line per updated trace, keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence. Before judging a replay, call get_trace_assertions on the original trace ids: an assertion says what the user asked this specific case to do, so the verdict is measured against that rather than a guess. When an assertion\'s target cannot be found on the trace you are judging, the check never ran, so pass `skip: true` for that trace rather than recording a FAIL. Pass `assertionId` to score ONE assertion on the trace (the `[ID: ...]` get_trace_assertions prints), one entry per assertion, all in the same call. Omit it for the trace\'s single whole-trace verdict. get_trace_labels reads these back one line per assertion, keyed by the same assertionId, so a per-assertion write is verifiable per assertion.',
+  description: 'Set, skip, or archive the agent\'s pass/fail verdict on one or more traces (`labelSource="agent"`). Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `label` (true=PASS, false=FAIL) and `annotation` (your reasoning, shown to the human reviewer in the labeling UI). Add `evidence` as `{ spanId, text }` entries to ground that reasoning in spans on the evaluated trace. Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are - surfaced in the labeling UI so reviewers can prioritize low-confidence verdicts. To explicitly skip a trace you cannot decide on (instead of leaving it unlabeled), pass `skip: true` and omit label/annotation - this records an explicit skip so coverage checks know you intentionally did not verdict it. To clear a previously-set agent verdict (e.g., you changed your mind or labeled the wrong trace), pass `archive: true` and omit label/annotation. New verdicts start unapproved (`approvedAt=null`); once a human approves one, it joins the validated dataset (queryable via `search_traces` with `validated: true`). Archiving is non-destructive - the row is hidden from all reads but kept for audit, and you can immediately re-label the trace from scratch. For replay results, key each label by the replay item\'s `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `experimentId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item\'s `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective label line per updated trace, keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence. Before judging a replay, call get_trace_assertions on the original trace ids: an assertion says what the user asked this specific case to do, so the verdict is measured against that rather than a guess. When an assertion\'s target cannot be found on the trace you are judging, the check never ran, so pass `skip: true` for that trace rather than recording a FAIL. Pass `assertionId` to score ONE assertion on the trace (the `[ID: ...]` get_trace_assertions prints), one entry per assertion, all in the same call. Omit it for the trace\'s single whole-trace verdict. get_trace_labels reads these back one line per assertion, keyed by the same assertionId, so a per-assertion write is verifiable per assertion.',
   inputSchema: {
-    testRunId: uuid2().optional().describe("The replay test run id. Required when any label targets a trace by originalTraceId (replay verdicts); ignored otherwise."),
+    experimentId: uuid2().optional().describe("The experiment ID. Required when any label targets a trace by originalTraceId (replay verdicts); ignored otherwise."),
     labels: preprocess(parseJsonString, array(object({
       traceId: uuid2().optional().describe("The trace ID to update. Provide this OR originalTraceId, not both."),
       assertionId: uuid2().optional().describe("The assertion this verdict scores, taken from the `[ID: ...]` get_trace_assertions prints. Omit it to set the trace's whole-trace verdict, of which there is one. A replay may name an assertion it inherited from the original trace it was replayed from."),
-      originalTraceId: uuid2().optional().describe("For replay verdicts: the original trace ID the replay item was replayed from (the replay item's originalTraceId). The server resolves it to the replay trace via lineage, so you never need a server replay trace id. Requires the top-level testRunId. Provide this OR traceId, not both."),
+      originalTraceId: uuid2().optional().describe("For replay verdicts: the original trace ID the replay item was replayed from (the replay item's originalTraceId). The server resolves it to the replay trace via lineage, so you never need a server replay trace id. Requires the top-level experimentId. Provide this OR traceId, not both."),
       sourceTraceId: uuid2().optional().meta({ deprecated: true }).describe("Deprecated alias for originalTraceId. Prefer originalTraceId; accepted for back-compat."),
       attempt: number2().int().min(0).optional().describe("For replay verdicts on an experiment that ran each trace more than once: which attempt of originalTraceId this verdict is for (0-based, the replay item's attempt). Defaults to 0, so single-attempt callers never need it."),
       archive: boolean2().optional().describe("If true, archive the existing agent label for this trace and ignore label/annotation/skip/confidence. Default false."),
@@ -14192,32 +14192,32 @@ var rerunGradersOnExperiment = {
   title: "Re-run Graders on Experiment",
   description: "Re-score an experiment's completed replay traces with its attached graders, overwriting their previous verdicts. Use this after attaching a grader to an already-completed experiment (which persists the assignment but does not grade the existing traces) or after editing a grader's criteria. Only the replays belonging to this experiment are graded, never the originals they were compared against. Omit graderIds to re-run every grader attached to the experiment, or pass a subset; ids that are not attached are rejected. Waits up to 90 seconds and reports how many traces were graded; if it is still running, call again with the same arguments to check progress. Read the resulting verdicts with get_grader_labels.",
   inputSchema: {
-    testRunId: uuid2().describe("The experiment (test run) id, from list_experiments"),
+    experimentId: uuid2().describe("The experiment ID, from list_experiments"),
     graderIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).optional().describe("Grader ids to re-run (1-100). Omit to re-run every grader attached to the experiment.")
   }
 };
 var addGradersToExperiment = {
   name: "add_graders_to_experiment",
   title: "Add Graders to Experiment",
-  description: "Attach one or more graders directly to an experiment (test run) so they run against its replay traces. Idempotent: attaching a grader already assigned is a no-op. Graders must be active (or live) and belong to this organization and the experiment's trace function; ids that are archived, not runnable, or mismatched are skipped and reported. The effective grader set at completion is the union of these direct attachments and the dataset's current runnable graders. Attaching to an already-completed experiment persists the assignment but does not immediately grade its existing replay traces; those traces are graded only the next time the experiment runs completion again (for example an SDK replay retry that re-runs complete) or a fresh replay runs. Use list_experiments to find experiment ids and list_graders to find grader ids.",
+  description: "Attach one or more graders directly to an experiment so they run against its replay traces. Idempotent: attaching a grader already assigned is a no-op. Graders must be active (or live) and belong to this organization and the experiment's trace function; ids that are archived, not runnable, or mismatched are skipped and reported. The effective grader set at completion is the union of these direct attachments and the dataset's current runnable graders. Attaching to an already-completed experiment persists the assignment but does not immediately grade its existing replay traces; those traces are graded only the next time the experiment runs completion again (for example an SDK replay retry that re-runs complete) or a fresh replay runs. Use list_experiments to find experiment ids and list_graders to find grader ids.",
   inputSchema: {
-    testRunId: uuid2().describe("The experiment (test run) id, from list_experiments"),
+    experimentId: uuid2().describe("The experiment ID, from list_experiments"),
     graderIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).describe("Grader ids to attach (1-100)")
   }
 };
 var removeGradersFromExperiment = {
   name: "remove_graders_from_experiment",
   title: "Remove Graders from Experiment",
-  description: "Detach one or more graders from an experiment (test run). Grader ids that are not currently attached are ignored and reported. The graders themselves are not deleted. Effect depends on run state: for an in-progress experiment, a detached grader that is also assigned to the experiment's dataset is re-added from the dataset when the experiment completes (so it still runs); for an already-completed experiment the grader set is a finalized snapshot with no dataset re-union, so detaching permanently drops that grader from the run's results.",
+  description: "Detach one or more graders from an experiment. Grader ids that are not currently attached are ignored and reported. The graders themselves are not deleted. Effect depends on run state: for an in-progress experiment, a detached grader that is also assigned to the experiment's dataset is re-added from the dataset when the experiment completes (so it still runs); for an already-completed experiment the grader set is a finalized snapshot with no dataset re-union, so detaching permanently drops that grader from the run's results.",
   inputSchema: {
-    testRunId: uuid2().describe("The experiment (test run) id"),
+    experimentId: uuid2().describe("The experiment ID"),
     graderIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).describe("Grader ids to detach (1-100)")
   }
 };
 var addGradersToExperimentGroup = {
   name: "add_graders_to_experiment_group",
   title: "Add Graders to Experiment Group",
-  description: "Assign one or more graders to every experiment (test run) currently in an experiment group. Grader assignments are stored on each experiment, not on the group, so experiments added later do not inherit them automatically. Completed experiments immediately queue any missing grader evaluations; pending experiments use the graders when they complete. Idempotent: assigning a grader already attached to an experiment is a no-op.",
+  description: "Assign one or more graders to every experiment currently in an experiment group. Grader assignments are stored on each experiment, not on the group, so experiments added later do not inherit them automatically. Completed experiments immediately queue any missing grader evaluations; pending experiments use the graders when they complete. Idempotent: assigning a grader already attached to an experiment is a no-op.",
   inputSchema: {
     experimentGroupId: uuid2().describe("The experiment group id"),
     graderIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).describe("Grader ids to assign (1-100)")
@@ -14226,7 +14226,7 @@ var addGradersToExperimentGroup = {
 var removeGradersFromExperimentGroup = {
   name: "remove_graders_from_experiment_group",
   title: "Remove Graders from Experiment Group",
-  description: "Detach one or more graders from every experiment (test run) currently in an experiment group, undoing add_graders_to_experiment_group. Grader ids not assigned to any experiment in the group are ignored and reported. The graders themselves are not deleted, and archived graders can still be detached. Because assignments live on each experiment rather than on the group, this only affects experiments currently in the group. Effect depends on run state, matching remove_graders_from_experiment: an in-progress experiment re-adds a detached grader from its dataset when it completes if the dataset still assigns it, while an already-completed experiment has a finalized grader set, so detaching permanently drops that grader from its results.",
+  description: "Detach one or more graders from every experiment currently in an experiment group, undoing add_graders_to_experiment_group. Grader ids not assigned to any experiment in the group are ignored and reported. The graders themselves are not deleted, and archived graders can still be detached. Because assignments live on each experiment rather than on the group, this only affects experiments currently in the group. Effect depends on run state, matching remove_graders_from_experiment: an in-progress experiment re-adds a detached grader from its dataset when it completes if the dataset still assigns it, while an already-completed experiment has a finalized grader set, so detaching permanently drops that grader from its results.",
   inputSchema: {
     experimentGroupId: uuid2().describe("The experiment group id"),
     graderIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).describe("Grader ids to detach (1-100)")
@@ -14235,7 +14235,7 @@ var removeGradersFromExperimentGroup = {
 var listExperiments = {
   name: "list_experiments",
   title: "List Experiments",
-  description: "List experiments (replay test runs) newest first, with status, pass/fail totals, delta (fixed/regressed/still-passing/still-failing), and the git state each ran from. Every filter is optional and they combine: narrow by traced function, git branch, dataset, or any mix; with no filters it lists the organization's most recent experiments. Call this to see past experiment results, or at the start of experiment mode to understand what's been tried before.",
+  description: "List experiments (replays against changed code) newest first, with status, pass/fail totals, delta (fixed/regressed/still-passing/still-failing), and the git state each ran from. Every filter is optional and they combine: narrow by traced function, git branch, dataset, or any mix; with no filters it lists the organization's most recent experiments. Call this to see past experiment results, or at the start of experiment mode to understand what's been tried before.",
   inputSchema: {
     traceFunctionKey: string2().min(1).optional().describe("Only experiments for this trace function key"),
     gitBranch: string2().min(1).optional().describe("Only experiments run from this git branch (exact branch name, e.g. feature/shorter-prompt)"),
@@ -14246,17 +14246,17 @@ var listExperiments = {
 var listExperimentTraces = {
   name: "list_experiment_traces",
   title: "List Experiment Traces",
-  description: "Get individual trace results for an experiment (test run), including each replay trace's verdict (fixed, regressed, still-passing, still-failing, unpaired) by comparing against the original trace's label, plus token usage (input, output, cached, total) for the replay and the paired original so you can reason about cost and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
+  description: "Get individual trace results for an experiment, including each replay trace's verdict (fixed, regressed, still-passing, still-failing, unpaired) by comparing against the original trace's label, plus token usage (input, output, cached, total) for the replay and the paired original so you can reason about cost and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
   inputSchema: {
-    testRunId: uuid2().describe("The experiment (test run) ID to get traces for")
+    experimentId: uuid2().describe("The experiment ID to get traces for")
   }
 };
 var getReplayStatus = {
   name: "get_replay_status",
   title: "Get Replay Status",
-  description: "Read the current replay test run status, including local replay trace ID to server replay trace ID mapping. Safe to poll while replay is still running.",
+  description: "Read the current status of an experiment's replay, including local replay trace ID to server replay trace ID mapping. Safe to poll while replay is still running.",
   inputSchema: {
-    testRunId: uuid2().describe("The replay test run ID to get status for")
+    experimentId: uuid2().describe("The experiment ID to get status for")
   }
 };
 var getTemplateReference = {
@@ -14289,10 +14289,10 @@ var saveTemplate = {
 var saveExperimentGroup = {
   name: "save_experiment_group",
   title: "Save Experiment Group",
-  description: "Create or edit an experiment group. To create, omit experimentGroupId and provide testRunIds plus an optional name and notes; the supplied experiments are grouped together. To edit, provide experimentGroupId and at least one of name or notes, but omit testRunIds; editing metadata does not change membership. Creation is idempotent when all supplied test runs already share one group. All resources must belong to the active organization.",
+  description: "Create or edit an experiment group. To create, omit experimentGroupId and provide experimentIds plus an optional name and notes; the supplied experiments are grouped together. To edit, provide experimentGroupId and at least one of name or notes, but omit experimentIds; editing metadata does not change membership. Creation is idempotent when all supplied experiments already share one group. All resources must belong to the active organization.",
   inputSchema: {
     experimentGroupId: uuid2().optional().describe("Existing experiment group id to rename. Omit when creating."),
-    testRunIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).optional().describe("Experiment (test run) ids to group (1-100). Required when creating; omit when editing."),
+    experimentIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).optional().describe("Experiment IDs to group (1-100). Required when creating; omit when editing."),
     name: string2().trim().min(1).max(120).optional().describe("Human-readable group name. Optional when creating or editing."),
     notes: string2().max(1e4).optional().describe("Optional group notes. Omit to keep existing notes when editing; pass an empty string to clear them.")
   }
@@ -14316,9 +14316,9 @@ var getExperimentGroup = {
 var saveExperiment = {
   name: "save_experiment",
   title: "Save Experiment",
-  description: "Update an existing experiment (replay test run). Provide the experiment id and at least one of name, notes, or experimentGroupId. Omitted fields keep their current values; pass an empty notes string to clear notes, a group id to move the experiment to that existing group, or null to remove it from its group.",
+  description: "Update an existing experiment. Provide the experiment ID and at least one of name, notes, or experimentGroupId. Omitted fields keep their current values; pass an empty notes string to clear notes, a group id to move the experiment to that existing group, or null to remove it from its group.",
   inputSchema: {
-    testRunId: uuid2().describe("The experiment (test run) id to update"),
+    experimentId: uuid2().describe("The experiment ID to update"),
     name: string2().trim().min(1).max(120).optional().describe("Optional human-readable experiment name"),
     notes: string2().max(1e4).optional().describe("Optional experiment notes. Omit to keep existing notes; pass an empty string to clear them."),
     experimentGroupId: uuid2().nullable().optional().describe("Existing experiment group id to move this experiment into. Omit to keep its current group; pass null to remove it from its group.")
@@ -14327,9 +14327,9 @@ var saveExperiment = {
 var getExperiment = {
   name: "get_experiment",
   title: "Get Experiment",
-  description: "Get a single experiment (replay test run) by id, with its name, notes, status, pass/fail totals, delta, experiment group, and grader results: the aggregate passing/failing checks and pass rate, plus a per-grader breakdown (each assigned grader's own passing/failing and pass rate on the run). Use this when you already have an experiment id and want just that run's results, instead of paging the whole function's history with list_experiments.",
+  description: "Get a single experiment by experiment ID, with its name, notes, status, pass/fail totals, delta, experiment group, and grader results: the aggregate passing/failing checks and pass rate, plus a per-grader breakdown (each assigned grader's own passing/failing and pass rate on the run). Use this when you already have an experiment ID and want just that run's results, instead of paging the whole function's history with list_experiments.",
   inputSchema: {
-    testRunId: uuid2().describe("The experiment (test run) id, from list_experiments")
+    experimentId: uuid2().describe("The experiment ID, from list_experiments")
   }
 };
 var getGraderLabels = {
@@ -14732,44 +14732,51 @@ class McpProxy {
 }
 
 // ../bitfab-plugin-lib/dist/bitfabToolHandlers.js
+function withLegacyExperimentKeys(args) {
+  return {
+    ...args,
+    ...args.experimentId === undefined ? {} : { testRunId: args.experimentId },
+    ...args.experimentIds === undefined ? {} : { testRunIds: args.experimentIds }
+  };
+}
 function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
   const proxy = new McpProxy(platform, pluginVersion);
   function proxyToolCall(toolName, args) {
-    return proxy.toolCall(getConfig(), toolName, args);
+    return proxy.toolCall(getConfig(), toolName, withLegacyExperimentKeys(args));
   }
   async function handleSaveAgentLabels(args) {
-    const { testRunId, labels } = args;
+    const { experimentId, labels } = args;
     return proxyToolCall("save_agent_labels", {
-      testRunId,
+      experimentId,
       labels: labels.map((l) => l.originalTraceId !== undefined && l.sourceTraceId === undefined ? { ...l, sourceTraceId: l.originalTraceId } : l)
     });
   }
   async function handleSaveExperiment(args) {
-    const { testRunId, name, notes, experimentGroupId } = args;
+    const { experimentId, name, notes, experimentGroupId } = args;
     if (name === undefined && notes === undefined && experimentGroupId === undefined) {
       return errorResult("Error saving experiment: provide name, notes, and/or experimentGroupId.");
     }
     return proxyToolCall("save_experiment", {
-      testRunId,
+      experimentId,
       name,
       notes,
       experimentGroupId
     });
   }
   async function handleSaveExperimentGroup(args) {
-    const { experimentGroupId, testRunIds, name, notes } = args;
-    if (experimentGroupId === undefined && testRunIds === undefined) {
-      return errorResult("Error saving experiment group: testRunIds is required when creating an experiment group.");
+    const { experimentGroupId, experimentIds, name, notes } = args;
+    if (experimentGroupId === undefined && experimentIds === undefined) {
+      return errorResult("Error saving experiment group: experimentIds is required when creating an experiment group.");
     }
-    if (experimentGroupId !== undefined && testRunIds !== undefined) {
-      return errorResult("Error saving experiment group: testRunIds cannot be provided when editing an experiment group; editing does not change membership.");
+    if (experimentGroupId !== undefined && experimentIds !== undefined) {
+      return errorResult("Error saving experiment group: experimentIds cannot be provided when editing an experiment group; editing does not change membership.");
     }
     if (experimentGroupId !== undefined && name === undefined && notes === undefined) {
       return errorResult("Error saving experiment group: provide name and/or notes when editing an experiment group.");
     }
     return proxyToolCall("save_experiment_group", {
       experimentGroupId,
-      testRunIds,
+      experimentIds,
       name,
       notes
     });
@@ -14800,10 +14807,14 @@ var semver3 = __toESM(require_semver2(), 1);
 var semver2 = __toESM(require_semver2(), 1);
 // ../bitfab-plugin-lib/dist/commands/persistReplayLabels.js
 var lineageFileSchema = object({
-  testRunId: uuid2(),
+  experimentId: uuid2().optional(),
+  testRunId: uuid2().optional(),
   expectedOriginalTraceIds: array(uuid2()).min(1).optional(),
   expectedSourceTraceIds: array(uuid2()).min(1).optional(),
   verdicts: array(unknown()).min(1)
+}).refine((d) => d.experimentId !== undefined || d.testRunId !== undefined, {
+  message: "lineage file must carry experimentId (or the deprecated testRunId)",
+  path: ["experimentId"]
 }).refine((d) => d.expectedOriginalTraceIds !== undefined || d.expectedSourceTraceIds !== undefined, {
   message: "lineage file must carry expectedOriginalTraceIds (or the deprecated expectedSourceTraceIds)",
   path: ["expectedOriginalTraceIds"]
@@ -14813,14 +14824,42 @@ var directFileSchema = object({
   verdicts: array(unknown()).min(1)
 });
 var assertionIdSchema = uuid2();
+// ../bitfab-plugin-lib/dist/replayRunDir.js
+var EXPERIMENT_ID_KEYS = [
+  "experimentId",
+  "experiment_id",
+  "testRunId",
+  "test_run_id"
+];
+function firstString(result, keys) {
+  if (!result || typeof result !== "object") {
+    return null;
+  }
+  const rec = result;
+  for (const key of keys) {
+    const value = rec[key];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return null;
+}
+function extractExperimentId(result) {
+  return firstString(result, EXPERIMENT_ID_KEYS);
+}
+
 // ../bitfab-plugin-lib/dist/replayResultResolver.js
 var replayResultSchema = object({
   items: array(unknown()),
+  experimentId: string2().optional(),
+  experiment_id: string2().optional(),
+  experimentUrl: string2().optional(),
+  experiment_url: string2().optional(),
   testRunId: string2().optional(),
   test_run_id: string2().optional(),
   testRunUrl: string2().optional(),
   test_run_url: string2().optional()
-}).passthrough().refine(({ testRunId, test_run_id }) => testRunId !== undefined || test_run_id !== undefined);
+}).passthrough().refine((result) => extractExperimentId(result) !== null);
 
 // ../bitfab-plugin-lib/dist/commands/replayProgress.js
 var HEARTBEAT_MS = Number(process.env.BITFAB_REPLAY_HEARTBEAT_MS) || 12000;
@@ -16175,7 +16214,7 @@ var assistantFlow = Flow.parse({
     },
     openExperiments: {
       description: "Print a link to experiments.",
-      args: "<testRunIds>"
+      args: "<experimentIds>"
     },
     startDataset: {
       description: "Print a dataset link.",
@@ -16266,7 +16305,7 @@ This skill has nine invocation modes, each a different entry point into the same
 
 When you genuinely can't tell, default \`all\`. State the basis in the same one-line confirmation as \`costRun\`, e.g. "Starting experiment for \`generate-email\`, tracking token cost (uncached)." As with \`costRun\`, deciding this once here is what lets \`<tokensSuffix>\` resolve deterministically downstream instead of each open re-guessing the basis. \`costBasis\` is meaningless when \`costRun\` is false (no lens shows at all), so only carry it on a cost run.
 
-**Reset \`costRun\` if the user changes their mind after entry** (set it true on any later cost signal, not just an explicit "show me tokens": asking what a run costs, noting token counts look high, worrying about spend; set it false when they say to stop). The same intent-not-keywords reading applies here as at entry. The entry value is the default, not a lock; resetting on an explicit request is not the autonomous step-to-step re-guessing you must avoid. On a reset, re-open whatever token-capable surface is currently open so the live view matches: the experiments page in any form (\`?experimentGroupId=\`, \`?testRunIds=\`, or \`?datasetId=\`), re-navigated with or without \`&tokens=1\`. If nothing relevant is open, just hold the new value and the next open picks it up. One asymmetry to know: re-navigating with \`&tokens=1\` turns the lens on, but a param-less re-nav cannot turn it off (the page keeps the token columns sticky once shown); resetting to false still correctly drops the chat-side token-delta reporting in \`evaluate-results\` / \`share-results\` / the scorecard. **\`costBasis\` resets the same way.** A later signal can flip the basis without touching \`costRun\` (e.g. a token-count run where the user then says "what's the bill" flips \`costBasis\` to \`uncached\`; "I just mean total tokens" flips it back to \`all\`). On a basis change, re-open the open experiments surface with the matching suffix (\`&tokens=1&tokenType=all\` for \`all\`, \`&tokens=1&tokenType=uncached\` for \`uncached\`) so the live trend recolors, and the chat-side reports pick up the new basis on the next report. The toggle in the page header is the user's own live override of the same basis.
+**Reset \`costRun\` if the user changes their mind after entry** (set it true on any later cost signal, not just an explicit "show me tokens": asking what a run costs, noting token counts look high, worrying about spend; set it false when they say to stop). The same intent-not-keywords reading applies here as at entry. The entry value is the default, not a lock; resetting on an explicit request is not the autonomous step-to-step re-guessing you must avoid. On a reset, re-open whatever token-capable surface is currently open so the live view matches: the experiments page in any form (\`?experimentGroupId=\`, \`?experimentIds=\`, or \`?datasetId=\`), re-navigated with or without \`&tokens=1\`. If nothing relevant is open, just hold the new value and the next open picks it up. One asymmetry to know: re-navigating with \`&tokens=1\` turns the lens on, but a param-less re-nav cannot turn it off (the page keeps the token columns sticky once shown); resetting to false still correctly drops the chat-side token-delta reporting in \`evaluate-results\` / \`share-results\` / the scorecard. **\`costBasis\` resets the same way.** A later signal can flip the basis without touching \`costRun\` (e.g. a token-count run where the user then says "what's the bill" flips \`costBasis\` to \`uncached\`; "I just mean total tokens" flips it back to \`all\`). On a basis change, re-open the open experiments surface with the matching suffix (\`&tokens=1&tokenType=all\` for \`all\`, \`&tokens=1&tokenType=uncached\` for \`uncached\`) so the live trend recolors, and the chat-side reports pick up the new basis on the next report. The toggle in the page header is the user's own live override of the same basis.
 
 **Disambiguating \`benchmark\` from \`experiment\`** (both replay a dataset, so free-form text is easy to misroute):
 
@@ -17506,7 +17545,7 @@ Hold the chosen mode in working context. Every iteration below (\`make-change\`,
           branches: [
             {
               when: "{{#claude}}bash output is `parallel` (bypass found in committed or user-global settings){{/claude}}{{^claude}}(unreachable on this editor){{/claude}}",
-              description: `**Parallel mode.** For each independent experiment, fork to a subagent using the Agent tool with \`isolation: "worktree"\` and \`subagent_type: "general-purpose"\`. The subagent edits its worktree, runs replay, returns its scored items + \`testRunId\` to this main agent`,
+              description: `**Parallel mode.** For each independent experiment, fork to a subagent using the Agent tool with \`isolation: "worktree"\` and \`subagent_type: "general-purpose"\`. The subagent edits its worktree, runs replay, returns its scored items + \`experimentId\` to this main agent`,
               next: "iterate/detect-replay-capabilities"
             },
             {
@@ -17605,7 +17644,7 @@ If \`renameFrom\` identifies the legacy TypeScript \`bitfab\` package, replace i
           kind: "action",
           toolCalls: ["bash"],
           title: "Prepare experiment group before replay",
-          body: "Generate one experimentGroupId for this iteration before making changes or running replay. Pass that same ID through the replay registry using --experiment-group-id. Do not emit or share an experiment link yet: generating a UUID does not create the group on the server. The first persisted replay creates it. Keep reporting replay progress in chat, then share the verified group or test-run link in the open-experiments step after replay.",
+          body: "Generate one experimentGroupId for this iteration before making changes or running replay. Pass that same ID through the replay registry using --experiment-group-id. Do not emit or share an experiment link yet: generating a UUID does not create the group on the server. The first persisted replay creates it. Keep reporting replay progress in chat, then share the verified group or experiment link in the open-experiments step after replay.",
           next: {
             byMode: {
               wizard: "iterate/make-change",
@@ -17667,16 +17706,16 @@ The schema is flat, every file object is exactly \`{ path, before, after }\`. Do
 
 **Automatic fallback capture.** If you do not pass \`--code-change\`, a recent SDK auto-captures the branch's diff **against trunk** (the merge-base with \`origin/main\`) inside \`replay()\` itself and attaches it, so even a run where you did not hand-write a payload still shows a diff, as long as the SDK is new enough (\`supportsCodeChanges\`), you are in a git repo, and the working tree carries the change. This fallback is **cumulative** (whole branch vs trunk), not per-experiment. The precise per-experiment before/after still comes from writing the \`--code-change\` payload above, which always wins over the fallback, so keep doing that in \`make-change\`; the trunk diff is a last resort, not a reason to skip it.
 
-**Check the \`supportsExperimentGroups\` flag** (from \`detect-replay-capabilities\`). If true and an \`experimentGroupId\` exists, pass \`--experiment-group-id <experimentGroupId>\` (from \`open-experiments-before-replay\`) so the test run is tagged with the group. This includes the initial \`fixReplayScope = "single-trace"\` pass. If false, skip the flag; the post-replay Bitfab inspection can fall back to \`testRunId\` when available.
+**Check the \`supportsExperimentGroups\` flag** (from \`detect-replay-capabilities\`). If true and an \`experimentGroupId\` exists, pass \`--experiment-group-id <experimentGroupId>\` (from \`open-experiments-before-replay\`) so the experiment is tagged with the group. This includes the initial \`fixReplayScope = "single-trace"\` pass. If false, skip the flag; the post-replay Bitfab inspection can fall back to \`experimentId\` when available.
 
-**Check the \`supportsExperimentNames\` flag** (from \`detect-replay-capabilities\`). If true, pass \`--name "<experimentName>"\` so the resulting experiment/test run is readable in the UI. Use the one-line change description from \`make-change\` as \`<experimentName>\`; in \`benchmark\` mode use \`Benchmark: current code baseline\`. Keep it 120 characters or fewer. If false, omit \`--name\`; this is cosmetic and the replay still runs.
+**Check the \`supportsExperimentNames\` flag** (from \`detect-replay-capabilities\`). If true, pass \`--name "<experimentName>"\` so the resulting experiment is readable in the UI. Use the one-line change description from \`make-change\` as \`<experimentName>\`; in \`benchmark\` mode use \`Benchmark: current code baseline\`. Keep it 120 characters or fewer. If false, omit \`--name\`; this is cosmetic and the replay still runs.
 
 **Choose trace selection.**
 
 - **Initial \`fix\` pass (\`fixReplayScope = "single-trace"\`)**: pass \`--trace-ids <targetTraceId>\` (the trace ID held from Phase Fix \`resolve\`) and do NOT pass \`--dataset-id\`. This is the user's requested targeted replay. It proves the bug turned green before anything is added to a dataset or the rest of the dataset is run.
 - **Full dataset runs**: check the \`supportsDatasetId\` flag (from \`detect-replay-capabilities\`). When true, this is the **preferred way to replay the dataset**: pass \`--dataset-id <datasetId>\` (the dataset id held in working context: from \`pick-dataset\` in \`experiment\` / \`cost-optimize\` / \`benchmark\` modes, or from \`fix-add-to-dataset\` in \`fix\` mode, which skips \`pick-dataset\`) and **omit \`--trace-ids\` entirely**. The server replays exactly the dataset's traces and durably attributes the experiment to the dataset, so it shows under the dataset's experiments even when trace lineage can't be reconstructed, and you don't have to enumerate the dataset's trace IDs by hand. Only when \`supportsDatasetId\` is false do you fall back to \`--trace-ids <the dataset's resolved trace ids>\` (attribution then relies on the derived trace-lineage join). If the installed SDK lacks \`--dataset-id\`, prefer upgrading it (see \`upgrade-replay-script\`) over the trace-ids fallback.
 
-**Run the replay through \`{{command:replayProgress}}\` in the background, then relay the progress lines it prints.** Before starting, choose a unique run directory for this replay, for example \`.bitfab/replays/<experimentN>-<timestamp>-<short-random>\`, pass it with \`--run-dir\`, and hold that path in context; do not use a shared \`--events-log\` path. A foreground run blocks you for the whole replay and the user just sees "a shell is running" with no detail. \`{{command:replayProgress}}\` runs the replay, turns the SDK's per-trace \`@@bitfab:progress\` events into one self-contained line per trace on its stdout (a header, then for each trace as it finishes a pass/fail glyph, the running \`n/total\`, and that trace's duration, with the error reason inline on failure, plus a liveness heartbeat line when a slow trace goes quiet so the run never looks frozen, then a final summary with total + average time), and writes a small JSONL event log at \`<run-dir>/events.jsonl\`: \`type: "progress"\` rows as items finish, then a final \`type: "complete"\` row. Large per-item payloads are written atomically under \`<run-dir>/items/\` and referenced by \`item.itemPath\` / \`items[].itemPath\`, so outputs are not duplicated in the event log. It also tees every human line to \`<run-dir>/progress.log\`, so the user can \`tail -f\` it in a separate terminal for a live view that never collapses the way a tool card does. The wrapper writes \`<run-dir>/run.json\`; once the server test run ID is known it also writes \`<parent-of-run-dir>/by-test-run/<testRunId>/run.json\` pointing back to the run directory. If the replay finishes no traces at all (an \`@bitfab/sdk\` too old to carry the lifecycle reporter, or an SDK too old to emit installed-command lifecycle events), it closes with a \`\u26A0 done \xB7 replay finished but reported no progress\` line instead of ending silently, so a missing stream of per-trace lines never reads as a hang, fix it via \`upgrade-replay-script\` and re-run. If the replay command exits 0 but its local \`ReplayResult\` capture is unavailable, the wrapper also exits 0, emits a \`\u26A0 unverified\` capture warning, and records \`status: "unverified"\` with \`resultCaptured: false\` in \`run.json\`: this prevents the host and metadata consumers from falsely reporting either failure or completion. Progress lines alone do not verify the result. Treat the outcome as unverified until server test-run status resolves it; then explicitly report the server-confirmed outcome. You do NOT decide what or when to print: it does the formatting; you just show each new line.
+**Run the replay through \`{{command:replayProgress}}\` in the background, then relay the progress lines it prints.** Before starting, choose a unique run directory for this replay, for example \`.bitfab/replays/<experimentN>-<timestamp>-<short-random>\`, pass it with \`--run-dir\`, and hold that path in context; do not use a shared \`--events-log\` path. A foreground run blocks you for the whole replay and the user just sees "a shell is running" with no detail. \`{{command:replayProgress}}\` runs the replay, turns the SDK's per-trace \`@@bitfab:progress\` events into one self-contained line per trace on its stdout (a header, then for each trace as it finishes a pass/fail glyph, the running \`n/total\`, and that trace's duration, with the error reason inline on failure, plus a liveness heartbeat line when a slow trace goes quiet so the run never looks frozen, then a final summary with total + average time), and writes a small JSONL event log at \`<run-dir>/events.jsonl\`: \`type: "progress"\` rows as items finish, then a final \`type: "complete"\` row. Large per-item payloads are written atomically under \`<run-dir>/items/\` and referenced by \`item.itemPath\` / \`items[].itemPath\`, so outputs are not duplicated in the event log. It also tees every human line to \`<run-dir>/progress.log\`, so the user can \`tail -f\` it in a separate terminal for a live view that never collapses the way a tool card does. The wrapper writes \`<run-dir>/run.json\`; once the server experiment ID is known it also writes \`<parent-of-run-dir>/by-experiment/<experimentId>/run.json\` pointing back to the run directory. If the replay finishes no traces at all (an \`@bitfab/sdk\` too old to carry the lifecycle reporter, or an SDK too old to emit installed-command lifecycle events), it closes with a \`\u26A0 done \xB7 replay finished but reported no progress\` line instead of ending silently, so a missing stream of per-trace lines never reads as a hang, fix it via \`upgrade-replay-script\` and re-run. If the replay command exits 0 but its local \`ReplayResult\` capture is unavailable, the wrapper also exits 0, emits a \`\u26A0 unverified\` capture warning, and records \`status: "unverified"\` with \`resultCaptured: false\` in \`run.json\`: this prevents the host and metadata consumers from falsely reporting either failure or completion. Progress lines alone do not verify the result. Treat the outcome as unverified until the server experiment status resolves it; then explicitly report the server-confirmed outcome. You do NOT decide what or when to print: it does the formatting; you just show each new line.
 
 With a current replay-capable SDK, the event log also contains \`type: "started"\` lifecycle rows. These identify historical trace IDs that have entered a worker but have not necessarily settled; they are diagnostic only and must not be evaluated as completed items.
 
@@ -17696,13 +17735,13 @@ cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> --run-dir
 
 3. **Run the live replay/evaluation loop while the replay is still running.** Use the run directory you passed with \`--run-dir\` and poll \`<run-dir>/events.jsonl\` alongside the human output. Each \`type: "progress"\` JSONL row is a normalized SDK item-finish event; \`item.originalTraceId\` is the **original trace id, the key verdicts are persisted by** (every item file carries it under the same \`originalTraceId\` field, plus a deprecated \`sourceTraceId\` alias). On modern SDKs, \`item.traceId\` may already hold the server replay trace ID after the per-item flush; it is null only when that flush/readback could not confirm the ID, and the final persistence barrier/result fills it when possible. \`item.replayTraceId\` is only set by older SDKs. Treat a new successful progress row as "this original trace's replay item finished" and start evaluation for that item as soon as the row carries \`item.itemPath\` and an \`item.originalTraceId\`: read \`item.itemPath\` for the full input, replay output, original output, and metadata. Failed progress rows become unreplayable candidates immediately and should be carried forward with their error string. If the row is progress-only (old SDK/current basic reporter: no \`item.itemPath\`), do the cheap prep only and defer judging to the final \`type: "complete"\` row's item refs. If the JSONL file is missing or empty (old SDK without installed-command lifecycle events, or an unwritable log path), do not block or treat it as a replay failure: continue from the final complete event from the final result artifact.
 
-   For every item you can judge during the run, key the verdict by its **original trace id** (the \`originalTraceId\` field in each item file, the same \`item.originalTraceId\` on progress rows), the original trace the item was replayed from, which the server resolves to this run's replay trace, no local-to-server id mapping step. You need the run's \`testRunId\` to persist (enriched progress rows may carry \`event.testRunId\`; older scripts may only reveal it in the final \`ReplayResult\`). As soon as a small batch of judged items has its original trace ids and you know the \`testRunId\`, persist that batch with \`{{command:persistReplayLabels}}\`. Keep a set of original trace IDs already persisted so the final reconciliation never double-writes a verdict. A verdict judged live was judged before the item's outlines existed (\`originalTraceOutline\` and \`traceOutline\` are \`null\` on progress item files), so also keep the set of original trace ids judged without outlines; step 4 re-checks those against the final item files.
+   For every item you can judge during the run, key the verdict by its **original trace id** (the \`originalTraceId\` field in each item file, the same \`item.originalTraceId\` on progress rows), the original trace the item was replayed from, which the server resolves to this run's replay trace, no local-to-server id mapping step. You need the run's \`experimentId\` to persist (enriched progress rows may carry \`event.experimentId\`; older scripts may only reveal it in the final \`ReplayResult\`). As soon as a small batch of judged items has its original trace ids and you know the \`experimentId\`, persist that batch with \`{{command:persistReplayLabels}}\`. Keep a set of original trace IDs already persisted so the final reconciliation never double-writes a verdict. A verdict judged live was judged before the item's outlines existed (\`originalTraceOutline\` and \`traceOutline\` are \`null\` on progress item files), so also keep the set of original trace ids judged without outlines; step 4 re-checks those against the final item files.
 
-4. **When the background command finishes, read the final \`type: "complete"\` row from this run's \`events.jsonl\`**. Its \`result\` carries run metadata (\`testRunId\`, \`testRunUrl\`, \`itemCount\`) and its \`items\` array carries item refs. Read each needed \`items[].itemPath\` for the full replay item (trace ID, duration, tokens, model, full original/new outputs, and the two trace outlines). Read from the **files**, not from the captured command output, which the harness truncates in the middle. On current SDKs each completed item also carries \`originalTraceOutline\` and \`traceOutline\`: the original and the replayed trace's span tree (span names, types, nesting, order, durations, tokens, model, errors, and whether each span was mocked) with no inputs or outputs. The SDK fills both in at completion from the server, so they are \`null\` on live progress rows and on older SDKs. Use them to judge execution shape (did the replay call the same tools in the same order, did a span that used to run get mocked or skipped, did a child span error) straight from the item file, instead of reading both traces back from the server for that comparison. **Re-check every item you judged live:** its verdict was derived before the outlines existed, so re-read its final item file (the complete row's write fills both outlines) and run the execution-shape comparison now. When that comparison changes the verdict, include the corrected \`{ originalTraceId, label, annotation }\` in the next \`{{command:persistReplayLabels}}\` batch: a new agent verdict for the same original trace replaces the earlier one in place, so this correction is the one case where re-persisting an already-persisted id is right. When it does not change the verdict, leave the persisted verdict alone.
+4. **When the background command finishes, read the final \`type: "complete"\` row from this run's \`events.jsonl\`**. Its \`result\` carries run metadata (\`experimentId\`, \`experimentUrl\`, \`itemCount\`) and its \`items\` array carries item refs. Read each needed \`items[].itemPath\` for the full replay item (trace ID, duration, tokens, model, full original/new outputs, and the two trace outlines). Read from the **files**, not from the captured command output, which the harness truncates in the middle. On current SDKs each completed item also carries \`originalTraceOutline\` and \`traceOutline\`: the original and the replayed trace's span tree (span names, types, nesting, order, durations, tokens, model, errors, and whether each span was mocked) with no inputs or outputs. The SDK fills both in at completion from the server, so they are \`null\` on live progress rows and on older SDKs. Use them to judge execution shape (did the replay call the same tools in the same order, did a span that used to run get mocked or skipped, did a child span error) straight from the item file, instead of reading both traces back from the server for that comparison. **Re-check every item you judged live:** its verdict was derived before the outlines existed, so re-read its final item file (the complete row's write fills both outlines) and run the execution-shape comparison now. When that comparison changes the verdict, include the corrected \`{ originalTraceId, label, annotation }\` in the next \`{{command:persistReplayLabels}}\` batch: a new agent verdict for the same original trace replaces the earlier one in place, so this correction is the one case where re-persisting an already-persisted id is right. When it does not change the verdict, leave the persisted verdict alone.
 
 **Before running: verify the installed replay command returns the full original and new output values AND at least one verdict persist key (\`item.originalTraceId\` or \`item.traceId\`) for every item** (not just lengths, counts, hashes, or truncated previews) so the run's \`items/*.json\` files carry them. Modern items may carry both: prefer lineage persistence by \`item.originalTraceId\` (older SDKs may print it under the deprecated \`sourceTraceId\` alias), and fall back to the server replay \`item.traceId\` only when original lineage is absent. After an item's replay trace is flushed, its \`item.traceId\` is available to lifecycle callbacks and in the final result. The oldest SDKs have no \`item.originalTraceId\` and persist by \`item.traceId\`. If the installed command returns neither, upgrade the SDK first; the Replay Output Contract and registry examples live in the SDK reference at \`https://docs.bitfab.ai/<language>-sdk.md\`. Subagents can't evaluate an improvement from \`5 \u2192 7 (+2)\`, and an item that carries no persist key blocks verdict persistence for that item.
 
-**Capture the \`testRunId\` from the replay complete event**: read the final \`type: "complete"\` row in this run's \`events.jsonl\`; it carries \`testRunId\` and \`testRunUrl\` when the SDK returned them. Track every \`testRunId\` produced across all iterations of this phase for the \`open-experiments\` fallback.
+**Capture the \`experimentId\` from the replay complete event**: read the final \`type: "complete"\` row in this run's \`events.jsonl\`; it carries \`experimentId\` and \`experimentUrl\` when the SDK returned them. Track every \`experimentId\` produced across all iterations of this phase for the \`open-experiments\` fallback.
 
 **If an external child span fails during replay, verify it is actually mockable before tagging it.** When a non-root span throws because a paid call, external service, or stored dependency is unavailable, it can block the whole trace even though the failure is outside the function you're iterating on. The short-term fix is recorded-output mocking, but only after the wrapper and execution-context checks below clear:
 
@@ -17728,7 +17767,7 @@ cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> --run-dir
 Use this when the goal is to unblock iteration on the root function, not when the child itself is what you're trying to improve.
 
 **After the run, check whether verdicts can be persisted, and by which key.** For every completed item, confirm it carries a persist key and note which keying the run uses:
-- **Lineage keying (modern SDKs):** the item carries \`item.originalTraceId\` (the original trace it was replayed from; older SDKs print it under the deprecated \`sourceTraceId\` alias). This is the preferred path, verdicts persist by \`{ testRunId, originalTraceId }\`.
+- **Lineage keying (modern SDKs):** the item carries \`item.originalTraceId\` (the original trace it was replayed from; older SDKs print it under the deprecated \`sourceTraceId\` alias). This is the preferred path, verdicts persist by \`{ experimentId, originalTraceId }\`.
 - **Direct keying:** the item has no \`originalTraceId\`; \`item.traceId\` is the trace's own id, so verdicts persist by \`traceId\` directly. This is the general way any trace is labeled by its id. In the replay flow the label targets the replay trace, so direct keying applies when the replay trace's own id is known client-side (which older SDKs surface, writing the server id into \`item.traceId\` after the run).
 
 Hold a boolean flag (\`canPersistVerdicts\`) for the \`check-verdict-persistence\` step, true when every completed item carries one of those keys, and remember which keying the run uses (they don't mix within a run: \`item.originalTraceId\` when present, else the direct \`item.traceId\`). If some completed items carry neither, the SDK is too old to persist those verdicts to the server. Do NOT stop here, just flag it.
@@ -17827,9 +17866,9 @@ After whichever workaround the user picks, re-run \`replay-against-dataset\` and
           kind: "branch",
           toolCalls: ["getReplayStatus", "listExperimentTraces", "getTraces"],
           title: "Resolve unverified replay from the server",
-          body: `**Run only when the replay command exited 0 but local ReplayResult capture was unavailable.** Extract the \`testRunId\` from the command output or \`run.json\`. If it exists, poll {{tool:getReplayStatus}} every 5 seconds while the server status is \`pending\`, for at most 30 seconds total. If it is still pending after 30 seconds, stop polling and report that the outcome remains unverified.
+          body: `**Run only when the replay command exited 0 but local ReplayResult capture was unavailable.** Extract the \`experimentId\` from \`run.json\` or the command output (older SDKs print it as \`testRunId\`). If it exists, poll {{tool:getReplayStatus}} every 5 seconds while the server status is \`pending\`, for at most 30 seconds total. If it is still pending after 30 seconds, stop polling and report that the outcome remains unverified.
 
-When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listExperimentTraces}} for the same test run to enumerate every server replay trace ID and its \`original\` trace ID, then call {{tool:getTraces}} with the server replay IDs and \`scope: "full"\` to recover their inputs, outputs, and errors. Use each experiment trace's \`original\` field as its \`originalTraceId\` lineage key. Do not use the keys of {{tool:getReplayStatus}}'s \`traceIds\` mapping as original trace IDs: those keys are local client \`sourceTraceId\` values. Recompute \`completed\`, \`shapeErrored\`, \`mockErrored\`, \`setupErrored\`, \`dependencyErrored\`, \`codeErrored\`, and \`canPersistVerdicts\` from those server traces exactly as \`replay-against-dataset\` does, set \`serverRecovered = true\`, then continue normally. Do not infer success from the child exit code or local progress lines.
+When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listExperimentTraces}} for the same experiment to enumerate every server replay trace ID and its \`original\` trace ID, then call {{tool:getTraces}} with the server replay IDs and \`scope: "full"\` to recover their inputs, outputs, and errors. Use each experiment trace's \`original\` field as its \`originalTraceId\` lineage key. Do not use the keys of {{tool:getReplayStatus}}'s \`traceIds\` mapping as original trace IDs: those keys are local client \`sourceTraceId\` values. Recompute \`completed\`, \`shapeErrored\`, \`mockErrored\`, \`setupErrored\`, \`dependencyErrored\`, \`codeErrored\`, and \`canPersistVerdicts\` from those server traces exactly as \`replay-against-dataset\` does, set \`serverRecovered = true\`, then continue normally. Do not infer success from the child exit code or local progress lines.
 
 {{whens}}`,
           branches: [
@@ -17844,7 +17883,7 @@ When the server reports \`completed\` with \`traceCount > 0\`, call {{tool:listE
               next: "iterate/replay-against-dataset"
             },
             {
-              when: "no test run ID can be resolved, server status cannot be read, or server status remains `pending` after 30 seconds",
+              when: "no experiment ID can be resolved, server status cannot be read, or server status remains `pending` after 30 seconds",
               description: "the outcome cannot be verified. Upgrade or fix the installed SDK's reporter/result-artifact contract, then retry",
               next: "iterate/replay-against-dataset"
             }
@@ -17991,14 +18030,14 @@ ${FAN_OUT_JUDGING}
 
 **Persist via \`persistReplayLabels.js\`.** Write verdicts to a tmp JSON file then run the script. You may do this incrementally for complete batches as replay results arrive, and again at the end for any remaining original trace IDs that were not already persisted. Each call is one batched MCP write; the script parses \`save_agent_labels\`'s agent-readable effective label lines internally to verify each verdict actually persisted, then deletes the file on success. Its JSON status is the signal you route on:
 
-1. Pick an **absolute** tmp path. The script reads the file relative to its own process cwd, which in parallel-worktree mode is NOT the project root, so a relative path can resolve to a different directory than where you wrote the file (\`ENOENT\`). Recommended: \`<repoRoot>/.bitfab/tmp/verdicts-<testRunId>.json\` where \`<repoRoot>\` is the output of \`git rev-parse --show-toplevel\` (create the dir if missing). Falls back to an absolute path under \`os.tmpdir()\` if the project root isn't writable.
+1. Pick an **absolute** tmp path. The script reads the file relative to its own process cwd, which in parallel-worktree mode is NOT the project root, so a relative path can resolve to a different directory than where you wrote the file (\`ENOENT\`). Recommended: \`<repoRoot>/.bitfab/tmp/verdicts-<experimentId>.json\` where \`<repoRoot>\` is the output of \`git rev-parse --show-toplevel\` (create the dir if missing). Falls back to an absolute path under \`os.tmpdir()\` if the project root isn't writable.
 2. Use the {{tool:write}} tool to write the verdicts file. **The script accepts two shapes; use the one that matches this run's keying (from \`check-verdict-persistence\`).**
 
    **Lineage keying (modern SDKs, items carry \`originalTraceId\`), preferred:**
 
 \`\`\`json
 {
-  "testRunId": "<testRunId>",
+  "experimentId": "<experimentId>",
   "expectedOriginalTraceIds": ["<originalTraceId1>", "<originalTraceId2>", "..."],
   "verdicts": [
     { "originalTraceId": "<originalTraceId1>", "label": true, "annotation": "Now returns the missing field; original annotation said it was empty.", "confidence": "High" },
@@ -18008,7 +18047,7 @@ ${FAN_OUT_JUDGING}
 }
 \`\`\`
 
-   **Direct keying (the item has no \`originalTraceId\`; it carries the trace's own id in \`item.traceId\`):** same shape but keyed by \`traceId\`, and **omit \`testRunId\`** (the trace id already identifies the trace to label):
+   **Direct keying (the item has no \`originalTraceId\`; it carries the trace's own id in \`item.traceId\`):** same shape but keyed by \`traceId\`, and **omit \`experimentId\`** (the trace id already identifies the trace to label):
 
 \`\`\`json
 {
@@ -18020,7 +18059,7 @@ ${FAN_OUT_JUDGING}
 }
 \`\`\`
 
-In lineage keying, \`testRunId\` is this replay run's id (from the progress rows or the final \`ReplayResult\`). The server uses it to resolve each original trace to its replay trace within this run. The \`expected*\` list MUST be the full set of ids covered by this call's batch (and across all batches, every completed \`item.error\`-unset replay item must be persisted exactly once, no fewer, per the mandatory-coverage rule above). For the final end-of-run call, use only the ids not already successfully persisted by an earlier batch. \`verdicts\` MUST cover every id in the \`expected*\` list, keyed by the same id field as that list. A trace with no assertions gets exactly one entry, either a \`{label, annotation, confidence?}\` verdict or a \`{skip: true}\` explicit skip (skips allowed only for the three enumerated skip cases above, never for an environmental doubt). A trace that has assertions gets one entry per assertion instead, in the shapes the per-assertion block below fixes. \`confidence\` is optional but recommended (\`VeryLow|Low|Medium|High|VeryHigh\`). It surfaces in the labeling UI so reviewers can prioritize low-confidence verdicts. If any expected id gets no entry at all, the script returns \`status: "missing-coverage"\` and the verify step routes you back to fill the gaps.
+In lineage keying, \`experimentId\` is this replay run's experiment ID (from the progress rows or the final \`ReplayResult\`). The server uses it to resolve each original trace to its replay trace within this run. The \`expected*\` list MUST be the full set of ids covered by this call's batch (and across all batches, every completed \`item.error\`-unset replay item must be persisted exactly once, no fewer, per the mandatory-coverage rule above). For the final end-of-run call, use only the ids not already successfully persisted by an earlier batch. \`verdicts\` MUST cover every id in the \`expected*\` list, keyed by the same id field as that list. A trace with no assertions gets exactly one entry, either a \`{label, annotation, confidence?}\` verdict or a \`{skip: true}\` explicit skip (skips allowed only for the three enumerated skip cases above, never for an environmental doubt). A trace that has assertions gets one entry per assertion instead, in the shapes the per-assertion block below fixes. \`confidence\` is optional but recommended (\`VeryLow|Low|Medium|High|VeryHigh\`). It surfaces in the labeling UI so reviewers can prioritize low-confidence verdicts. If any expected id gets no entry at all, the script returns \`status: "missing-coverage"\` and the verify step routes you back to fill the gaps.
 
 **A replay inherits the original trace's assertions, so score them one at a time.** Before you judge this batch, call {{tool:getTraceAssertions}} once with the batch's **original** trace ids (one call covers up to 100 ids, so make it once and before you judge anything). Each assertion comes back under its trace as \`[ID: <uuid>] checks <target>: <assertion>\`, and that \`[ID: <uuid>]\` value is the \`assertionId\` its verdict carries. Only assertions a person has approved are listed, since only those are checked on a replay. A trace that comes back "no approved assertions" has nothing for you to score one at a time.
 
@@ -18034,7 +18073,7 @@ Per-assertion and whole-trace entries travel in the same file and the same call,
 
 \`\`\`json
 {
-  "testRunId": "<testRunId>",
+  "experimentId": "<experimentId>",
   "expectedOriginalTraceIds": ["<originalTraceId1>", "<originalTraceId2>"],
   "verdicts": [
     { "originalTraceId": "<originalTraceId1>", "assertionId": "<assertionId1>", "label": true, "annotation": "The rebooked leg now names the carrier this assertion asks for.", "confidence": "High" },
@@ -18050,14 +18089,14 @@ Per-assertion and whole-trace entries travel in the same file and the same call,
 3. Run the script:
 
 \`\`\`bash
-{{command:persistReplayLabels}} <repoRoot>/.bitfab/tmp/verdicts-<testRunId>.json
+{{command:persistReplayLabels}} <repoRoot>/.bitfab/tmp/verdicts-<experimentId>.json
 \`\`\`
 
 4. Read its single JSON line on stdout. Hold the parsed result for the next step.
 
 **Spill working notes to a separate tmp file if context gets big.** Don't conflate working notes with the verdicts file, the script deletes the verdicts file on success.{{#claude}}
 
-**If you're a worktree subagent** (parallel mode from \`pick-execution-mode\`): after the script returns, hand the parsed result + \`testRunId\` + unreplayable list back to the main agent and exit. The main agent collects results from all parallel experiments before \`open-experiments\`.{{/claude}}`,
+**If you're a worktree subagent** (parallel mode from \`pick-execution-mode\`): after the script returns, hand the parsed result + \`experimentId\` + unreplayable list back to the main agent and exit. The main agent collects results from all parallel experiments before \`open-experiments\`.{{/claude}}`,
           next: "iterate/verify-replay-labels"
         },
         {
@@ -18101,12 +18140,12 @@ Per-assertion and whole-trace entries travel in the same file and the same call,
             },
             {
               when: '`status: "invalid-input"` (malformed verdicts JSON or missing fields)',
-              description: "the verdicts file you wrote doesn't match either accepted shape. Read the script's `message` field, fix the JSON (most common: missing annotation on a non-skip entry; a lineage file missing `testRunId` or with an empty `expectedOriginalTraceIds`; a verdict keyed by the wrong id field for the file's mode), and re-run the script. Loop back here",
+              description: "the verdicts file you wrote doesn't match either accepted shape. Read the script's `message` field, fix the JSON (most common: missing annotation on a non-skip entry; a lineage file missing `experimentId` or with an empty `expectedOriginalTraceIds`; a verdict keyed by the wrong id field for the file's mode), and re-run the script. Loop back here",
               next: "iterate/verify-replay-labels"
             },
             {
               when: '`status: "mcp-error"` (MCP call to save_agent_labels failed mid-batch)',
-              description: "Read the script's `message` field. In lineage mode, if it says an original trace has no replay trace in this run or is not in this organization, confirm the `testRunId` matches the run these items came from and that each `originalTraceId` is the original trace it was replayed from (from the item files, not a local or replay trace id). In direct mode, if trace ids are invalid, confirm each verdicts-file `traceId` is the server replay id (`item.traceId`) from the item files. Fix the file and re-run. For network or auth errors, the script's `partialIds` lists which ids were already persisted; tell the user, recommend re-running the script (it's idempotent, already-persisted labels just upsert), and loop back here. If it keeps failing, stop and surface the error",
+              description: "Read the script's `message` field. In lineage mode, if it says an original trace has no replay trace in this run or is not in this organization, confirm the `experimentId` matches the run these items came from and that each `originalTraceId` is the original trace it was replayed from (from the item files, not a local or replay trace id). In direct mode, if trace ids are invalid, confirm each verdicts-file `traceId` is the server replay id (`item.traceId`) from the item files. Fix the file and re-run. For network or auth errors, the script's `partialIds` lists which ids were already persisted; tell the user, recommend re-running the script (it's idempotent, already-persisted labels just upsert), and loop back here. If it keeps failing, stop and surface the error",
               next: "iterate/verify-replay-labels"
             },
             {
@@ -18122,7 +18161,7 @@ Per-assertion and whole-trace entries travel in the same file and the same call,
           toolCalls: ["bash", "listExperiments", "listExperimentTraces"],
           commandCalls: ["pageLink", "openExperiments"],
           title: "Share the experiments link",
-          body: 'Skip the link for a benchmark without the `page` flag or a single-trace fix awaiting its verdict, or a full-dataset fix with fixDatasetBitfab false. Otherwise call {{tool:listExperiments}} for the trace function and verify the returned testRunIds exist on the server. If a persisted run belongs to the experimentGroupId prepared before replay, run {{command:pageLink}} "/experiments?experimentGroupId=<experimentGroupId><tokensSuffix>" with that same group ID and relay the URL. Use an empty tokensSuffix for quality runs and &tokens=1&tokenType=<costBasis> for cost runs, preserving the selected all or uncached basis. If the registry did not persist the group, run {{command:openExperiments}} <testRunIds> with the verified IDs instead; include --show-tokens for cost runs, plus --uncached when costBasis is uncached. If no run was persisted, report that fact without emitting a broken link. Both commands exit immediately. Continue to evaluating and persisting replay labels.',
+          body: 'Skip the link for a benchmark without the `page` flag or a single-trace fix awaiting its verdict, or a full-dataset fix with fixDatasetBitfab false. Otherwise call {{tool:listExperiments}} for the trace function and verify the returned experiment IDs exist on the server. If a persisted run belongs to the experimentGroupId prepared before replay, run {{command:pageLink}} "/experiments?experimentGroupId=<experimentGroupId><tokensSuffix>" with that same group ID and relay the URL. Use an empty tokensSuffix for quality runs and &tokens=1&tokenType=<costBasis> for cost runs, preserving the selected all or uncached basis. If the registry did not persist the group, run {{command:openExperiments}} <experimentIds> with the verified IDs instead; include --show-tokens for cost runs, plus --uncached when costBasis is uncached. If no run was persisted, report that fact without emitting a broken link. Both commands exit immediately. Continue to evaluating and persisting replay labels.',
           next: "iterate/evaluate-results"
         },
         {
@@ -18202,7 +18241,7 @@ Then ask what to do next. One option always lets the user **show this fix in Bit
 - **The dataset has sibling traces:** the headline choice is whether to re-run the entire dataset now to check the fix against every trace in it (you'll then ask Bitfab vs terminal-only). Present all four options below and recommend **"Re-run the entire dataset"**.
 - **No siblings** (the added trace is the dataset's only trace, or the user continued without saving so nothing was added): do **NOT** offer "Re-run the entire dataset", there is no other dataset trace to run, and re-running a one-trace dataset would just replay the trace you already proved green. Present only "Show in Bitfab", "Keep iterating", and "Stop and wrap up", and recommend **"Stop and wrap up"**.
 
-When the user picks **Show in Bitfab**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`testRunIds\` fallback), then ask this question again. When they pick **Keep iterating**, clear \`fixDatasetSkipped\` if it was set (this is a fresh attempt, so a later green should re-offer the save prompt they declined only on the previous pass), set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`. When they pick **Stop and wrap up**, the saved trace stays if one was added (\`fixAddedToDataset\`); nothing is saved if they continued without adding (\`fixDatasetSkipped\`).
+When the user picks **Show in Bitfab**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`experimentIds\` fallback), then ask this question again. When they pick **Keep iterating**, clear \`fixDatasetSkipped\` if it was set (this is a fresh attempt, so a later green should re-offer the save prompt they declined only on the previous pass), set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`. When they pick **Stop and wrap up**, the saved trace stays if one was added (\`fixAddedToDataset\`); nothing is saved if they continued without adding (\`fixDatasetSkipped\`).
 
 {{branches}}`,
           branches: [
@@ -18281,7 +18320,7 @@ Report the failed target result first. Say whether the replay produced a real FA
 
 Then ask what to do next. Offer inspection, another fix attempt, saving the trace as a failing test to revisit later, or stopping. Do not offer a full-dataset run here: there is no dataset trace to run unless it was already added earlier, and running one before the target passes would defeat the test-first add-to-dataset flow:
 
-When the user picks **Show in Bitfab**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`testRunIds\` fallback), then ask this question again. Recommend **Keep iterating** only when the replay produced a real FAIL; for an unreplayable or shape-incompatible result, recommend making the trace replayable or stopping instead. When they pick it, set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`.
+When the user picks **Show in Bitfab**, open it with \`fixSingleTraceExperimentGroupId\` (or the \`experimentIds\` fallback), then ask this question again. Recommend **Keep iterating** only when the replay produced a real FAIL; for an unreplayable or shape-incompatible result, recommend making the trace replayable or stopping instead. When they pick it, set \`fixReplayScope = "single-trace"\` and \`fixSkipMakeChange = false\`.
 
 {{branches}}`,
           branches: [
@@ -18350,7 +18389,7 @@ Set \`fixAddedToDataset = true\` only once the attach above is confirmed. Tell t
           toolCalls: ["bash"],
           commandCalls: ["pageLink"],
           title: "Share the targeted before/after link",
-          body: "Run {{command:pageLink}} /experiments?testRunIds=<testRunId>&autoOpenFirst=1 (quote the entire path) and relay the returned URL so the user can inspect the before/after. Return to the fix decision in chat.",
+          body: "Run {{command:pageLink}} /experiments?experimentIds=<experimentId>&autoOpenFirst=1 (quote the entire path) and relay the returned URL so the user can inspect the before/after. Return to the fix decision in chat.",
           next: "iterate/fix-target-replay-status"
         },
         {
@@ -18407,7 +18446,7 @@ Then route by the approved plan, **without asking the user** (they already confi
     {
       id: "quick-replay",
       title: "Phase Replay: Single-Trace Quick Replay",
-      intro: "Reached only from `replay` mode. The user already has a trace ID and (usually) already made a fix; they just want to replay that one trace and hear whether it worked. This is the **minimal, atomic** path: no Bitfab/browser, no dataset, no experiment groups. Locate the replay registry, read the trace, run replay against the single trace ID, compare the new output to the original, and report a one-line verdict in chat. **Whenever you derive a pass/fail verdict, persist it onto the replay trace** (the same local label you show in chat, saved via {{command:persistReplayLabels}}) so it isn't silently thrown away. The one exception is an SDK too old to expose replay trace IDs: persistence is then impossible, so the verdict stays in-chat only with an upgrade nudge. The replay itself creates a test run intrinsically (the SDK does this); persistence just adds the agent verdict on top.",
+      intro: "Reached only from `replay` mode. The user already has a trace ID and (usually) already made a fix; they just want to replay that one trace and hear whether it worked. This is the **minimal, atomic** path: no Bitfab/browser, no dataset, no experiment groups. Locate the replay registry, read the trace, run replay against the single trace ID, compare the new output to the original, and report a one-line verdict in chat. **Whenever you derive a pass/fail verdict, persist it onto the replay trace** (the same local label you show in chat, saved via {{command:persistReplayLabels}}) so it isn't silently thrown away. The one exception is an SDK too old to expose replay trace IDs: persistence is then impossible, so the verdict stays in-chat only with an upgrade nudge. The replay itself creates an experiment intrinsically (the SDK does this); persistence just adds the agent verdict on top.",
       stepStyle: "list",
       steps: [
         {
@@ -18467,7 +18506,7 @@ ${REPLAY_SAFETY_CHECK}
 # Ruby:       cd <project-dir> && bundle exec bitfab-replay --registry <registry-path> <pipeline> --trace-ids <trace-id>
 \`\`\`
 
-This is a single-trace, in-chat path: run the replay directly, no progress-bar wrapper (one item has nothing to track). Do **not** pass \`--code-change\` or \`--experiment-group-id\`, this minimal path skips code-change payloads and experiment groups (persisting the verdict in the next step needs neither). Capture the full replay-result JSON and exit code, and from it hold the run's test-run id (\`testRunId\` in TS, \`test_run_id\` in Python/Ruby) and the completed item's trace id (\`traceId\` in TS, \`trace_id\` in Python/Ruby). **In the final replay result this trace id is already the SERVER replay trace id** (the SDK's \`completeReplay\` overwrites the local id with the server row id before returning), so the verdict step persists against it directly, no \`get_replay_status\` mapping. **If it is \`null\`, persistence is impossible this run** (an old server/SDK that returns no server-trace-id mapping), note that so the verdict step falls back to an in-chat-only verdict.
+This is a single-trace, in-chat path: run the replay directly, no progress-bar wrapper (one item has nothing to track). Do **not** pass \`--code-change\` or \`--experiment-group-id\`, this minimal path skips code-change payloads and experiment groups (persisting the verdict in the next step needs neither). Capture the full replay-result JSON and exit code, and from it hold the run's experiment ID (\`experimentId\` in TS, \`experiment_id\` in Python/Ruby; older SDKs print \`testRunId\` / \`test_run_id\`) and the completed item's trace id (\`traceId\` in TS, \`trace_id\` in Python/Ruby). **In the final replay result this trace id is already the SERVER replay trace id** (the SDK's \`completeReplay\` overwrites the local id with the server row id before returning), so the verdict step persists against it directly, no \`get_replay_status\` mapping. **If it is \`null\`, persistence is impossible this run** (an old server/SDK that returns no server-trace-id mapping), note that so the verdict step falls back to an in-chat-only verdict.
 
 **Quick health check.** If the replay crashed (non-zero exit, no items) or the single item has \`item.error\` set, hold the error for the verdict step. Otherwise hold the completed item's new output alongside the original output you read in \`setup\`.`,
           next: "quick-replay/verdict"
@@ -18526,7 +18565,7 @@ Then compare the new output against the original trace's assertions, label, and 
   \`\`\`
 
   \`\`\`bash
-  {{command:persistReplayLabels}} <repoRoot>/.bitfab/tmp/verdicts-<test-run-id>.json
+  {{command:persistReplayLabels}} <repoRoot>/.bitfab/tmp/verdicts-<experiment-id>.json
   \`\`\`
 
   \`label\` is \`true\` for Pass, \`false\` for Still-failing / Regressed. Read the script's single JSON status line: \`ok\` means the verdict is now on the replay trace, add "\xB7 saved" to your one-line report.
@@ -18567,7 +18606,7 @@ Then compare the new output against the original trace's assertions, label, and 
           toolCalls: ["bash", "grep"],
           title: "Re-seed the trace in place",
           emit: "Re-seeding",
-          body: `**Run the trace again for real and record the result under the same id.** A re-seed is a seed, not a replay: nothing is mocked, no test run or experiment is created, and the trace keeps its id, labels, assertions, dataset membership, name, and metadata. The previous run is kept as its own trace, linked back to this one, so nothing is deleted.
+          body: `**Run the trace again for real and record the result under the same id.** A re-seed is a seed, not a replay: nothing is mocked, no experiment is created, and the trace keeps its id, labels, assertions, dataset membership, name, and metadata. The previous run is kept as its own trace, linked back to this one, so nothing is deleted.
 
 **It runs the function exactly as production does, side effects included.** If the safety check in \`setup\` found any unsafe action (an email, a payment, a write to a live system), say exactly which call would run for real and get an explicit go-ahead before continuing; a re-seed has no mocking to hide behind.
 
@@ -18703,7 +18742,7 @@ var setupFlow = Flow.parse({
     },
     openExperiments: {
       description: "Print a link to experiments.",
-      args: "<testRunIds>"
+      args: "<experimentIds>"
     },
     startDataset: {
       description: "Print a dataset link.",
@@ -20096,7 +20135,7 @@ Leave the live request path untouched: only the replayed function reads the bran
 1. Resolve the exact fresh trace ID. Before triggering the instrumented function, call {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", limit: 10 }\` and retain the returned IDs. Record the current timestamp, then run the instrumented function once (or have the user trigger it). Poll the same search once or twice and compare the returned IDs with the before set. Select the ID only when exactly one new root trace has a timestamp after the recorded time. If there are zero new IDs, stop and report that no fresh trace arrived; if concurrent traffic produces more than one candidate, stop and ask the user for the intended trace ID. \`search_traces\` does not return trace inputs, so never guess based on an assumed input match. Confirm the exact ID is eligible by calling {{tool:searchTraces}} with \`{ traceFunctionKey: "<key>", traceIds: ["<fresh-trace-id>"], hasDbSnapshot: true, limit: 1 }\`. If it is absent, do not replay it: report that the fresh trace did not capture a snapshot and diagnose SDK freshness/database connection first.
 2. **Mandatory replay-safety check, before any replay command.** Read the replay registry module, the real production root it imports, and every reachable external-action span. Inventory database writes, outbound mutations, queue publishes, email, payments, filesystem writes, and similar unsafe actions. Confirm each one is behind a manual replay-mockable descendant selected by the registry entry's actual strategy and has a serializable recorded output; \`mock: "marked"\` requires \`mockOnReplay\` on that boundary. Confirm the boundary runs in the same replay context: Python worker threads require \`trace_across_threads=True\`; Python async-generator spans cannot be mocked; Ruby child threads, pre-created consumers, and processes do not inherit replay interception; TypeScript synchronous selected spans cannot use lazy \`marked\` output and may use \`all\` only when freezing every matched child is acceptable. Also reject unsafe import-time/module initialization, because it runs before replay interception. Confirm the replay call requests \`dbBranch\` / \`db_branch\`. If any unsafe action is unselected, unmockable, outside context, or uncertain, **do not run the smoke test**; report the exact blocker and required boundary change. Mocking, not the app environment, is the safety boundary.
 3. Run the SDK-installed replay command against only the verified ID using \`--trace-ids <fresh-trace-id>\` (for example, \`pnpm with-env bitfab-replay --registry scripts/replayRegistry.ts <pipeline> --trace-ids <fresh-trace-id>\`, \`poetry run bitfab-replay --registry scripts/replay_registry.py <pipeline> --trace-ids <fresh-trace-id>\`, or \`bundle exec bitfab-replay --registry scripts/replay_registry.rb <pipeline> --trace-ids <fresh-trace-id>\`, with the app's normal environment loader). Never substitute \`--limit 1\`.
-4. Confirm the branch was injected: inside the replayed function, \`getCurrentReplayBranch()\` (TypeScript), \`get_current_replay_branch()\` (Python), or \`Bitfab.current_replay_branch\` (Ruby) must be non-null. Compare its \`databaseUrl\` / \`database_url\` host and database with the app's normal \`DATABASE_URL\`; they should differ. Print the test run URL from the replay output so the user can open the experiment.
+4. Confirm the branch was injected: inside the replayed function, \`getCurrentReplayBranch()\` (TypeScript), \`get_current_replay_branch()\` (Python), or \`Bitfab.current_replay_branch\` (Ruby) must be non-null. Compare its \`databaseUrl\` / \`database_url\` host and database with the app's normal \`DATABASE_URL\`; they should differ. Print the experiment URL from the replay output (\`experimentUrl\` in TypeScript, \`experiment_url\` in Python/Ruby; older SDKs print \`testRunUrl\` / \`test_run_url\`) so the user can open the experiment.
 
 If the branch accessor is null for a freshly captured trace, check that the source database is connected, that the trace actually carries a snapshot reference, and that the SDK supports always-on capture (upgrade with \`{{cmd}}update\` when needed). Re-check the dashboard Database section in step {{step:db-snapshot/connect-db}}; there is no separate replay-environment active flag.
 
