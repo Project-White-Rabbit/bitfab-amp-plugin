@@ -1,23 +1,23 @@
-import fs from "node:fs"
-import path from "node:path"
-import type { PluginAPI, PluginToolDefinition } from "@ampcode/plugin"
+import type { PluginAPI, PluginToolDefinition, PluginUI } from "@ampcode/plugin"
 import {
+  type AmpThreadMessage,
+  captureAmpAgentEnd,
+  captureAmpAgentStart,
+  captureAmpBitfabToolCall,
+  captureAmpSessionStart,
+  collectSessionStartMessages,
   createBitfabToolHandlers,
   getConfig,
   type ToolCallResult,
 } from "bitfab-plugin-lib"
 import { z } from "zod"
 import { platform } from "./platform.js"
+import { getVersion } from "./version.js"
 
 export const description =
   "Bitfab: capture real runs of your AI features as traces, replay them against current code, and verify the change helped"
 
 const SKILLS = ["setup", "assistant", "update"]
-
-function pluginVersion(): string {
-  const packageJson = path.join(import.meta.dir, "package.json")
-  return JSON.parse(fs.readFileSync(packageJson, "utf-8")).version as string
-}
 
 function toolInputSchema(
   shape: z.ZodRawShape,
@@ -31,8 +31,68 @@ function resultText(result: ToolCallResult): string {
   return result.content.map((block) => block.text).join("\n")
 }
 
+let sessionNoticesShown = false
+
+async function showSessionNotices(
+  amp: PluginAPI,
+  ctx: { ui: PluginUI },
+  pluginVersion: string,
+): Promise<void> {
+  let notices: string[]
+  try {
+    notices = await collectSessionStartMessages(pluginVersion, platform)
+  } catch {
+    return
+  }
+  if (notices.length === 0) {
+    return
+  }
+  try {
+    await ctx.ui.notify(notices.join("\n"))
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !amp.helpers.isPluginUINotAvailableError(error)
+    ) {
+      amp.logger.log(`Bitfab notice not shown: ${String(error)}`)
+    }
+  }
+}
+
+function registerSessionCapture(amp: PluginAPI, pluginVersion: string): void {
+  amp.on("session.start", (event, ctx) => {
+    void captureAmpSessionStart({
+      threadId: String(event.thread.id),
+      pluginVersion,
+    })
+    if (sessionNoticesShown) {
+      return
+    }
+    sessionNoticesShown = true
+    void showSessionNotices(amp, ctx, pluginVersion)
+  })
+
+  amp.on("agent.start", (event) => {
+    void captureAmpAgentStart({
+      threadId: String(event.thread.id),
+      prompt: event.message,
+      platform,
+      pluginVersion,
+    })
+    return {}
+  })
+
+  amp.on("agent.end", async (event) => {
+    await captureAmpAgentEnd({
+      threadId: String(event.thread.id),
+      messages: event.messages as readonly AmpThreadMessage[],
+      pluginVersion,
+    })
+  })
+}
+
 export default async function bitfab(amp: PluginAPI): Promise<void> {
-  const version = pluginVersion()
+  const version = getVersion()
   for (const skill of SKILLS) {
     await amp.registerSkill({ path: `skills/${skill}` })
   }
@@ -43,7 +103,11 @@ export default async function bitfab(amp: PluginAPI): Promise<void> {
       title: contract.title,
       description: contract.description,
       inputSchema: toolInputSchema(contract.inputSchema),
-      async execute(input) {
+      async execute(input, ctx) {
+        void captureAmpBitfabToolCall({
+          threadId: String(ctx.thread.id),
+          pluginVersion: version,
+        })
         const result = await handle(input)
         const text = resultText(result)
         if (result.isError) {
@@ -53,5 +117,6 @@ export default async function bitfab(amp: PluginAPI): Promise<void> {
       },
     })
   }
+  registerSessionCapture(amp, version)
   amp.logger.log(`Bitfab ${version} loaded: ${handlers.length} tools`)
 }

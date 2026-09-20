@@ -8764,10 +8764,6 @@ var require_dist = __commonJS(function(exports, module) {
   exports.default = formatsPlugin;
 });
 
-// src/plugin.ts
-import fs2 from "fs";
-import path2 from "path";
-
 // ../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
 var _a;
 function $constructor(name, initializer, params) {
@@ -14567,6 +14563,9 @@ function getConfig() {
     sessionLogConsent: getSessionLogConsentValue()
   };
 }
+function hasCredentials() {
+  return getApiKey() !== null;
+}
 function getOrCreateInstallId() {
   const config = getConfigData();
   if (typeof config.installId === "string" && config.installId.length > 0) {
@@ -14792,19 +14791,1316 @@ function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
   }));
   return { proxy, handlers };
 }
+// ../bitfab-plugin-lib/dist/buildInfo.js
+import crypto2 from "crypto";
+import fs2 from "fs";
+import os3 from "os";
+import path2 from "path";
+import { fileURLToPath } from "url";
+function readBuildInfo(distDir) {
+  try {
+    const raw = fs2.readFileSync(path2.join(distDir, "buildInfo.json"), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.builtAt === "string" && typeof parsed.srcHash === "string") {
+      return {
+        gitSha: typeof parsed.gitSha === "string" ? parsed.gitSha : null,
+        builtAt: parsed.builtAt,
+        srcHash: parsed.srcHash
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+function hashSrcDir(srcDir) {
+  const hash = crypto2.createHash("sha256");
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs2.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const sorted = entries.slice().sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of sorted) {
+      const full = path2.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+        hash.update(path2.relative(srcDir, full));
+        hash.update("\x00");
+        hash.update(fs2.readFileSync(full));
+        hash.update("\x00");
+      }
+    }
+  };
+  walk(srcDir);
+  return hash.digest("hex").slice(0, 12);
+}
+function isDevBuildActive(platform, scriptUrl) {
+  const devKey = `${platform.pluginName}@${platform.marketplaceName}-dev`;
+  for (const settingsPath of [
+    path2.join(os3.homedir(), ".claude", "settings.json"),
+    path2.join(os3.homedir(), ".claude", "settings.local.json"),
+    path2.join(process.cwd(), ".claude", "settings.json"),
+    path2.join(process.cwd(), ".claude", "settings.local.json")
+  ]) {
+    try {
+      const data = JSON.parse(fs2.readFileSync(settingsPath, "utf-8"));
+      if (data.enabledPlugins?.[devKey] === true) {
+        return true;
+      }
+    } catch {}
+  }
+  if (scriptUrl) {
+    try {
+      const scriptPath = fileURLToPath(scriptUrl);
+      const cursorLocal = `${path2.join(os3.homedir(), ".cursor", "plugins", "local")}${path2.sep}`;
+      if (scriptPath.startsWith(cursorLocal)) {
+        return true;
+      }
+    } catch {}
+  }
+  return false;
+}
+function formatRelativeTime(isoTimestamp, now = Date.now()) {
+  const then = new Date(isoTimestamp).getTime();
+  if (Number.isNaN(then)) {
+    return isoTimestamp;
+  }
+  const deltaMs = now - then;
+  if (deltaMs < 0) {
+    return "just now";
+  }
+  const sec = Math.floor(deltaMs / 1000);
+  if (sec < 60) {
+    return `${sec}s ago`;
+  }
+  const min = Math.floor(sec / 60);
+  if (min < 60) {
+    return `${min}m ago`;
+  }
+  const hr = Math.floor(min / 60);
+  if (hr < 24) {
+    return `${hr}h ago`;
+  }
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
+}
+function getDevBuildSummary(pluginRoot) {
+  const distDir = path2.join(pluginRoot, "dist");
+  const info = readBuildInfo(distDir);
+  if (!info) {
+    return null;
+  }
+  const srcDir = path2.join(pluginRoot, "src");
+  let srcMatches = true;
+  try {
+    if (fs2.statSync(srcDir).isDirectory()) {
+      srcMatches = hashSrcDir(srcDir) === info.srcHash;
+    }
+  } catch {
+    srcMatches = true;
+  }
+  return {
+    info,
+    pluginRoot,
+    srcMatches,
+    relativeBuiltAt: formatRelativeTime(info.builtAt)
+  };
+}
+function formatDevBuildBannerLines(summary, platformLabel) {
+  const sha = summary.info.gitSha ? summary.info.gitSha.slice(0, 7) : "unknown";
+  const lines = [
+    `[${platformLabel} Dev] build ${sha} \xB7 ${summary.relativeBuiltAt} \xB7 ${summary.pluginRoot}`
+  ];
+  if (!summary.srcMatches) {
+    lines.push(`             src changed since last build - run pnpm build to apply.`);
+  }
+  return lines;
+}
+// ../bitfab-plugin-lib/dist/chatSessions/index.js
+import { execFileSync } from "child_process";
+import fs5 from "fs";
+import os5 from "os";
+import path4 from "path";
+
 // ../bitfab-plugin-lib/dist/skills.js
 var BITFAB_SKILLS = ["setup", "assistant", "update"];
 
 // ../bitfab-plugin-lib/dist/hooks/skillDetection.js
-var SKILL_PATTERN = new RegExp(`^\\s*\\/bitfab[:-](?<skill>${BITFAB_SKILLS.join("|")})(?=\\s|$)`, "i");
+var SKILL_PATTERN = new RegExp(`^\\s*[/$]?bitfab[:-](?<skill>${BITFAB_SKILLS.join("|")})(?=\\s|$)`, "i");
+function extractSkillFromPrompt(prompt) {
+  const match = prompt.match(SKILL_PATTERN);
+  const raw = match?.groups?.skill?.toLowerCase();
+  return BITFAB_SKILLS.includes(raw ?? "") ? raw : null;
+}
+
+// ../bitfab-plugin-lib/dist/chatSessions/arming.js
+import fs3 from "fs";
+import os4 from "os";
+import path3 from "path";
+
+// ../bitfab-lib/dist/agentHosts.js
+var AGENT_TYPES = ["claude-code", "cursor", "codex", "amp"];
+function isAgentType(value) {
+  return AGENT_TYPES.includes(value);
+}
+
+// ../bitfab-plugin-lib/dist/chatSessions/arming.js
+function sessionsDir() {
+  return path3.join(os4.homedir(), ".config", "bitfab", "sessions");
+}
+function ensureSessionsDir() {
+  fs3.mkdirSync(sessionsDir(), { recursive: true });
+}
+function armedMarkerPath(sessionId) {
+  return path3.join(sessionsDir(), `${sessionId}.armed`);
+}
+function agentRunIdPath(sessionId) {
+  return path3.join(sessionsDir(), `${sessionId}.agent-run-id`);
+}
+function localOffsetPath(sessionId) {
+  return path3.join(sessionsDir(), `${sessionId}.offset`);
+}
+function ampTranscriptPath(sessionId) {
+  return path3.join(sessionsDir(), `${sessionId}.transcript.jsonl`);
+}
+var BITFAB_MCP_PREFIXES = [
+  "mcp__plugin_bitfab_Bitfab__",
+  "mcp__Bitfab__"
+];
+function isBitfabMcpToolName(toolName) {
+  return BITFAB_MCP_PREFIXES.some((prefix) => toolName.startsWith(prefix));
+}
+function armedAtMs(sessionId) {
+  try {
+    return fs3.statSync(armedMarkerPath(sessionId)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+function isArmed(sessionId) {
+  return fs3.existsSync(armedMarkerPath(sessionId));
+}
+function arm(sessionId, metadata) {
+  ensureSessionsDir();
+  fs3.writeFileSync(armedMarkerPath(sessionId), JSON.stringify(metadata));
+}
+function readAgentRunId(sessionId) {
+  try {
+    const value = fs3.readFileSync(agentRunIdPath(sessionId), "utf-8").trim();
+    return value === "" ? undefined : value;
+  } catch {
+    return;
+  }
+}
+function clearAgentRunId(sessionId) {
+  try {
+    fs3.unlinkSync(agentRunIdPath(sessionId));
+  } catch {}
+}
+function readArmedMetadata(sessionId) {
+  try {
+    const raw = fs3.readFileSync(armedMarkerPath(sessionId), "utf-8").trim();
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.transcriptPath !== "string") {
+      return null;
+    }
+    const agent = typeof parsed.agent === "string" && isAgentType(parsed.agent) ? parsed.agent : "claude-code";
+    return {
+      transcriptPath: parsed.transcriptPath,
+      cwd: typeof parsed.cwd === "string" ? parsed.cwd : process.cwd(),
+      agent,
+      agentRunId: typeof parsed.agentRunId === "string" ? parsed.agentRunId : undefined,
+      pluginVersion: typeof parsed.pluginVersion === "string" ? parsed.pluginVersion : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+function listArmedSessionIds() {
+  try {
+    return fs3.readdirSync(sessionsDir()).filter((f) => f.endsWith(".armed")).map((f) => f.replace(/\.armed$/, ""));
+  } catch {
+    return [];
+  }
+}
+function disarm(sessionId) {
+  try {
+    fs3.unlinkSync(armedMarkerPath(sessionId));
+  } catch {}
+}
+
+// ../bitfab-plugin-lib/dist/chatSessions/client.js
+async function appendChatSession(request) {
+  const { serviceUrl, apiKey } = getConfig();
+  if (!apiKey) {
+    return { ok: false, reason: "auth" };
+  }
+  let response;
+  try {
+    response = await fetch(`${serviceUrl}/api/plugin/chatSessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(request)
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "network",
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (response.status === 409) {
+    const body = await response.json().catch(() => ({}));
+    return {
+      ok: false,
+      reason: "offset_conflict",
+      lastTranscriptOffset: body.lastTranscriptOffset ?? 0,
+      turnCount: body.turnCount ?? 0,
+      nextSequence: body.nextSequence
+    };
+  }
+  if (response.status === 400) {
+    const body = await response.json().catch(() => ({}));
+    return { ok: false, reason: "server", detail: body.error };
+  }
+  if (response.status === 401) {
+    return { ok: false, reason: "auth" };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: "server",
+      detail: `HTTP ${response.status}`
+    };
+  }
+  const body = await response.json();
+  return {
+    ok: true,
+    id: body.id,
+    lastTranscriptOffset: body.lastTranscriptOffset,
+    turnCount: body.turnCount
+  };
+}
+async function getChatSessionState(externalId) {
+  const { serviceUrl, apiKey } = getConfig();
+  if (!apiKey) {
+    return null;
+  }
+  try {
+    const response = await fetch(`${serviceUrl}/api/plugin/chatSessions/${encodeURIComponent(externalId)}/state`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      }
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+// ../bitfab-plugin-lib/dist/chatSessions/transcriptReader.js
+import fs4 from "fs";
+function readTranscriptDelta(transcriptPath, fromOffset, sequenceBaseOverride) {
+  const stat = fs4.statSync(transcriptPath);
+  const fileSize = stat.size;
+  if (fromOffset > fileSize) {
+    return {
+      turns: [],
+      newOffset: fileSize,
+      nextSequenceBase: 0,
+      malformedLines: 0
+    };
+  }
+  if (fromOffset === fileSize) {
+    const sequenceBase = sequenceBaseOverride ?? countLinesBefore(transcriptPath, fromOffset);
+    return {
+      turns: [],
+      newOffset: fileSize,
+      nextSequenceBase: sequenceBase,
+      malformedLines: 0
+    };
+  }
+  const fd = fs4.openSync(transcriptPath, "r");
+  let buffer;
+  try {
+    const bytesToRead = fileSize - fromOffset;
+    buffer = Buffer.alloc(bytesToRead);
+    fs4.readSync(fd, buffer, 0, bytesToRead, fromOffset);
+  } finally {
+    fs4.closeSync(fd);
+  }
+  const text = buffer.toString("utf-8");
+  const lines = text.split(`
+`);
+  const lastLineComplete = text.endsWith(`
+`);
+  const completeLines = lines.slice(0, -1);
+  const trailingPartialBytes = lastLineComplete ? 0 : Buffer.byteLength(lines[lines.length - 1] ?? "", "utf-8");
+  const sequenceBase = sequenceBaseOverride ?? countLinesBefore(transcriptPath, fromOffset);
+  const turns = [];
+  let malformedLines = 0;
+  for (let i = 0;i < completeLines.length; i++) {
+    const line = completeLines[i];
+    if (!line.trim()) {
+      continue;
+    }
+    const turn = parseLine(line, sequenceBase + i);
+    if (turn === null) {
+      malformedLines++;
+      continue;
+    }
+    turns.push(turn);
+  }
+  const newOffset = fileSize - trailingPartialBytes;
+  return {
+    turns,
+    newOffset,
+    nextSequenceBase: sequenceBase + completeLines.length,
+    malformedLines
+  };
+}
+function countLinesBefore(transcriptPath, offset) {
+  if (offset === 0) {
+    return 0;
+  }
+  const fd = fs4.openSync(transcriptPath, "r");
+  try {
+    const buffer = Buffer.alloc(offset);
+    fs4.readSync(fd, buffer, 0, offset, 0);
+    let count = 0;
+    for (let i = 0;i < buffer.length; i++) {
+      if (buffer[i] === 10) {
+        count++;
+      }
+    }
+    return count;
+  } finally {
+    fs4.closeSync(fd);
+  }
+}
+function parseLine(line, sequence) {
+  let entry;
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const role = entry.message?.role;
+  if (!role) {
+    return null;
+  }
+  const turnStartedAt = entry.timestamp ?? new Date().toISOString();
+  const rawContent = entry.message?.content;
+  if (role === "user") {
+    const toolResultBlocks = extractToolResultBlocks(rawContent);
+    if (toolResultBlocks !== null) {
+      return {
+        sequence,
+        role: "tool_result",
+        content: toolResultBlocks,
+        turnStartedAt
+      };
+    }
+    return {
+      sequence,
+      role: "user",
+      content: rawContent ?? null,
+      turnStartedAt
+    };
+  }
+  if (role === "assistant") {
+    const toolCalls = extractToolCalls(rawContent);
+    return {
+      sequence,
+      role: "assistant",
+      content: rawContent ?? null,
+      ...toolCalls.length > 0 ? { toolCalls } : {},
+      ...entry.message?.usage !== undefined ? { usage: entry.message.usage } : {},
+      turnStartedAt
+    };
+  }
+  if (role === "system") {
+    return {
+      sequence,
+      role: "system",
+      content: rawContent ?? null,
+      turnStartedAt
+    };
+  }
+  return null;
+}
+function extractToolCalls(content) {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.filter((block) => block.type === "tool_use");
+}
+function extractToolResultBlocks(content) {
+  if (!Array.isArray(content)) {
+    return null;
+  }
+  const blocks = content.filter((block) => block.type === "tool_result");
+  if (blocks.length === content.length && blocks.length > 0) {
+    return blocks;
+  }
+  return null;
+}
+
+// ../bitfab-plugin-lib/dist/chatSessions/index.js
+function agentRunIdFromEnv() {
+  const value = process.env.BITFAB_AGENT_RUN_ID;
+  return value && value.trim() !== "" ? value : undefined;
+}
+function configFilePath() {
+  return path4.join(os5.homedir(), ".config", "bitfab", "config.json");
+}
+function isLocalCaptureDisabled() {
+  const envValue = process.env.BITFAB_CAPTURE_SESSIONS;
+  if (envValue === "1" || envValue === "true") {
+    return false;
+  }
+  if (envValue === "0" || envValue === "false") {
+    return true;
+  }
+  try {
+    const raw = fs5.readFileSync(configFilePath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed.sessionLogConsent !== true;
+  } catch {
+    return true;
+  }
+}
+async function captureFromHook(hookType, input, agent = "claude-code", pluginVersion) {
+  if (isLocalCaptureDisabled()) {
+    return { status: "skipped_opt_out" };
+  }
+  const sessionId = input.session_id;
+  const transcriptPath = input.transcript_path;
+  if (!sessionId || !transcriptPath) {
+    return { status: "skipped_no_transcript" };
+  }
+  if (hookType === "SubagentStop") {
+    return { status: "skipped_subagent_stop" };
+  }
+  if (hookType === "PreToolUse" && input.tool_name && isBitfabMcpToolName(input.tool_name)) {
+    armSession(input, agent, pluginVersion);
+  }
+  if (hookType === "UserPromptSubmit" && input.prompt && extractSkillFromPrompt(input.prompt) !== null) {
+    armSession(input, agent, pluginVersion);
+  }
+  if (hookType === "SessionStart") {
+    pruneDeadSessions(sessionId);
+  }
+  const isTerminal = hookType === "SessionEnd";
+  if (!isArmed(sessionId)) {
+    return { status: "skipped_not_armed" };
+  }
+  if (!fs5.existsSync(transcriptPath)) {
+    return { status: "skipped_no_transcript" };
+  }
+  const result = await flushDelta({
+    sessionId,
+    transcriptPath,
+    cwd: input.cwd ?? process.cwd(),
+    agent,
+    pluginVersion,
+    agentRunId: agentRunIdFromEnv() ?? readAgentRunId(sessionId) ?? readArmedMetadata(sessionId)?.agentRunId,
+    isResume: hookType === "SessionStart" && input.source === "resume",
+    ended: isTerminal
+  });
+  if (isTerminal) {
+    const flushedOrNoop = result.status === "appended" || result.status === "no_op";
+    if (flushedOrNoop) {
+      cleanupSession(sessionId);
+    }
+  }
+  return result;
+}
+function armSession(input, agent, pluginVersion) {
+  if (isArmed(input.session_id)) {
+    return;
+  }
+  const metadata = {
+    transcriptPath: input.transcript_path,
+    cwd: input.cwd ?? process.cwd(),
+    agent,
+    agentRunId: agentRunIdFromEnv(),
+    pluginVersion
+  };
+  arm(input.session_id, metadata);
+}
+async function flushDelta(args) {
+  ensureSessionsDir();
+  const offsetFile = localOffsetPath(args.sessionId);
+  let state = readOffsetState(offsetFile);
+  if (args.isResume) {
+    const remote = await getChatSessionState(args.sessionId);
+    if (remote?.exists) {
+      state = { offset: remote.lastTranscriptOffset };
+    }
+  }
+  const stat = fs5.statSync(args.transcriptPath);
+  if (state.offset > stat.size) {
+    const remote = await getChatSessionState(args.sessionId);
+    const sequenceOffset = remote?.exists ? remote.nextSequence ?? remote.turnCount : 0;
+    return flushFromStart(args, offsetFile, sequenceOffset);
+  }
+  const delta = readTranscriptDelta(args.transcriptPath, state.offset, state.sequenceBase);
+  if (delta.turns.length === 0 && state.offset === delta.newOffset && !args.ended) {
+    return { status: "no_op" };
+  }
+  const startedAt = inferSessionStart(args.transcriptPath);
+  const result = await appendChatSession({
+    externalId: args.sessionId,
+    agentRunId: args.agentRunId ?? agentRunIdFromEnv(),
+    agent: args.agent,
+    startedAt,
+    metadata: collectMetadata(args.cwd),
+    pluginVersion: args.pluginVersion,
+    fromOffset: state.offset,
+    toOffset: delta.newOffset,
+    turns: delta.turns,
+    ended: args.ended || undefined
+  });
+  if (!result.ok && result.reason === "offset_conflict" && result.lastTranscriptOffset > stat.size) {
+    return flushFromStart(args, offsetFile, result.nextSequence ?? result.turnCount);
+  }
+  return handleAppendResponse(args.sessionId, result, offsetFile, delta.nextSequenceBase);
+}
+async function flushFromStart(args, offsetFile, sequenceOffset) {
+  const delta = readTranscriptDelta(args.transcriptPath, 0, sequenceOffset);
+  if (delta.turns.length === 0 && !args.ended) {
+    if (isArmed(args.sessionId)) {
+      writeOffsetState(offsetFile, {
+        offset: delta.newOffset,
+        sequenceBase: delta.nextSequenceBase
+      });
+    }
+    return { status: "no_op", detail: "compaction detected, no new turns" };
+  }
+  const result = await appendChatSession({
+    externalId: args.sessionId,
+    agentRunId: args.agentRunId ?? agentRunIdFromEnv(),
+    agent: args.agent,
+    startedAt: inferSessionStart(args.transcriptPath),
+    metadata: collectMetadata(args.cwd),
+    pluginVersion: args.pluginVersion,
+    fromOffset: 0,
+    toOffset: delta.newOffset,
+    turns: delta.turns,
+    compacted: true,
+    ended: args.ended || undefined
+  });
+  return handleAppendResponse(args.sessionId, result, offsetFile, delta.nextSequenceBase);
+}
+function handleAppendResponse(sessionId, response, offsetFile, sequenceBase) {
+  if (response.ok) {
+    if (isArmed(sessionId)) {
+      writeOffsetState(offsetFile, {
+        offset: response.lastTranscriptOffset,
+        sequenceBase
+      });
+    }
+    return {
+      status: "appended",
+      appended: {
+        lastTranscriptOffset: response.lastTranscriptOffset,
+        turnCount: response.turnCount
+      }
+    };
+  }
+  if (response.reason === "offset_conflict") {
+    if (isArmed(sessionId)) {
+      writeOffsetState(offsetFile, {
+        offset: response.lastTranscriptOffset,
+        sequenceBase: response.nextSequence
+      });
+    }
+    return {
+      status: "no_op",
+      detail: `offset_conflict; resynced to ${response.lastTranscriptOffset}`
+    };
+  }
+  if (response.reason === "auth") {
+    return { status: "auth_missing" };
+  }
+  return { status: "error", detail: response.detail };
+}
+function readOffsetState(offsetFile) {
+  try {
+    const raw = fs5.readFileSync(offsetFile, "utf-8").trim();
+    if (raw.startsWith("{")) {
+      const parsed = JSON.parse(raw);
+      const offset = Number(parsed.offset);
+      const seqBase = Number(parsed.sequenceBase);
+      return {
+        offset: Number.isFinite(offset) && offset >= 0 ? offset : 0,
+        sequenceBase: Number.isFinite(seqBase) && seqBase >= 0 ? seqBase : undefined
+      };
+    }
+    const parsed = Number.parseInt(raw, 10);
+    return { offset: Number.isFinite(parsed) && parsed >= 0 ? parsed : 0 };
+  } catch {
+    return { offset: 0 };
+  }
+}
+function writeOffsetState(offsetFile, state) {
+  fs5.writeFileSync(offsetFile, JSON.stringify(state));
+}
+function inferSessionStart(transcriptPath) {
+  try {
+    const stat = fs5.statSync(transcriptPath);
+    return stat.birthtime.toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+function cleanupSession(sessionId) {
+  disarm(sessionId);
+  clearAgentRunId(sessionId);
+  for (const file of [
+    localOffsetPath(sessionId),
+    ampTranscriptPath(sessionId)
+  ]) {
+    try {
+      fs5.unlinkSync(file);
+    } catch {}
+  }
+}
+function pruneDeadSessions(currentSessionId) {
+  for (const sessionId of listArmedSessionIds()) {
+    if (sessionId === currentSessionId) {
+      continue;
+    }
+    const meta = readArmedMetadata(sessionId);
+    if (!meta) {
+      disarm(sessionId);
+      continue;
+    }
+    if (meta.agent === "amp") {
+      if (isStaleAmpSession(sessionId, meta.transcriptPath)) {
+        cleanupSession(sessionId);
+      }
+      continue;
+    }
+    if (!fs5.existsSync(meta.transcriptPath)) {
+      cleanupSession(sessionId);
+    }
+  }
+}
+var AMP_SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+function transcriptMtimeMs(transcriptPath) {
+  try {
+    return fs5.statSync(transcriptPath).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+function isStaleAmpSession(sessionId, transcriptPath) {
+  const lastActivityMs = transcriptMtimeMs(transcriptPath) ?? armedAtMs(sessionId);
+  return lastActivityMs !== null && Date.now() - lastActivityMs > AMP_SESSION_RETENTION_MS;
+}
+function collectMetadata(cwd) {
+  const metadata = { cwd };
+  const branch = readGitBranch(cwd);
+  if (branch) {
+    metadata.gitBranch = branch;
+  }
+  return metadata;
+}
+function readGitBranch(cwd) {
+  try {
+    const out = execFileSync("git", ["branch", "--show-current"], {
+      cwd,
+      timeout: 1500,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
 // ../bitfab-plugin-lib/dist/replayCapabilities.js
 var semver = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/sdkUpdates.js
 var semver3 = __toESM(require_semver2(), 1);
 
+// ../bitfab-plugin-lib/dist/bakedSdkVersions.js
+var BAKED_SDK_VERSIONS = {
+  typescript: "0.59.1",
+  python: "0.59.1",
+  ruby: "0.59.1",
+  go: "0.59.1"
+};
+
 // ../bitfab-plugin-lib/dist/installedSdk.js
 var semver2 = __toESM(require_semver2(), 1);
+import fs7 from "fs";
+import path6 from "path";
+
+// ../bitfab-plugin-lib/dist/workspaces.js
+import fs6 from "fs";
+import path5 from "path";
+function exists(p) {
+  try {
+    fs6.accessSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function readFile(p) {
+  try {
+    return fs6.readFileSync(p, "utf-8");
+  } catch {
+    return null;
+  }
+}
+function expandGlob(rootDir, pattern) {
+  const trimmed = pattern.replace(/\/$/, "");
+  if (trimmed.split("/").includes("**")) {
+    console.warn(`[bitfab] Skipping workspace pattern "${pattern}" - "**" globs are not supported. Please list nested paths explicitly.`);
+    return [];
+  }
+  if (!trimmed.includes("*")) {
+    const abs = path5.resolve(rootDir, trimmed);
+    return exists(abs) && fs6.statSync(abs).isDirectory() ? [abs] : [];
+  }
+  let currentDirs = [rootDir];
+  for (const segment of trimmed.split("/")) {
+    const nextDirs = [];
+    for (const dir of currentDirs) {
+      if (segment === "*") {
+        let entries;
+        try {
+          entries = fs6.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+            nextDirs.push(path5.join(dir, entry.name));
+          }
+        }
+      } else {
+        const abs = path5.join(dir, segment);
+        if (exists(abs)) {
+          nextDirs.push(abs);
+        }
+      }
+    }
+    currentDirs = nextDirs;
+  }
+  return currentDirs.filter((d) => {
+    try {
+      return fs6.statSync(d).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+}
+function readPnpmWorkspacePackages(rootDir) {
+  const content = readFile(path5.join(rootDir, "pnpm-workspace.yaml"));
+  if (!content) {
+    return [];
+  }
+  const match = content.match(/^packages:\s*\n((?:\s*-\s+.*\n?)+)/m);
+  if (!match) {
+    return [];
+  }
+  const patterns = [];
+  for (const line of match[1].split(`
+`)) {
+    const m = line.match(/^\s*-\s*['"]?([^'"#\s]+)['"]?/);
+    if (m) {
+      patterns.push(m[1]);
+    }
+  }
+  return patterns.flatMap((p) => expandGlob(rootDir, p));
+}
+function readPackageJsonWorkspaces(rootDir) {
+  const content = readFile(path5.join(rootDir, "package.json"));
+  if (!content) {
+    return [];
+  }
+  try {
+    const pkg = JSON.parse(content);
+    let patterns = [];
+    if (Array.isArray(pkg.workspaces)) {
+      patterns = pkg.workspaces;
+    } else if (pkg.workspaces && Array.isArray(pkg.workspaces.packages)) {
+      patterns = pkg.workspaces.packages;
+    }
+    return patterns.flatMap((p) => expandGlob(rootDir, p));
+  } catch {
+    return [];
+  }
+}
+function readUvWorkspaceMembers(rootDir) {
+  const content = readFile(path5.join(rootDir, "pyproject.toml"));
+  if (!content) {
+    return [];
+  }
+  const section = content.match(/\[tool\.uv\.workspace\]\s*\n([\s\S]*?)(?=\n\[|\n$)/);
+  if (!section) {
+    return [];
+  }
+  const members = section[1].match(/members\s*=\s*\[([\s\S]*?)\]/);
+  if (!members) {
+    return [];
+  }
+  const patterns = [];
+  for (const m of members[1].matchAll(/["']([^"']+)["']/g)) {
+    patterns.push(m[1]);
+  }
+  return patterns.flatMap((p) => expandGlob(rootDir, p));
+}
+function readGoWorkModules(rootDir) {
+  const content = readFile(path5.join(rootDir, "go.work"));
+  if (!content) {
+    return [];
+  }
+  const dirs = [];
+  const blockMatch = content.match(/use\s*\(([\s\S]*?)\)/);
+  if (blockMatch) {
+    for (const line of blockMatch[1].split(`
+`)) {
+      const trimmed = line.trim().replace(/\s*\/\/.*$/, "");
+      if (!trimmed) {
+        continue;
+      }
+      const abs = path5.resolve(rootDir, trimmed);
+      if (exists(abs)) {
+        dirs.push(abs);
+      }
+    }
+  }
+  for (const m of content.matchAll(/^use\s+([^\s(][^\s]*)/gm)) {
+    const abs = path5.resolve(rootDir, m[1]);
+    if (exists(abs)) {
+      dirs.push(abs);
+    }
+  }
+  return dirs;
+}
+function detectWorkspaces(rootDir) {
+  const unique = new Set;
+  for (const d of readPnpmWorkspacePackages(rootDir)) {
+    unique.add(d);
+  }
+  for (const d of readPackageJsonWorkspaces(rootDir)) {
+    unique.add(d);
+  }
+  for (const d of readUvWorkspaceMembers(rootDir)) {
+    unique.add(d);
+  }
+  for (const d of readGoWorkModules(rootDir)) {
+    unique.add(d);
+  }
+  return [...unique];
+}
+
+// ../bitfab-plugin-lib/dist/installedSdk.js
+var TS_PACKAGE = "@bitfab/sdk";
+var TS_PACKAGE_LEGACY = "bitfab";
+var PY_PACKAGE = "bitfab-py";
+var RB_PACKAGE = "bitfab";
+var GO_MODULE = "github.com/Project-White-Rabbit/bitfab-go";
+function readFileSafe(filePath) {
+  try {
+    return fs7.readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+function stripRange(raw) {
+  return semver2.coerce(raw, { includePrerelease: true })?.version ?? "";
+}
+function readTsDeclared(cwd) {
+  const manifestPath = path6.join(cwd, "package.json");
+  const content = readFileSafe(manifestPath);
+  if (!content) {
+    return null;
+  }
+  try {
+    const pkg = JSON.parse(content);
+    const raw = pkg.dependencies?.[TS_PACKAGE] ?? pkg.devDependencies?.[TS_PACKAGE] ?? pkg.peerDependencies?.[TS_PACKAGE];
+    const legacyRaw = pkg.dependencies?.[TS_PACKAGE_LEGACY] ?? pkg.devDependencies?.[TS_PACKAGE_LEGACY] ?? pkg.peerDependencies?.[TS_PACKAGE_LEGACY];
+    if (raw) {
+      return {
+        version: stripRange(raw) || null,
+        path: manifestPath,
+        legacy: false,
+        hasLegacy: legacyRaw !== undefined
+      };
+    }
+    if (legacyRaw) {
+      return {
+        version: stripRange(legacyRaw) || null,
+        path: manifestPath,
+        legacy: true,
+        hasLegacy: true
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+function readTsFromPnpm(cwd) {
+  const p = path6.join(cwd, "pnpm-lock.yaml");
+  const content = readFileSafe(p);
+  if (!content) {
+    return null;
+  }
+  const match = content.match(/['"/\s](?:@bitfab\/sdk|bitfab)@(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/);
+  return match ? { version: match[1], path: p } : null;
+}
+function readTsFromNpm(cwd) {
+  const p = path6.join(cwd, "package-lock.json");
+  const content = readFileSafe(p);
+  if (!content) {
+    return null;
+  }
+  try {
+    const pkg = JSON.parse(content);
+    for (const name of [TS_PACKAGE, TS_PACKAGE_LEGACY]) {
+      const v = pkg.packages?.[`node_modules/${name}`]?.version ?? pkg.dependencies?.[name]?.version;
+      if (v) {
+        return { version: v, path: p };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+function readTsFromYarn(cwd) {
+  const p = path6.join(cwd, "yarn.lock");
+  const content = readFileSafe(p);
+  if (!content) {
+    return null;
+  }
+  const classic = content.match(/^(?:"?(?:@bitfab\/sdk|bitfab)@[^",:\n]+"?(?:,\s*"?(?:@bitfab\/sdk|bitfab)@[^",:\n]+"?)*):\s*\n(?:[^\n]*\n)*?\s+version\s+"([^"]+)"/m);
+  if (classic) {
+    return { version: classic[1], path: p };
+  }
+  const berry = content.match(/^\s*resolution:\s*"(?:@bitfab\/sdk|bitfab)@npm:([0-9][\w.\-+]*)"/m);
+  return berry ? { version: berry[1], path: p } : null;
+}
+function readTsFromBun(cwd) {
+  const p = path6.join(cwd, "bun.lock");
+  const content = readFileSafe(p);
+  if (!content) {
+    return null;
+  }
+  const match = content.match(/"(?:@bitfab\/sdk|bitfab)@(\d+\.\d+\.\d+(?:[-+][\w.]+)?)"/);
+  return match ? { version: match[1], path: p } : null;
+}
+function readTsFromNodeModules(cwd) {
+  for (const name of [TS_PACKAGE, TS_PACKAGE_LEGACY]) {
+    const p = path6.join(cwd, "node_modules", name, "package.json");
+    const content = readFileSafe(p);
+    if (!content) {
+      continue;
+    }
+    try {
+      const pkg = JSON.parse(content);
+      if (pkg.version) {
+        return { version: pkg.version, path: p };
+      }
+    } catch {}
+  }
+  return null;
+}
+function readTsResolved(dir, monorepoRoot) {
+  const local = readTsFromPnpm(dir) ?? readTsFromNpm(dir) ?? readTsFromYarn(dir) ?? readTsFromBun(dir) ?? readTsFromNodeModules(dir);
+  if (local || dir === monorepoRoot) {
+    return local;
+  }
+  return readTsFromPnpm(monorepoRoot) ?? readTsFromNpm(monorepoRoot) ?? readTsFromYarn(monorepoRoot) ?? readTsFromBun(monorepoRoot) ?? readTsFromNodeModules(monorepoRoot);
+}
+function readPyDeclared(cwd) {
+  const pyproject = path6.join(cwd, "pyproject.toml");
+  const pypContent = readFileSafe(pyproject);
+  if (pypContent?.includes(PY_PACKAGE)) {
+    const m = pypContent.match(new RegExp(`${PY_PACKAGE}\\s*[=~><^]*\\s*["']?([0-9][^"'\\s,\\]]*)?`));
+    return {
+      version: m?.[1] ? stripRange(m[1]) || null : null,
+      path: pyproject
+    };
+  }
+  const reqPath = path6.join(cwd, "requirements.txt");
+  const reqContent = readFileSafe(reqPath);
+  if (reqContent) {
+    for (const rawLine of reqContent.split(`
+`)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) {
+        continue;
+      }
+      const m = line.match(new RegExp(`^${PY_PACKAGE}\\s*([=~><!]+)\\s*([0-9][^\\s;]*)`));
+      if (m) {
+        return { version: stripRange(m[2]) || null, path: reqPath };
+      }
+      if (line === PY_PACKAGE) {
+        return { version: null, path: reqPath };
+      }
+    }
+  }
+  return null;
+}
+function readPyTomlLockVersion(lockPath) {
+  const content = readFileSafe(lockPath);
+  if (!content) {
+    return null;
+  }
+  const blocks = content.split(/^\[\[package\]\]\s*$/m);
+  for (const block of blocks) {
+    if (new RegExp(`^\\s*name\\s*=\\s*["']${PY_PACKAGE}["']\\s*$`, "m").test(block)) {
+      const m = block.match(/^\s*version\s*=\s*["']([^"']+)["']/m);
+      if (m) {
+        return { version: m[1], path: lockPath };
+      }
+    }
+  }
+  return null;
+}
+function readPyFromPipfileLock(cwd) {
+  const p = path6.join(cwd, "Pipfile.lock");
+  const content = readFileSafe(p);
+  if (!content) {
+    return null;
+  }
+  try {
+    const data = JSON.parse(content);
+    const raw = data.default?.[PY_PACKAGE]?.version ?? data.develop?.[PY_PACKAGE]?.version;
+    return raw ? { version: stripRange(raw) || null, path: p } : null;
+  } catch {
+    return null;
+  }
+}
+var PY_VENV_DIRS = [".venv", "venv", "env"];
+var PY_DIST_INFO_RE = /^bitfab[_-]py-(\d[\w.\-+]*)\.dist-info$/;
+function readPyFromVenv(dir) {
+  for (const venv of PY_VENV_DIRS) {
+    const sitePackages = [];
+    const libDir = path6.join(dir, venv, "lib");
+    try {
+      for (const entry of fs7.readdirSync(libDir)) {
+        if (entry.startsWith("python")) {
+          sitePackages.push(path6.join(libDir, entry, "site-packages"));
+        }
+      }
+    } catch {}
+    sitePackages.push(path6.join(dir, venv, "Lib", "site-packages"));
+    for (const site of sitePackages) {
+      try {
+        for (const entry of fs7.readdirSync(site)) {
+          const m = entry.match(PY_DIST_INFO_RE);
+          if (m) {
+            return { version: m[1], path: path6.join(site, entry) };
+          }
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+function readPyResolvedAt(d) {
+  return readPyTomlLockVersion(path6.join(d, "uv.lock")) ?? readPyTomlLockVersion(path6.join(d, "poetry.lock")) ?? readPyTomlLockVersion(path6.join(d, "pdm.lock")) ?? readPyFromPipfileLock(d) ?? readPyFromVenv(d);
+}
+function readPyResolved(dir, monorepoRoot) {
+  const local = readPyResolvedAt(dir);
+  if (local || dir === monorepoRoot) {
+    return local;
+  }
+  return readPyResolvedAt(monorepoRoot);
+}
+function readRbDeclared(cwd) {
+  const gemfilePath = path6.join(cwd, "Gemfile");
+  const content = readFileSafe(gemfilePath);
+  if (!content) {
+    return null;
+  }
+  const m = content.match(new RegExp(`gem\\s+["']${RB_PACKAGE}["'](?:\\s*,\\s*["']([^"']+)["'])?`));
+  if (!m) {
+    return null;
+  }
+  return {
+    version: m[1] ? stripRange(m[1]) || null : null,
+    path: gemfilePath
+  };
+}
+function readRbResolved(cwd) {
+  const p = path6.join(cwd, "Gemfile.lock");
+  const content = readFileSafe(p);
+  if (!content) {
+    return null;
+  }
+  const m = content.match(new RegExp(`^\\s{4}${RB_PACKAGE}\\s+\\(([^)]+)\\)`, "m"));
+  return m ? { version: stripRange(m[1]) || null, path: p } : null;
+}
+function readGoResolved(cwd) {
+  const p = path6.join(cwd, "go.mod");
+  const content = readFileSafe(p);
+  if (!content) {
+    return null;
+  }
+  const m = content.match(new RegExp(`${GO_MODULE.replace(/\./g, "\\.")}\\s+v(\\d[\\w.\\-+]*)`));
+  return m ? { version: m[1], path: p } : null;
+}
+function detectAtDir(dir, monorepoRoot, workspacePath) {
+  const result = [];
+  const tsDeclared = readTsDeclared(dir);
+  const tsResolved = tsDeclared ? readTsResolved(dir, monorepoRoot) : null;
+  if (tsDeclared) {
+    result.push({
+      language: "typescript",
+      packageName: TS_PACKAGE,
+      declaredVersion: tsDeclared.version,
+      resolvedVersion: tsResolved?.version ?? null,
+      manifestPath: tsDeclared.path,
+      lockfilePath: tsResolved?.path ?? null,
+      workspacePath,
+      renameFrom: tsDeclared.legacy ? TS_PACKAGE_LEGACY : null,
+      deprecated: tsDeclared.hasLegacy || undefined
+    });
+  }
+  const pyDeclared = readPyDeclared(dir);
+  const pyResolved = pyDeclared ? readPyResolved(dir, monorepoRoot) : null;
+  if (pyDeclared) {
+    result.push({
+      language: "python",
+      packageName: PY_PACKAGE,
+      declaredVersion: pyDeclared.version,
+      resolvedVersion: pyResolved?.version ?? null,
+      manifestPath: pyDeclared.path,
+      lockfilePath: pyResolved?.path ?? null,
+      workspacePath,
+      renameFrom: null
+    });
+  }
+  const rbDeclared = readRbDeclared(dir);
+  const rbResolved = rbDeclared ? readRbResolved(dir) : null;
+  if (rbDeclared) {
+    result.push({
+      language: "ruby",
+      packageName: RB_PACKAGE,
+      declaredVersion: rbDeclared.version,
+      resolvedVersion: rbResolved?.version ?? null,
+      manifestPath: rbDeclared.path,
+      lockfilePath: rbResolved?.path ?? null,
+      workspacePath,
+      renameFrom: null
+    });
+  }
+  const goResolved = readGoResolved(dir);
+  if (goResolved) {
+    result.push({
+      language: "go",
+      packageName: GO_MODULE,
+      declaredVersion: null,
+      resolvedVersion: goResolved.version,
+      manifestPath: null,
+      lockfilePath: goResolved.path,
+      workspacePath,
+      renameFrom: null
+    });
+  }
+  return result;
+}
+function getInstalledSdks(rootDir) {
+  const workspaces = detectWorkspaces(rootDir);
+  const dirs = [
+    { dir: rootDir, workspacePath: "." },
+    ...workspaces.map((d) => ({
+      dir: d,
+      workspacePath: path6.relative(rootDir, d) || "."
+    }))
+  ];
+  const seen = new Set;
+  const results = [];
+  for (const { dir, workspacePath } of dirs) {
+    for (const sdk of detectAtDir(dir, rootDir, workspacePath)) {
+      const key = `${workspacePath}\x00${sdk.language}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      results.push(sdk);
+    }
+  }
+  return results;
+}
+function getCurrentVersion(sdk) {
+  return sdk.resolvedVersion ?? sdk.declaredVersion;
+}
+
+// ../bitfab-plugin-lib/dist/sdkUpdates.js
+function getBakedSdkVersion(language) {
+  return BAKED_SDK_VERSIONS[language];
+}
+function isSdkVersionNewer(latest, current) {
+  if (!current) {
+    return false;
+  }
+  const l = semver3.coerce(latest, { includePrerelease: true });
+  const c = semver3.coerce(current, { includePrerelease: true });
+  if (!l || !c) {
+    return false;
+  }
+  return semver3.gt(l, c);
+}
+function toStatus(sdk, latest, source, remoteCheckFailed) {
+  const current = getCurrentVersion(sdk);
+  const versionNewer = latest !== null && isSdkVersionNewer(latest, current);
+  return {
+    language: sdk.language,
+    packageName: sdk.packageName,
+    declaredVersion: sdk.declaredVersion,
+    resolvedVersion: sdk.resolvedVersion,
+    current,
+    latest,
+    latestSource: source,
+    remoteCheckFailed,
+    updateAvailable: versionNewer || sdk.renameFrom !== null,
+    manifestPath: sdk.manifestPath,
+    lockfilePath: sdk.lockfilePath,
+    workspacePath: sdk.workspacePath,
+    renameFrom: sdk.renameFrom,
+    deprecated: sdk.deprecated ?? false
+  };
+}
+function checkForSdkUpdatesOffline(cwd) {
+  const installed = getInstalledSdks(cwd);
+  if (installed.length === 0) {
+    return [];
+  }
+  return installed.map((sdk) => toStatus(sdk, getBakedSdkVersion(sdk.language), "baked", false));
+}
+function formatSdkUpdateLine(status) {
+  const current = status.current ?? "unknown";
+  const prefix = status.workspacePath && status.workspacePath !== "." ? `${status.workspacePath} ` : "";
+  const rename = status.renameFrom ? ` (rename: ${status.renameFrom} \u2192 ${status.packageName})` : "";
+  return `${prefix}${status.language} (${status.packageName}) ${current} \u2192 ${status.latest}${rename}`;
+}
 // ../bitfab-plugin-lib/dist/commands/persistReplayLabels.js
 var lineageFileSchema = object({
   experimentId: uuid2().optional(),
@@ -14865,6 +16161,117 @@ var replayResultSchema = object({
 var HEARTBEAT_MS = Number(process.env.BITFAB_REPLAY_HEARTBEAT_MS) || 12000;
 // ../bitfab-plugin-lib/dist/commands/startTemplatePreview.js
 var ticketResponseSchema = object({ id: uuid2() });
+// ../bitfab-plugin-lib/dist/updates.js
+import fs8 from "fs";
+import os6 from "os";
+import path7 from "path";
+async function getLatestVersion(platform) {
+  try {
+    const response = await fetch(`https://raw.githubusercontent.com/${platform.repo}/main/${platform.remotePackageJsonPath}`, { signal: AbortSignal.timeout(3000) });
+    if (!response.ok) {
+      return null;
+    }
+    const pkg = await response.json();
+    return pkg.version;
+  } catch {
+    return null;
+  }
+}
+async function getLatestBuildSha(platform) {
+  const buildInfoPath = platform.remotePackageJsonPath.replace(/package\.json$/, "dist/buildInfo.json");
+  try {
+    const response = await fetch(`https://raw.githubusercontent.com/${platform.repo}/main/${buildInfoPath}`, { signal: AbortSignal.timeout(3000) });
+    if (!response.ok) {
+      return null;
+    }
+    const info = await response.json();
+    return typeof info.gitSha === "string" ? info.gitSha : null;
+  } catch {
+    return null;
+  }
+}
+function isNewer(latest, current) {
+  const [lMajor, lMinor, lPatch] = latest.split(".").map(Number);
+  const [cMajor, cMinor, cPatch] = current.split(".").map(Number);
+  if (lMajor !== cMajor) {
+    return lMajor > cMajor;
+  }
+  if (lMinor !== cMinor) {
+    return lMinor > cMinor;
+  }
+  return lPatch > cPatch;
+}
+function isAutoUpdateEnabled(platform) {
+  try {
+    const marketplacesPath = path7.join(os6.homedir(), ".claude", "plugins", "known_marketplaces.json");
+    const content = fs8.readFileSync(marketplacesPath, "utf-8");
+    const data = JSON.parse(content);
+    const byName = data[platform.marketplaceName];
+    if (byName) {
+      return byName.autoUpdate === true;
+    }
+    for (const marketplace of Object.values(data)) {
+      if (marketplace.source?.repo === platform.repo) {
+        return marketplace.autoUpdate === true;
+      }
+    }
+  } catch {}
+  return false;
+}
+async function checkForUpdate(currentVersion, platform, localBuildSha) {
+  const latest = await getLatestVersion(platform);
+  const versionNewer = latest !== null && isNewer(latest, currentVersion);
+  let staleSameVersion = false;
+  if (!versionNewer && latest === currentVersion && localBuildSha) {
+    const latestBuildSha = await getLatestBuildSha(platform);
+    staleSameVersion = latestBuildSha !== null && latestBuildSha !== localBuildSha;
+  }
+  return {
+    current: currentVersion,
+    latest,
+    updateAvailable: versionNewer || staleSameVersion,
+    autoUpdateEnabled: platform.supportsAutoUpdate && platform.enableAutoUpdateHint !== undefined ? isAutoUpdateEnabled(platform) : false,
+    staleSameVersion
+  };
+}
+function detectLegacyInstall(_platform) {
+  return false;
+}
+function legacyMigrationMessage(platform, prefix = "[Bitfab]") {
+  const legacyMarketplace = platform.legacyMarketplaceKey.split("@")[1];
+  return [
+    `${prefix} You're running from the old "${legacyMarketplace}" marketplace. Migrate to the official marketplace:`,
+    ``,
+    `  /plugin marketplace remove ${legacyMarketplace}`,
+    `  /plugin install ${platform.pluginName}@${platform.marketplaceName}`,
+    ``,
+    `  Then restart ${platform.displayName}.`
+  ].join(`
+`);
+}
+// ../bitfab-plugin-lib/dist/commands/trackSkill.js
+async function runTrackSkill(skillName, pluginVersion, platform) {
+  const config = getConfig();
+  if (!config.apiKey) {
+    return;
+  }
+  const headers = buildBitfabRequestHeaders(config.apiKey, pluginVersion, platform);
+  try {
+    const response = await fetch(`${config.serviceUrl}/api/plugin/analytics/skill`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ skillName })
+    });
+    if (config.debug && !response.ok) {
+      console.error(`trackSkill: server returned ${response.status} for skill "${skillName}"`);
+    }
+  } catch (err) {
+    if (config.debug) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`trackSkill: request failed for "${skillName}": ${message}`);
+    }
+  }
+}
 // ../bitfab-flow/dist/commands.js
 function defineCommandCatalog(catalog) {
   return {
@@ -20926,6 +22333,222 @@ var setupV2Flow = Flow.parse({
     continuousStepNumbers: false
   }
 });
+// ../bitfab-plugin-lib/dist/chatSessions/ampTranscript.js
+import fs9 from "fs";
+var AMP_ROLE_TO_TRANSCRIPT_ROLE = {
+  user: "user",
+  assistant: "assistant",
+  info: "system"
+};
+function normaliseBlock(block) {
+  if (block.type === "tool_result") {
+    return {
+      type: "tool_result",
+      tool_use_id: block.toolUseID,
+      content: block.output ?? null,
+      is_error: block.status === "error"
+    };
+  }
+  return block;
+}
+function writtenMessageIds(transcriptPath) {
+  const ids = new Set;
+  let raw;
+  try {
+    raw = fs9.readFileSync(transcriptPath, "utf-8");
+  } catch {
+    return ids;
+  }
+  for (const line of raw.split(`
+`)) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(line);
+      if (typeof parsed.ampMessageId === "string") {
+        ids.add(parsed.ampMessageId);
+      }
+    } catch {}
+  }
+  return ids;
+}
+function appendAmpMessages(threadId, messages) {
+  ensureSessionsDir();
+  const transcriptPath = ampTranscriptPath(threadId);
+  const alreadyWritten = writtenMessageIds(transcriptPath);
+  const timestamp = new Date().toISOString();
+  const lines = [];
+  for (const message of messages) {
+    const messageId = String(message.id);
+    if (alreadyWritten.has(messageId)) {
+      continue;
+    }
+    alreadyWritten.add(messageId);
+    const entry = {
+      type: message.role,
+      timestamp,
+      ampMessageId: messageId,
+      message: {
+        role: AMP_ROLE_TO_TRANSCRIPT_ROLE[message.role],
+        content: message.content.map(normaliseBlock)
+      }
+    };
+    lines.push(JSON.stringify(entry));
+  }
+  if (lines.length > 0) {
+    fs9.appendFileSync(transcriptPath, `${lines.join(`
+`)}
+`);
+  }
+  return { transcriptPath, appendedMessages: lines.length };
+}
+
+// ../bitfab-plugin-lib/dist/hooks/captureHook.js
+import fs10 from "fs";
+function readHookStdin() {
+  try {
+    const raw = fs10.readFileSync(0, "utf-8").trim();
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+async function runCaptureHook(hookType, agent = "claude-code", preParsedInput, pluginVersion) {
+  const input = preParsedInput ?? readHookStdin();
+  if (!input?.session_id) {
+    return;
+  }
+  try {
+    await captureFromHook(hookType, input, agent, pluginVersion);
+  } catch {}
+}
+
+// ../bitfab-plugin-lib/dist/hooks/userPromptSubmit.js
+import fs11 from "fs";
+function readHookInput() {
+  try {
+    const stdin = fs11.readFileSync(0, "utf-8");
+    if (!stdin.trim()) {
+      return null;
+    }
+    return JSON.parse(stdin);
+  } catch {
+    return null;
+  }
+}
+async function runUserPromptSubmit(pluginVersion, platform, agent = "claude-code", preParsedInput) {
+  const input = preParsedInput ?? readHookInput();
+  if (!input) {
+    return;
+  }
+  const tasks = [];
+  if (input.prompt) {
+    const skillName = extractSkillFromPrompt(input.prompt);
+    if (skillName) {
+      tasks.push(runTrackSkill(skillName, pluginVersion, platform));
+    }
+  }
+  if (input.session_id) {
+    tasks.push(captureFromHook("UserPromptSubmit", input, agent, pluginVersion).catch(() => {}));
+  }
+  await Promise.all(tasks);
+}
+
+// ../bitfab-plugin-lib/dist/hooks/ampCapture.js
+function ampHookInput(args, extra) {
+  return {
+    session_id: args.threadId,
+    transcript_path: ampTranscriptPath(args.threadId),
+    cwd: args.cwd ?? process.cwd(),
+    ...extra
+  };
+}
+function runAmpCapture(hookType, args, extra) {
+  return runCaptureHook(hookType, "amp", ampHookInput(args, extra), args.pluginVersion);
+}
+function captureAmpSessionStart(args) {
+  return runAmpCapture("SessionStart", args);
+}
+function captureAmpBitfabToolCall(args) {
+  try {
+    if (!isLocalCaptureDisabled()) {
+      armSession(ampHookInput(args), "amp", args.pluginVersion);
+    }
+  } catch {}
+  return runAmpCapture("PreToolUse", args);
+}
+function captureAmpAgentStart(args) {
+  return runUserPromptSubmit(args.pluginVersion, args.platform, "amp", ampHookInput(args, { prompt: args.prompt }));
+}
+function captureAmpAgentEnd(args) {
+  try {
+    if (!isLocalCaptureDisabled() && isArmed(args.threadId)) {
+      appendAmpMessages(args.threadId, args.messages);
+    }
+  } catch {}
+  return runAmpCapture("Stop", args);
+}
+// ../bitfab-plugin-lib/dist/hooks/sessionStart.js
+async function collectSessionStartMessages(currentVersion, platform, pluginRoot, scriptUrl) {
+  const messages = [];
+  const devBuildActive = isDevBuildActive(platform, scriptUrl);
+  const prefix = devBuildActive ? "[Bitfab Dev]" : "[Bitfab]";
+  if (devBuildActive && pluginRoot) {
+    try {
+      const summary = getDevBuildSummary(pluginRoot);
+      if (summary) {
+        messages.push(formatDevBuildBannerLines(summary, "Bitfab").join(`
+`));
+      }
+    } catch {}
+  }
+  try {
+    if (detectLegacyInstall(platform)) {
+      messages.push(legacyMigrationMessage(platform, prefix));
+    }
+  } catch {}
+  try {
+    if (!hasCredentials()) {
+      messages.push(`${prefix} Not authenticated. Run ${platform.loginHint} to log in.`);
+    }
+  } catch {}
+  if (platform.supportsAutoUpdate) {
+    try {
+      const { current, latest, updateAvailable, autoUpdateEnabled } = await checkForUpdate(currentVersion, platform);
+      if (updateAvailable && latest) {
+        const lines = [`${prefix} Update available: v${current} \u2192 v${latest}.`];
+        if (autoUpdateEnabled) {
+          lines.push(`          Auto-update is enabled - restart to apply.`);
+        } else if (platform.enableAutoUpdateHint) {
+          lines.push(`          Run ${platform.updateHint} to update, or enable auto-update: ${platform.enableAutoUpdateHint}`);
+        } else {
+          lines.push(`          Run ${platform.updateHint} to update.`);
+        }
+        messages.push(lines.join(`
+`));
+      }
+    } catch {}
+  }
+  try {
+    const outdated = checkForSdkUpdatesOffline(process.cwd()).filter((s) => s.updateAvailable && s.latest);
+    if (outdated.length > 0) {
+      const lines = [
+        `${prefix} SDK update${outdated.length > 1 ? "s" : ""} available:`
+      ];
+      for (const status of outdated) {
+        lines.push(`          ${formatSdkUpdateLine(status)}`);
+      }
+      lines.push(`          Run ${platform.updateHint} to update.`);
+      messages.push(lines.join(`
+`));
+    }
+  } catch {}
+  return messages;
+}
 // ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
 var JSONRPC_VERSION = "2.0";
@@ -21755,16 +23378,34 @@ var platform = {
   marketplaceName: "bitfab",
   pluginName: "bitfab",
   marketplacePreRegistered: false,
-  pluginUpdateCommands: ["amp plugins update bitfab"]
+  pluginUpdateCommands: ["npx bitfab-cli update --editor amp plugin"]
 };
+
+// src/version.ts
+import fs12 from "fs";
+import path8 from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
+function readPluginVersion() {
+  const moduleDir = path8.dirname(fileURLToPath2(import.meta.url));
+  const candidates = [
+    path8.join(moduleDir, "..", "package.json"),
+    path8.join(moduleDir, "package.json")
+  ];
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(fs12.readFileSync(candidate, "utf-8")).version;
+    } catch {}
+  }
+  throw new Error(`bitfab-amp-plugin package.json not found from ${moduleDir}. Looked in: ${candidates.join(", ")}`);
+}
+var PLUGIN_VERSION = readPluginVersion();
+function getVersion() {
+  return PLUGIN_VERSION;
+}
 
 // src/plugin.ts
 var description = "Bitfab: capture real runs of your AI features as traces, replay them against current code, and verify the change helped";
 var SKILLS = ["setup", "assistant", "update"];
-function pluginVersion() {
-  const packageJson = path2.join(import.meta.dir, "package.json");
-  return JSON.parse(fs2.readFileSync(packageJson, "utf-8")).version;
-}
 function toolInputSchema(shape) {
   return toJSONSchema(object(shape), {
     unrepresentable: "any"
@@ -21774,8 +23415,57 @@ function resultText(result) {
   return result.content.map((block) => block.text).join(`
 `);
 }
+var sessionNoticesShown = false;
+async function showSessionNotices(amp, ctx, pluginVersion) {
+  let notices;
+  try {
+    notices = await collectSessionStartMessages(pluginVersion, platform);
+  } catch {
+    return;
+  }
+  if (notices.length === 0) {
+    return;
+  }
+  try {
+    await ctx.ui.notify(notices.join(`
+`));
+  } catch (error) {
+    if (!(error instanceof Error) || !amp.helpers.isPluginUINotAvailableError(error)) {
+      amp.logger.log(`Bitfab notice not shown: ${String(error)}`);
+    }
+  }
+}
+function registerSessionCapture(amp, pluginVersion) {
+  amp.on("session.start", (event, ctx) => {
+    captureAmpSessionStart({
+      threadId: String(event.thread.id),
+      pluginVersion
+    });
+    if (sessionNoticesShown) {
+      return;
+    }
+    sessionNoticesShown = true;
+    showSessionNotices(amp, ctx, pluginVersion);
+  });
+  amp.on("agent.start", (event) => {
+    captureAmpAgentStart({
+      threadId: String(event.thread.id),
+      prompt: event.message,
+      platform,
+      pluginVersion
+    });
+    return {};
+  });
+  amp.on("agent.end", async (event) => {
+    await captureAmpAgentEnd({
+      threadId: String(event.thread.id),
+      messages: event.messages,
+      pluginVersion
+    });
+  });
+}
 async function bitfab(amp) {
-  const version = pluginVersion();
+  const version = getVersion();
   for (const skill of SKILLS) {
     await amp.registerSkill({ path: `skills/${skill}` });
   }
@@ -21786,7 +23476,11 @@ async function bitfab(amp) {
       title: contract.title,
       description: contract.description,
       inputSchema: toolInputSchema(contract.inputSchema),
-      async execute(input) {
+      async execute(input, ctx) {
+        captureAmpBitfabToolCall({
+          threadId: String(ctx.thread.id),
+          pluginVersion: version
+        });
         const result = await handle(input);
         const text = resultText(result);
         if (result.isError) {
@@ -21796,6 +23490,7 @@ async function bitfab(amp) {
       }
     });
   }
+  registerSessionCapture(amp, version);
   amp.logger.log(`Bitfab ${version} loaded: ${handlers.length} tools`);
 }
 export {
