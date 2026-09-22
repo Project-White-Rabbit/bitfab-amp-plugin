@@ -4879,32 +4879,13 @@ var require_data = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/utils.js
+// ../node_modules/.pnpm/fast-uri@3.1.5/node_modules/fast-uri/lib/utils.js
 var require_utils = __commonJS(function(exports, module) {
   var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
   var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
-  var isPort = RegExp.prototype.test.bind(/^\d*$/u);
   var isHexPair = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu);
   var isUnreserved = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu);
-  var isPathCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/]$/u);
-  var isQueryFragmentCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/?]$/u);
-  var isUserinfoCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:]$/u);
-  var BYTE_HEX = new Array(256);
-  {
-    const HEX_DIGITS = "0123456789ABCDEF";
-    for (let i = 0;i < 256; i++) {
-      BYTE_HEX[i] = "%" + HEX_DIGITS[i >> 4] + HEX_DIGITS[i & 15];
-    }
-  }
-  function percentEncodeNonAscii(cp) {
-    if (cp < 2048) {
-      return BYTE_HEX[192 | cp >> 6] + BYTE_HEX[128 | cp & 63];
-    }
-    if (cp < 65536) {
-      return BYTE_HEX[224 | cp >> 12] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
-    }
-    return BYTE_HEX[240 | cp >> 18] + BYTE_HEX[128 | cp >> 12 & 63] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
-  }
+  var isPathCharacter = RegExp.prototype.test.bind(/^[\da-z\-._~!$&'()*+,;=:@/]$/iu);
   function stringArrayToHexStripped(input) {
     let acc = "";
     let code = 0;
@@ -4929,122 +4910,91 @@ var require_utils = __commonJS(function(exports, module) {
     }
     return acc;
   }
-  var isHextet = RegExp.prototype.test.bind(/^[\dA-Fa-f]{1,4}$/);
-  var isIPvFuture = RegExp.prototype.test.bind(/^[vV][\dA-Fa-f]+\.[A-Za-z\d\-._~!$&'()*+,;=:]+$/);
-  var isZoneCharacter = RegExp.prototype.test.bind(/^[A-Za-z\d\-._~]$/);
   var nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
-  function isZoneIdentifier(zone) {
-    if (zone.length === 0)
-      return false;
-    for (let i = 0;i < zone.length; i++) {
-      if (isZoneCharacter(zone[i]))
-        continue;
-      if (zone[i] === "%" && i + 2 < zone.length && isHexPair(zone.slice(i + 1, i + 3))) {
-        i += 2;
-        continue;
+  function consumeIsZone(buffer) {
+    buffer.length = 0;
+    return true;
+  }
+  function consumeHextets(buffer, address, output) {
+    if (buffer.length) {
+      const hex = stringArrayToHexStripped(buffer);
+      if (hex !== "") {
+        address.push(hex);
+      } else {
+        output.error = true;
+        return false;
       }
-      return false;
+      buffer.length = 0;
     }
     return true;
   }
-  function compressIPv6ZeroRun(hextets) {
-    let bestStart = -1;
-    let bestLength = 0;
-    let runStart = -1;
-    let runLength = 0;
-    for (let i = 0;i < hextets.length; i++) {
-      if (hextets[i] === "0") {
-        if (runStart === -1)
-          runStart = i;
-        runLength++;
-        if (runLength > bestLength) {
-          bestLength = runLength;
-          bestStart = runStart;
-        }
-      } else {
-        runStart = -1;
-        runLength = 0;
-      }
-    }
-    if (bestLength < 2)
-      return hextets.join(":");
-    const head = hextets.slice(0, bestStart).join(":");
-    const tail = hextets.slice(bestStart + bestLength).join(":");
-    return head + "::" + tail;
-  }
-  function normalizeIPv6Address(input) {
-    const compression = input.indexOf("::");
-    if (compression !== -1 && input.indexOf("::", compression + 1) !== -1)
-      return;
-    const left = compression === -1 ? input.split(":") : input.slice(0, compression).split(":");
-    const right = compression === -1 ? [] : input.slice(compression + 2).split(":");
-    if (compression !== -1) {
-      if (left.length === 1 && left[0] === "")
-        left.length = 0;
-      if (right.length === 1 && right[0] === "")
-        right.length = 0;
-    }
-    const parts = left.concat(right);
-    let hextetCount = 0;
-    for (let i = 0;i < parts.length; i++) {
-      const part = parts[i];
-      if (part === "")
-        return;
-      if (part.indexOf(".") !== -1) {
-        if (i !== parts.length - 1 || compression !== -1 && right.length === 0 || !isIPv4(part))
-          return;
-        hextetCount += 2;
+  function getIPV6(input) {
+    let tokenCount = 0;
+    const output = { error: false, address: "", zone: "" };
+    const address = [];
+    const buffer = [];
+    let endipv6Encountered = false;
+    let endIpv6 = false;
+    let consume = consumeHextets;
+    for (let i = 0;i < input.length; i++) {
+      const cursor = input[i];
+      if (cursor === "[" || cursor === "]") {
         continue;
       }
-      if (!isHextet(part))
-        return;
-      parts[i] = parseInt(part, 16).toString(16);
-      hextetCount++;
+      if (cursor === ":") {
+        if (endipv6Encountered === true) {
+          endIpv6 = true;
+        }
+        if (!consume(buffer, address, output)) {
+          break;
+        }
+        if (++tokenCount > 7) {
+          output.error = true;
+          break;
+        }
+        if (i > 0 && input[i - 1] === ":") {
+          endipv6Encountered = true;
+        }
+        address.push(":");
+        continue;
+      } else if (cursor === "%") {
+        if (!consume(buffer, address, output)) {
+          break;
+        }
+        consume = consumeIsZone;
+      } else {
+        buffer.push(cursor);
+        continue;
+      }
     }
-    if (compression === -1) {
-      if (hextetCount !== 8)
-        return;
-      return compressIPv6ZeroRun(parts);
+    if (buffer.length) {
+      if (consume === consumeIsZone) {
+        output.zone = buffer.join("");
+      } else if (endIpv6) {
+        address.push(buffer.join(""));
+      } else {
+        address.push(stringArrayToHexStripped(buffer));
+      }
     }
-    if (hextetCount >= 8)
-      return;
-    const expanded = parts.slice(0, left.length);
-    for (let i = hextetCount;i < 8; i++)
-      expanded.push("0");
-    for (let i = left.length;i < parts.length; i++)
-      expanded.push(parts[i]);
-    return compressIPv6ZeroRun(expanded);
+    output.address = address.join("");
+    return output;
   }
   function normalizeIPv6(host) {
-    const bracketed = host[0] === "[" && host[host.length - 1] === "]";
-    const hasBracket = host[0] === "[" || host[host.length - 1] === "]";
-    if (hasBracket && !bracketed)
-      return { host, isIPV6: false, error: true };
-    let input = bracketed ? host.slice(1, -1) : host;
-    if (bracketed && isIPvFuture(input)) {
-      input = input.toLowerCase();
-      return { host: `[${input}]`, escapedHost: input, isIPV6: false, isIPVFuture: true };
+    if (findToken(host, ":") < 2) {
+      return { host, isIPV6: false };
     }
-    if (findToken(input, ":") < 2) {
-      return { host, isIPV6: false, error: bracketed };
+    const ipv6 = getIPV6(host);
+    if (!ipv6.error) {
+      let newHost = ipv6.address;
+      let escapedHost = ipv6.address;
+      if (ipv6.zone) {
+        newHost += "%" + ipv6.zone;
+        escapedHost += "%25" + ipv6.zone;
+      }
+      return { host: newHost, isIPV6: true, escapedHost };
+    } else {
+      return { host, isIPV6: false };
     }
-    let zoneIdentifier = "";
-    const zoneSeparator = input.indexOf("%");
-    if (zoneSeparator !== -1) {
-      const separatorLength = input.slice(zoneSeparator, zoneSeparator + 3).toLowerCase() === "%25" ? 3 : 1;
-      zoneIdentifier = input.slice(zoneSeparator + separatorLength);
-      if (!isZoneIdentifier(zoneIdentifier))
-        return { host, isIPV6: false, error: true };
-      input = input.slice(0, zoneSeparator);
-    }
-    const address = normalizeIPv6Address(input);
-    if (address === undefined)
-      return { host, isIPV6: false, error: true };
-    return {
-      host: address + (zoneIdentifier ? "%" + zoneIdentifier : ""),
-      escapedHost: address + (zoneIdentifier ? "%25" + zoneIdentifier : ""),
-      isIPV6: true
-    };
   }
   function findToken(str, token) {
     let ind = 0;
@@ -5164,8 +5114,7 @@ var require_utils = __commonJS(function(exports, module) {
   function normalizePathEncoding(input) {
     let output = "";
     for (let i = 0;i < input.length; i++) {
-      const ch = input[i];
-      if (ch === "%" && i + 2 < input.length) {
+      if (input[i] === "%" && i + 2 < input.length) {
         const hex = input.slice(i + 1, i + 3);
         if (isHexPair(hex)) {
           const normalizedHex = hex.toUpperCase();
@@ -5179,152 +5128,10 @@ var require_utils = __commonJS(function(exports, module) {
           continue;
         }
       }
-      if (isPathCharacter(ch)) {
-        output += ch;
+      if (isPathCharacter(input[i])) {
+        output += input[i];
       } else {
-        const code = input.charCodeAt(i);
-        if (code < 128) {
-          output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
-        } else if (code < 55296 || code > 57343) {
-          output += percentEncodeNonAscii(code);
-        } else if (code <= 56319 && i + 1 < input.length) {
-          const low = input.charCodeAt(i + 1);
-          if (low >= 56320 && low <= 57343) {
-            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
-            i++;
-          } else {
-            output += percentEncodeNonAscii(65533);
-          }
-        } else {
-          output += percentEncodeNonAscii(65533);
-        }
-      }
-    }
-    return output;
-  }
-  function serializePathEncoding(input, pathNoScheme = false) {
-    let output = "";
-    let firstSegment = pathNoScheme && input[0] !== "/";
-    for (let i = 0;i < input.length; i++) {
-      const ch = input[i];
-      if (ch === "%" && i + 2 < input.length) {
-        const hex = input.slice(i + 1, i + 3);
-        if (isHexPair(hex)) {
-          output += "%" + hex.toUpperCase();
-          i += 2;
-          continue;
-        }
-      }
-      if (ch === "/") {
-        firstSegment = false;
-      }
-      if (isPathCharacter(ch) && (ch !== ":" || !firstSegment)) {
-        output += ch;
-      } else {
-        const code = input.charCodeAt(i);
-        if (code < 128) {
-          output += BYTE_HEX[code];
-        } else if (code < 55296 || code > 57343) {
-          output += percentEncodeNonAscii(code);
-        } else if (code <= 56319 && i + 1 < input.length) {
-          const low = input.charCodeAt(i + 1);
-          if (low >= 56320 && low <= 57343) {
-            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
-            i++;
-          } else {
-            output += percentEncodeNonAscii(65533);
-          }
-        } else {
-          output += percentEncodeNonAscii(65533);
-        }
-      }
-    }
-    return output;
-  }
-  function encodeComponent(input, isAllowed) {
-    let output = "";
-    for (let i = 0;i < input.length; i++) {
-      const ch = input[i];
-      if (ch === "%" && i + 2 < input.length) {
-        const hex = input.slice(i + 1, i + 3);
-        if (isHexPair(hex)) {
-          output += "%" + hex.toUpperCase();
-          i += 2;
-          continue;
-        }
-      }
-      if (isAllowed(ch)) {
-        output += ch;
-      } else {
-        const code = input.charCodeAt(i);
-        if (code < 128) {
-          output += BYTE_HEX[code];
-        } else if (code < 55296 || code > 57343) {
-          output += percentEncodeNonAscii(code);
-        } else if (code <= 56319 && i + 1 < input.length) {
-          const low = input.charCodeAt(i + 1);
-          if (low >= 56320 && low <= 57343) {
-            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
-            i++;
-          } else {
-            output += percentEncodeNonAscii(65533);
-          }
-        } else {
-          output += percentEncodeNonAscii(65533);
-        }
-      }
-    }
-    return output;
-  }
-  function encodeUserinfo(input) {
-    return encodeComponent(input, isUserinfoCharacter);
-  }
-  function encodeQuery(input) {
-    return encodeComponent(input, isQueryFragmentCharacter);
-  }
-  function encodeFragment(input) {
-    return encodeComponent(input, isQueryFragmentCharacter);
-  }
-  function isEscapeSafe(cp) {
-    return cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 42 || cp === 43 || cp === 45 || cp === 46 || cp === 47 || cp === 64 || cp === 95;
-  }
-  function normalizeQueryFragmentEncoding(input) {
-    let output = "";
-    for (let i = 0;i < input.length; i++) {
-      const ch = input[i];
-      if (ch === "%" && i + 2 < input.length) {
-        const hex = input.slice(i + 1, i + 3);
-        if (isHexPair(hex)) {
-          const normalizedHex = hex.toUpperCase();
-          const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
-          if (isUnreserved(decoded)) {
-            output += decoded;
-          } else {
-            output += "%" + normalizedHex;
-          }
-          i += 2;
-          continue;
-        }
-      }
-      if (isQueryFragmentCharacter(ch)) {
-        output += ch;
-      } else {
-        const code = input.charCodeAt(i);
-        if (code < 128) {
-          output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
-        } else if (code < 55296 || code > 57343) {
-          output += percentEncodeNonAscii(code);
-        } else if (code <= 56319 && i + 1 < input.length) {
-          const low = input.charCodeAt(i + 1);
-          if (low >= 56320 && low <= 57343) {
-            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
-            i++;
-          } else {
-            output += percentEncodeNonAscii(65533);
-          }
-        } else {
-          output += percentEncodeNonAscii(65533);
-        }
+        output += escape(input[i]);
       }
     }
     return output;
@@ -5347,18 +5154,14 @@ var require_utils = __commonJS(function(exports, module) {
   function recomposeAuthority(component) {
     const uriTokens = [];
     if (component.userinfo !== undefined) {
-      uriTokens.push(encodeUserinfo(component.userinfo));
+      uriTokens.push(component.userinfo);
       uriTokens.push("@");
     }
     if (component.host !== undefined) {
-      let host = component.host;
+      let host = unescape(component.host);
       if (!isIPv4(host)) {
-        let ipV6res = normalizeIPv6(host);
-        if (ipV6res.isIPV6 !== true && ipV6res.isIPVFuture !== true) {
-          host = normalizePercentEncoding(host, true);
-          ipV6res = normalizeIPv6(host);
-        }
-        if (ipV6res.isIPV6 === true || ipV6res.isIPVFuture === true) {
+        const ipV6res = normalizeIPv6(host);
+        if (ipV6res.isIPV6 === true) {
           host = `[${ipV6res.escapedHost}]`;
         } else {
           host = reescapeHostDelimiters(host, false);
@@ -5367,12 +5170,8 @@ var require_utils = __commonJS(function(exports, module) {
       uriTokens.push(host);
     }
     if (typeof component.port === "number" || typeof component.port === "string") {
-      const port = String(component.port);
-      if (!isPort(port)) {
-        throw new TypeError("URI port is malformed.");
-      }
       uriTokens.push(":");
-      uriTokens.push(port);
+      uriTokens.push(String(component.port));
     }
     return uriTokens.length ? uriTokens.join("") : undefined;
   }
@@ -5382,11 +5181,6 @@ var require_utils = __commonJS(function(exports, module) {
     reescapeHostDelimiters,
     normalizePercentEncoding,
     normalizePathEncoding,
-    serializePathEncoding,
-    normalizeQueryFragmentEncoding,
-    encodeUserinfo,
-    encodeQuery,
-    encodeFragment,
     escapePreservingEscapes,
     removeDotSegments,
     isIPv4,
@@ -5396,10 +5190,10 @@ var require_utils = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/schemes.js
+// ../node_modules/.pnpm/fast-uri@3.1.5/node_modules/fast-uri/lib/schemes.js
 var require_schemes = __commonJS(function(exports, module) {
   var { isUUID } = require_utils();
-  var URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
+  var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
   var supportedSchemeNames = [
     "http",
     "https",
@@ -5454,10 +5248,9 @@ var require_schemes = __commonJS(function(exports, module) {
       wsComponent.secure = undefined;
     }
     if (wsComponent.resourceName) {
-      const queryIndex = wsComponent.resourceName.indexOf("?");
-      const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+      const [path, query] = wsComponent.resourceName.split("?");
       wsComponent.path = path && path !== "/" ? path : undefined;
-      wsComponent.query = queryIndex === -1 ? undefined : wsComponent.resourceName.slice(queryIndex + 1);
+      wsComponent.query = query;
       wsComponent.resourceName = undefined;
     }
     wsComponent.fragment = undefined;
@@ -5469,7 +5262,7 @@ var require_schemes = __commonJS(function(exports, module) {
       return urnComponent;
     }
     const matches = urnComponent.path.match(URN_REG);
-    if (matches && matches[0] === urnComponent.path) {
+    if (matches) {
       const scheme = options.scheme || urnComponent.scheme || "urn";
       urnComponent.nid = matches[1].toLowerCase();
       urnComponent.nss = matches[2];
@@ -5571,19 +5364,10 @@ var require_schemes = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/index.js
+// ../node_modules/.pnpm/fast-uri@3.1.5/node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS(function(exports, module) {
-  var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
+  var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
   var { SCHEMES, getSchemeHandler } = require_schemes();
-  var VALID_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
-  var MALFORMED_SCHEME_ERROR = "URI scheme is malformed.";
-  function decodeValidScheme(scheme) {
-    const decodedScheme = unescape(String(scheme));
-    if (!VALID_SCHEME.test(decodedScheme)) {
-      throw new TypeError(MALFORMED_SCHEME_ERROR);
-    }
-    return decodedScheme;
-  }
   function normalize(uri, options) {
     if (typeof uri === "string") {
       uri = normalizeString(uri, options);
@@ -5594,34 +5378,12 @@ var require_fast_uri = __commonJS(function(exports, module) {
   }
   function resolve(baseURI, relativeURI, options) {
     const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-    const {
-      parsed: baseParsed,
-      malformedAuthorityOrPort: baseMalformed,
-      malformedPercentEncoding: baseMalformedPercentEncoding,
-      malformedSchemeSpecific: baseMalformedSchemeSpecific,
-      malformedHost: baseMalformedHost,
-      malformedScheme: baseMalformedScheme
-    } = parseWithStatus(baseURI, schemelessOptions);
-    const {
-      parsed: relativeParsed,
-      malformedAuthorityOrPort: relativeMalformed,
-      malformedPercentEncoding: relativeMalformedPercentEncoding,
-      malformedSchemeSpecific: relativeMalformedSchemeSpecific,
-      malformedHost: relativeMalformedHost,
-      malformedScheme: relativeMalformedScheme
-    } = parseWithStatus(relativeURI, schemelessOptions);
-    if (baseMalformed || relativeMalformed || baseMalformedPercentEncoding || relativeMalformedPercentEncoding || baseMalformedSchemeSpecific || relativeMalformedSchemeSpecific || baseMalformedHost || relativeMalformedHost || baseMalformedScheme || relativeMalformedScheme) {
+    const { parsed: baseParsed, malformedAuthorityOrPort: baseMalformed } = parseWithStatus(baseURI, schemelessOptions);
+    const { parsed: relativeParsed, malformedAuthorityOrPort: relativeMalformed } = parseWithStatus(relativeURI, schemelessOptions);
+    if (baseMalformed || relativeMalformed) {
       throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
     }
     const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
-    const resolvedSchemeHandler = getSchemeHandler(options && options.scheme || resolved.scheme);
-    const resolvedHost = resolved.host;
-    const resolvedHostIsIP = resolvedHost !== undefined && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
-    canonicalizeHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP);
-    const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !/\P{ASCII}/u.test(resolvedHost);
-    if (resolved.error && !encodedASCIIHost) {
-      throw new Error(resolved.error);
-    }
     schemelessOptions.skipEscape = true;
     return serialize(resolved, schemelessOptions);
   }
@@ -5681,7 +5443,7 @@ var require_fast_uri = __commonJS(function(exports, module) {
   function equal(uriA, uriB, options) {
     const normalizedA = normalizeComparableURI(uriA, options);
     const normalizedB = normalizeComparableURI(uriB, options);
-    return normalizedA !== undefined && normalizedB !== undefined && normalizedA === normalizedB;
+    return normalizedA !== undefined && normalizedB !== undefined && normalizedA.toLowerCase() === normalizedB.toLowerCase();
   }
   function serialize(cmpts, opts) {
     const component = {
@@ -5702,23 +5464,20 @@ var require_fast_uri = __commonJS(function(exports, module) {
     };
     const options = Object.assign({}, opts);
     const uriTokens = [];
-    if (component.scheme) {
-      component.scheme = decodeValidScheme(component.scheme);
-    }
     const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
     if (schemeHandler && schemeHandler.serialize)
       schemeHandler.serialize(component, options);
-    const hasAuthority = component.userinfo !== undefined || component.host !== undefined || component.port !== undefined;
-    const pathNoScheme = !options.skipEscape && component.scheme === undefined && !hasAuthority;
     if (component.path !== undefined) {
       if (!options.skipEscape) {
-        component.path = serializePathEncoding(component.path, pathNoScheme);
+        component.path = escapePreservingEscapes(component.path);
+        if (component.scheme !== undefined) {
+          component.path = component.path.split("%3A").join(":");
+        }
       } else {
         component.path = normalizePercentEncoding(component.path);
       }
     }
     if (options.reference !== "suffix" && component.scheme) {
-      component.scheme = decodeValidScheme(component.scheme);
       uriTokens.push(component.scheme, ":");
     }
     const authority = recomposeAuthority(component);
@@ -5736,19 +5495,16 @@ var require_fast_uri = __commonJS(function(exports, module) {
       if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
         s = removeDotSegments(s);
       }
-      if (pathNoScheme) {
-        s = serializePathEncoding(s, true);
-      }
       if (authority === undefined && s[0] === "/" && s[1] === "/") {
         s = "/%2F" + s.slice(2);
       }
       uriTokens.push(s);
     }
     if (component.query !== undefined) {
-      uriTokens.push("?", encodeQuery(component.query));
+      uriTokens.push("?", component.query);
     }
     if (component.fragment !== undefined) {
-      uriTokens.push("#", encodeFragment(component.fragment));
+      uriTokens.push("#", component.fragment);
     }
     return uriTokens.join("");
   }
@@ -5764,36 +5520,6 @@ var require_fast_uri = __commonJS(function(exports, module) {
     }
     return;
   }
-  function hasMalformedPercentEncoding(component) {
-    if (component === undefined)
-      return false;
-    let percent = component.indexOf("%");
-    while (percent !== -1) {
-      if (percent + 2 >= component.length || !/^[\da-f]{2}$/iu.test(component.slice(percent + 1, percent + 3))) {
-        return true;
-      }
-      percent = component.indexOf("%", percent + 3);
-    }
-    return false;
-  }
-  function isIPLiteral(host) {
-    return host[0] === "[" && host[host.length - 1] === "]";
-  }
-  function hasMalformedComponentPercentEncoding(matches) {
-    const host = matches[4];
-    return hasMalformedPercentEncoding(matches[3]) || host !== undefined && !isIPLiteral(host) && hasMalformedPercentEncoding(host) || hasMalformedPercentEncoding(matches[6]) || hasMalformedPercentEncoding(matches[7]) || hasMalformedPercentEncoding(matches[8]);
-  }
-  function canonicalizeHost(parsed, options, schemeHandler, isIP) {
-    if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport) && parsed.host && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
-      try {
-        parsed.host = new URL("http://" + parsed.host).hostname;
-      } catch (e) {
-        parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
-        return true;
-      }
-    }
-    return false;
-  }
   function parseWithStatus(uri, opts) {
     const options = Object.assign({}, opts);
     const parsed = {
@@ -5806,11 +5532,6 @@ var require_fast_uri = __commonJS(function(exports, module) {
       fragment: undefined
     };
     let malformedAuthorityOrPort = false;
-    let malformedPercentEncoding = false;
-    let malformedSchemeSpecific = false;
-    let malformedHost = false;
-    let malformedIPLiteral = false;
-    let malformedScheme = false;
     let isIP = false;
     if (options.reference === "suffix") {
       if (options.scheme) {
@@ -5847,19 +5568,6 @@ var require_fast_uri = __commonJS(function(exports, module) {
       parsed.path = matches[6] || "";
       parsed.query = matches[7];
       parsed.fragment = matches[8];
-      if (parsed.scheme !== undefined) {
-        const decodedScheme = unescape(parsed.scheme);
-        if (VALID_SCHEME.test(decodedScheme)) {
-          parsed.scheme = decodedScheme.toLowerCase();
-        } else {
-          parsed.error = parsed.error || MALFORMED_SCHEME_ERROR;
-          malformedScheme = true;
-        }
-      }
-      malformedPercentEncoding = hasMalformedComponentPercentEncoding(matches);
-      if (malformedPercentEncoding) {
-        parsed.error = parsed.error || "URI contains malformed percent-encoding.";
-      }
       if (isNaN(parsed.port)) {
         parsed.port = matches[5];
       }
@@ -5871,16 +5579,9 @@ var require_fast_uri = __commonJS(function(exports, module) {
       if (parsed.host) {
         const ipv4result = isIPv4(parsed.host);
         if (ipv4result === false) {
-          const bracketedIPLiteral = isIPLiteral(parsed.host);
-          const hasIPLiteralBracket = parsed.host.indexOf("[") !== -1 || parsed.host.indexOf("]") !== -1;
           const ipv6result = normalizeIPv6(parsed.host);
-          isIP = ipv6result.isIPV6 || ipv6result.isIPVFuture === true;
-          malformedIPLiteral = hasIPLiteralBracket && (!bracketedIPLiteral || ipv6result.error === true);
-          parsed.host = isIP ? ipv6result.host : ipv6result.host.toLowerCase();
-          if (malformedIPLiteral) {
-            parsed.error = parsed.error || "URI host is malformed.";
-            malformedAuthorityOrPort = true;
-          }
+          parsed.host = ipv6result.host.toLowerCase();
+          isIP = ipv6result.isIPV6;
         } else {
           isIP = true;
         }
@@ -5898,37 +5599,42 @@ var require_fast_uri = __commonJS(function(exports, module) {
         parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
       }
       const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
-      if (!malformedIPLiteral) {
-        malformedHost = canonicalizeHost(parsed, options, schemeHandler, isIP);
-      }
-      if (uri.indexOf("%") !== -1 && parsed.host !== undefined && !malformedIPLiteral) {
-        let host = isIP ? parsed.host : normalizePercentEncoding(parsed.host, true);
-        if (!isIP) {
-          host = normalizePercentEncoding(host.toLowerCase());
+      if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
+        if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
+          try {
+            parsed.host = new URL("http://" + parsed.host).hostname;
+          } catch (e) {
+            parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
+          }
         }
-        parsed.host = reescapeHostDelimiters(host, isIP);
       }
       if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
+        if (uri.indexOf("%") !== -1) {
+          if (parsed.scheme !== undefined) {
+            parsed.scheme = unescape(parsed.scheme);
+          }
+          if (parsed.host !== undefined) {
+            parsed.host = reescapeHostDelimiters(unescape(parsed.host), isIP);
+          }
+        }
         if (parsed.path) {
           parsed.path = normalizePathEncoding(parsed.path);
         }
-        if (parsed.query) {
-          parsed.query = normalizeQueryFragmentEncoding(parsed.query);
-        }
         if (parsed.fragment) {
-          parsed.fragment = normalizeQueryFragmentEncoding(parsed.fragment);
+          try {
+            parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
+          } catch {
+            parsed.error = parsed.error || "URI malformed";
+          }
         }
       }
       if (schemeHandler && schemeHandler.parse) {
         schemeHandler.parse(parsed, options);
-        if (schemeHandler === SCHEMES.urn && parsed.nid === undefined) {
-          malformedSchemeSpecific = true;
-        }
       }
     } else {
       parsed.error = parsed.error || "URI can not be parsed.";
     }
-    return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
+    return { parsed, malformedAuthorityOrPort };
   }
   function parse(uri, opts) {
     return parseWithStatus(uri, opts).parsed;
@@ -5937,28 +5643,20 @@ var require_fast_uri = __commonJS(function(exports, module) {
     return normalizeStringWithStatus(uri, opts).normalized;
   }
   function normalizeStringWithStatus(uri, opts) {
-    const { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = parseWithStatus(uri, opts);
+    const { parsed, malformedAuthorityOrPort } = parseWithStatus(uri, opts);
     return {
-      normalized: malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? uri : serialize(parsed, opts),
-      malformedAuthorityOrPort,
-      malformedPercentEncoding,
-      malformedSchemeSpecific,
-      malformedHost,
-      malformedScheme
+      normalized: malformedAuthorityOrPort ? uri : serialize(parsed, opts),
+      malformedAuthorityOrPort
     };
   }
   function normalizeComparableURI(uri, opts) {
-    if (typeof uri !== "string" && typeof uri !== "object") {
-      return;
+    if (typeof uri === "string") {
+      const { normalized, malformedAuthorityOrPort } = normalizeStringWithStatus(uri, opts);
+      return malformedAuthorityOrPort ? undefined : normalized;
     }
-    let value;
-    try {
-      value = typeof uri === "string" ? uri : serialize(uri, opts);
-    } catch {
-      return;
+    if (typeof uri === "object") {
+      return serialize(uri, opts);
     }
-    const { normalized, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = normalizeStringWithStatus(value, opts);
-    return malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? undefined : normalized;
   }
   var fastUri = {
     SCHEMES,
@@ -14250,7 +13948,7 @@ var listExperimentTraces = {
 var getReplayStatus = {
   name: "get_replay_status",
   title: "Get Replay Status",
-  description: "Read the current status of an experiment's replay, including local replay trace ID to server replay trace ID mapping. Safe to poll while replay is still running.",
+  description: "Read an experiment's replay progress: status, local to server replay trace IDs, and finished and remaining trace attempts. Call it while a replay runs, or after one crashes to check `resumable` before rerunning with `--resume <experimentId>`.",
   inputSchema: {
     experimentId: uuid2().describe("The experiment ID to get status for")
   }
@@ -15543,8 +15241,8 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.61.1",
-  python: "0.61.0",
+  typescript: "0.61.2",
+  python: "0.61.2",
   ruby: "0.61.0",
   go: "0.61.0"
 };
@@ -16159,6 +15857,18 @@ var replayResultSchema = object({
 
 // ../bitfab-plugin-lib/dist/commands/replayProgress.js
 var HEARTBEAT_MS = Number(process.env.BITFAB_REPLAY_HEARTBEAT_MS) || 12000;
+var RESUME_REFUSED_VALUE_FLAGS = new Set([
+  "--trace-ids",
+  "--dataset-id",
+  "--dataset-ids",
+  "--limit",
+  "--attempts",
+  "--grader-ids"
+]);
+var RESUME_REFUSED_BOOLEAN_FLAGS = new Set([
+  "--only-with-assertions",
+  "--dry-run"
+]);
 // ../bitfab-plugin-lib/dist/commands/startTemplatePreview.js
 var ticketResponseSchema = object({ id: uuid2() });
 // ../bitfab-plugin-lib/dist/updates.js
@@ -17639,7 +17349,7 @@ var assistantFlow = Flow.parse({
     },
     replayProgress: {
       description: "Run a replay and emit one ready-to-relay line per trace to stdout (header, then per trace: a pass/fail glyph, running n/total, and that trace's duration, with the error reason inline on failure; a liveness heartbeat line when a slow trace goes quiet; then a summary with total + average time), write a per-run replay event index to .bitfab/replays/<run-id>/events.jsonl, and write full item payloads to .bitfab/replays/<run-id>/items/*.json. Background it and relay each new line to the user",
-      args: "[--label <key>] [--total N] [--run-dir <path>] -- <replay command...>"
+      args: "[--label <key>] [--total N] [--run-dir <path>] [--resume <experimentId> [--force]] -- <replay command...>"
     },
     readTracesBatched: {
       description: "Read many traces at once: fans get_traces out in parallel batches of 10, writes the concatenated result to a temp file, and prints its path as JSON",
@@ -19203,7 +18913,8 @@ If \`completed === 0\`, do not score pass/fail on an empty set, branch to \`chec
             "edit",
             "getTraces",
             "searchTraces",
-            "ask"
+            "ask",
+            "getReplayStatus"
           ],
           title: "Check replay health",
           body: `**Route on the counts and exit code.** Goal: keep infra noise out of evaluation. Read a sample of \`item.error\` strings (and stderr on crash) first to identify the DB-shaped pattern (missing record, FK / unique constraint, write rejected, connection refused, missing env).
@@ -19225,6 +18936,11 @@ After whichever workaround the user picks, re-run \`replay-against-dataset\` and
               when: "errors are shape mismatches, not infra (`shapeErrored` dominates the errored items: the recorded inputs don't fit the function's current signature)",
               description: `the function's shape drifted since these traces were captured, so replay can't call it with the recorded inputs. This is recoverable: route to \`adapt-replay-inputs\` to map the recorded inputs onto the current signature, then re-run`,
               next: "iterate/adapt-replay-inputs"
+            },
+            {
+              when: "whole replay command crashed after it printed an experiment ID (the `[replay] Experiment <id>` line, the `Resume with:` line, or `experimentId` in this run's `run.json`), and the experiment's status reports `resumable: true`",
+              description: `before any other crash handling, call {{tool:getReplayStatus}} with that experiment ID. When it returns \`resumable: true\`, tell the user in plain words how many traces already finished (\`finishedCount\`) and how many are left (\`remainingCount\`), and that the finished ones will be kept, not replayed again. Then show stderr and the exit code, diagnose the crash, confirm the fix with the user, and apply it. When the cause was outside the code (the process was killed, the network dropped, a rate limit, running out of memory, or the machine went to sleep), resume as described next. If that resume is refused because the working tree differs from the one the experiment started with (the refusal names the stored commit and tree, and {{tool:getReplayStatus}} returns them as \`commitSha\` and \`experimentSha\`), do not change the user's working tree yourself. Relay the refusal, name the commit and tree, and give the user three choices: return their working tree to that state their own way and ask you to resume again, resume on their current code by adding \`--force\` to the same command (finished traces from the old code are kept alongside new ones), or start a fresh replay through the crash route below. When fixing the crash needed a code change, do not resume: tell the user plainly that resuming would run the old code the experiment started with, which would hit the same crash, and start a fresh replay with the fixed code through the crash route below. Loop back to \`replay-against-dataset\`, but instead of a fresh replay, run the same \`{{command:replayProgress}}\` command with \`--resume <experimentId>\` added before \`--\`, and the replay command after \`--\` changed to the \`Resume with:\` line the crashed run printed, or else \`bitfab-replay --registry <registry-path> <pipeline-name> --resume <experimentId>\` behind the same package runner. Keep the same \`--code-change\` file, \`--mock\`, and \`--param\` / \`--params\` flags as the crashed run. Drop \`--trace-ids\`, \`--dataset-id\`, \`--limit\`, \`--attempts\`, \`--grader-ids\`, \`--only-with-assertions\`, \`--name\`, and \`--experiment-group-id\`, because the experiment already stores its traces and settings. Keep the same run directory, since resume adds to that run's \`events.jsonl\` and item files, and items marked \`carriedOver\` in the final result count as already finished. If the resume is refused, relay the refusal message as is. When it says the replay may still be running, wait two minutes and try again. For any other refusal, or when {{tool:getReplayStatus}} does not return \`resumable: true\`, use the crash route below and start a fresh replay`,
+              next: "iterate/replay-against-dataset"
             },
             {
               when: "whole replay command crashed (non-zero child exit, or the server confirms zero replay items)",
