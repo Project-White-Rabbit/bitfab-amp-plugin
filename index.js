@@ -13940,7 +13940,7 @@ var listExperiments = {
 var listExperimentTraces = {
   name: "list_experiment_traces",
   title: "List Experiment Traces",
-  description: "Get individual trace results for an experiment, including each replay trace's verdict (fixed, regressed, still-passing, still-failing, unpaired) by comparing against the original trace's label, plus token usage (input, output, cached, total) for the replay and the paired original so you can reason about cost and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
+  description: "Get individual trace results for an experiment, including each replay trace's verdict (fixed, regressed, still-passing, still-failing, original-unlabeled, replay-unlabeled, capture-incomplete, unpaired, skipped) by comparing against the original trace's label, plus token usage (input, output, cached, total) for the replay and the paired original so you can reason about cost and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
   inputSchema: {
     experimentId: uuid2().describe("The experiment ID to get traces for")
   }
