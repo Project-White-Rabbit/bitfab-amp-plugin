@@ -14013,8 +14013,8 @@ var saveExperiment = {
   description: "Update an existing experiment. Provide the experiment ID and at least one of name, notes, experimentGroupId, or status. Omitted fields keep their current values; pass an empty notes string to clear notes, a group id to move the experiment to that existing group, or null to remove it from its group. Set status when a replay stopped without finishing. completed grades the traces that landed, and interrupted marks a pending experiment as stopped so it can be resumed later.",
   inputSchema: {
     experimentId: uuid2().describe("The experiment ID to update"),
-    name: string2().trim().min(1).max(120).optional().describe("Optional human-readable experiment name"),
-    notes: string2().max(1e4).optional().describe("Optional experiment notes. Omit to keep existing notes; pass an empty string to clear them."),
+    name: string2().trim().min(1).max(120).optional().describe("What this run is testing, in a few words, such as 'baseline' or 'shorter system prompt'. Bitfab already records the commit, branch, tree state, datasets, and who ran it with every experiment, so do not repeat them here."),
+    notes: string2().max(1e4).optional().describe("Run conditions Bitfab cannot see on its own, such as an environment override or a forced feature flag. Omit to keep existing notes; pass an empty string to clear them."),
     experimentGroupId: uuid2().nullable().optional().describe("Existing experiment group id to move this experiment into. Omit to keep its current group; pass null to remove it from its group."),
     status: _enum(["completed", "interrupted"]).optional().describe("completed finishes the replay and grades the traces that landed. interrupted marks a pending experiment as stopped. Omit to keep the current status.")
   }
@@ -15242,10 +15242,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.61.4",
-  python: "0.61.4",
-  ruby: "0.61.1",
-  go: "0.61.1"
+  typescript: "0.61.5",
+  python: "0.61.5",
+  ruby: "0.61.2",
+  go: "0.61.2"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
