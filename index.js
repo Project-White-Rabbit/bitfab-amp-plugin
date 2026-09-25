@@ -13543,6 +13543,7 @@ var MAX_ASSIGNEE_EMAIL_LENGTH = 320;
 var GET_GRADER_LABELS_MAX_IDS = 100;
 var DEFAULT_GRADER_LABEL_LIMIT = 50;
 var MAX_GRADER_LABEL_LIMIT = 200;
+var SAVE_GRADER_LABELS_MAX_ENTRIES = 200;
 function parseJsonString(val) {
   if (typeof val !== "string") {
     return val;
@@ -13794,7 +13795,7 @@ var archiveTraceAssertions = {
 var saveGrader = {
   name: "save_grader",
   title: "Save Grader",
-  description: `Create or edit an automated grader (LLM-as-judge): a pass/fail check that describes what must hold for a traced function (e.g. 'The reply never invents order numbers'). Call when the user asks to add, define, update, rename, archive, or restore an automated grader or check for a traced function. To create, pass traceFunctionKey + name + evaluationFocus. To edit, pass graderId (from list_graders) plus only the fields to change; saving with the name of an existing grader on the same function updates that grader instead of creating a duplicate. Set status to "archived" to retire a grader; any later save that omits status (or sets "active") restores it. On edit, pass an empty string for passCriteria/failCriteria to clear them. After a successful create or update, present the returned grader definition to the user, including its evaluation focus and any pass/fail criteria; do not respond with only a generic success confirmation. Graders are definitions only for now: nothing auto-evaluates them on new traces yet, so do not promise live grading. Call list_graders first to find ids and avoid duplicates.`,
+  description: `Create or edit a grader: a pass/fail check that describes what must hold for a traced function (e.g. 'The reply never invents order numbers'). Call when the user asks to add, define, update, rename, archive, or restore a grader or check for a traced function. By default the grader is an LLM-as-judge that Bitfab runs; pass external: true when the user evaluates traces themselves. To create, pass traceFunctionKey + name + evaluationFocus. To edit, pass graderId (from list_graders) plus only the fields to change; saving with the name of an existing grader on the same function updates that grader instead of creating a duplicate. Set status to "archived" to retire a grader; any later save that omits status (or sets "active") restores it. On edit, pass an empty string for passCriteria/failCriteria to clear them. After a successful create or update, present the returned grader definition to the user, including its evaluation focus and any pass/fail criteria; do not respond with only a generic success confirmation. Graders are definitions only for now: nothing auto-evaluates them on new traces yet, so do not promise live grading. Call list_graders first to find ids and avoid duplicates. An external grader is one the user runs themselves (their own eval harness, CI, a human review queue): Bitfab never runs it, and its verdicts are posted with save_grader_labels. A grader's external setting is fixed at creation and cannot be changed on edit, and external graders take no model.`,
   inputSchema: {
     graderId: uuid2().optional().describe("Id of an existing grader to edit (from list_graders or a previous save). Omit to create a new grader (or update-by-name)."),
     traceFunctionKey: string2().min(1).optional().describe("The traced function the grader applies to. Required when graderId is omitted; ignored when it is set."),
@@ -13803,13 +13804,14 @@ var saveGrader = {
     passCriteria: string2().optional().describe("Optional: what a PASSING trace looks like. On edit, omit to keep the stored value; pass an empty string to clear it."),
     failCriteria: string2().optional().describe("Optional: what a FAILING trace looks like. On edit, omit to keep the stored value; pass an empty string to clear it."),
     status: _enum(["active", "archived"]).optional().describe(`The grader's status: "active" (the default for a create or edit) or "archived" to retire it (hidden from list_graders by default). Omit on edit to keep it active / restore an archived grader.`),
-    model: _enum(["gemini-2-5-flash", "sol", "terra", "opus-4-8", "gemini-3-1-pro"]).optional().describe("Optional: the judge model this grader runs on. One of: gemini-2-5-flash, sol, terra, opus-4-8, gemini-3-1-pro. Omit to keep the current value (defaults to gemini-2-5-flash).")
+    model: _enum(["gemini-2-5-flash", "sol", "terra", "opus-4-8", "gemini-3-1-pro"]).optional().describe("Optional: the judge model this grader runs on. One of: gemini-2-5-flash, sol, terra, opus-4-8, gemini-3-1-pro. Omit to keep the current value (defaults to gemini-2-5-flash)."),
+    external: boolean2().optional().describe("Create an external grader: Bitfab never runs it, and its verdicts arrive through save_grader_labels. Only honored when creating; on edit it must match the grader or be omitted.")
   }
 };
 var listGraders = {
   name: "list_graders",
   title: "List Graders",
-  description: "List the automated graders (LLM-as-judge definitions) for a traced function, with id, name, status, and each one's evaluation focus and pass/fail criteria. Call before save_grader to find the grader to edit or to avoid creating a duplicate. Results are newest-first and paginated. Archived graders are hidden unless includeArchived is true.",
+  description: "List the graders for a traced function: LLM-as-judge graders Bitfab runs, and external graders (marked 'Runs: externally') whose verdicts the user posts with save_grader_labels. Each comes with id, name, status, evaluation focus, and pass/fail criteria. Call before save_grader to find the grader to edit or to avoid creating a duplicate. Results are newest-first and paginated. Archived graders are hidden unless includeArchived is true.",
   inputSchema: {
     traceFunctionKey: string2().min(1).describe("The trace function key to list graders for"),
     includeArchived: preprocess(parseJsonString, boolean2()).optional().describe("Include archived graders (default false)"),
@@ -14030,11 +14032,26 @@ var getExperiment = {
 var getGraderLabels = {
   name: "get_grader_labels",
   title: "Get Grader Labels",
-  description: `Read the INDIVIDUAL verdicts each automated grader (LLM-as-judge) recorded, one row per grader per trace, with the grader's reason, its failure diagnostic, the confidence, and whether the verdict came from a human or from a grader run. This is the per-grader breakdown that get_trace_labels does not show: that tool returns one grader-agnostic verdict per trace, so use it for a dataset's overall pass/fail and use this one to see WHICH check failed and why. Pass traceIds to see every grader's verdict on those traces, graderId to see that grader's most recent verdicts across traces (newest first, use it to diagnose a grader that is misfiring), or both to narrow to one grader on specific traces. Call list_graders first if you need grader ids.`,
+  description: `Read the INDIVIDUAL verdicts each grader recorded, one row per grader per trace, with the grader's reason, its failure diagnostic, the confidence, and whether the verdict came from a human, a grader Bitfab ran, or an external grader whose verdict was posted from outside Bitfab with save_grader_labels. This is the per-grader breakdown that get_trace_labels does not show: that tool returns one grader-agnostic verdict per trace, so use it for a dataset's overall pass/fail and use this one to see WHICH check failed and why. Pass traceIds to see every grader's verdict on those traces, graderId to see that grader's most recent verdicts across traces (newest first, use it to diagnose a grader that is misfiring), or both to narrow to one grader on specific traces. Call list_graders first if you need grader ids.`,
   inputSchema: {
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_GRADER_LABELS_MAX_IDS)).optional().describe(`Trace IDs to read grader verdicts for (1-${GET_GRADER_LABELS_MAX_IDS}). Omit to read by grader instead.`),
     graderId: uuid2().optional().describe("Restrict to one grader (from list_graders). On its own, returns that grader's most recent verdicts across all traces."),
     limit: preprocess(parseJsonString, number2().int().min(1).max(MAX_GRADER_LABEL_LIMIT)).optional().describe(`Max labels to return when reading by grader alone (default ${DEFAULT_GRADER_LABEL_LIMIT}, max ${MAX_GRADER_LABEL_LIMIT}). Ignored when traceIds is given.`)
+  }
+};
+var saveGraderLabels = {
+  name: "save_grader_labels",
+  title: "Save Grader Labels",
+  description: `Record verdicts for EXTERNAL graders: graders created with save_grader external: true, which Bitfab never runs because the user evaluates traces somewhere else (their own eval harness, CI, a review queue). Each entry is one grader's pass/fail on one trace, written as that grader's own verdict, so it shows up everywhere Bitfab-run grader verdicts do: get_grader_labels, dataset and experiment pass rates, and the trace's grader panel. Saving again for the same grader and trace replaces the earlier verdict. Rejects every grader that is not external: Bitfab runs its own graders, and a human's verdict on a trace belongs in save_human_labels. Up to ${SAVE_GRADER_LABELS_MAX_ENTRIES} entries per call; the whole call is rejected if any entry is invalid.`,
+  inputSchema: {
+    labels: preprocess(parseJsonString, array(object({
+      graderId: uuid2().describe("The external grader that produced this verdict (from list_graders or save_grader)."),
+      traceId: uuid2().describe("The trace the verdict is about."),
+      label: boolean2().describe("true for PASS, false for FAIL. Required."),
+      reason: string2().min(1).optional().describe("Why the grader reached this verdict. Optional."),
+      failureDiagnostic: string2().min(1).optional().describe("For a FAIL: what went wrong in the trace, in a form someone fixing it can act on. Optional."),
+      confidence: _enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]).optional().describe("How confident the grader is: VeryLow / Low / Medium / High / VeryHigh. Optional.")
+    })).min(1).max(SAVE_GRADER_LABELS_MAX_ENTRIES)).describe(`One entry per grader per trace (1-${SAVE_GRADER_LABELS_MAX_ENTRIES}).`)
   }
 };
 var getSimPlan = {
@@ -14060,6 +14077,7 @@ var saveSimPlan = {
 };
 var ALL_TOOL_CONTRACTS = [
   getGraderLabels,
+  saveGraderLabels,
   getExperiment,
   getExperimentGroup,
   saveExperiment,
@@ -15242,10 +15260,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.62.2",
-  python: "0.62.1",
-  ruby: "0.62.1",
-  go: "0.62.1"
+  typescript: "0.62.3",
+  python: "0.62.2",
+  ruby: "0.62.2",
+  go: "0.62.2"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
