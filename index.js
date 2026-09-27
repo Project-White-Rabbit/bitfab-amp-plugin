@@ -14624,6 +14624,18 @@ var dateOnlyStringSchema = string2().regex(DATE_PATTERN, "Must be YYYY-MM-DD for
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }, "Must be a valid calendar date");
 var GET_TRACE_LABELS_MAX_IDS = 100;
+var GET_TRACES_DEFAULT_SPAN_LIMIT = 50;
+var SPAN_READ_MAX_RESPONSE_CHARS = 32000;
+var GET_TRACES_MAX_SPAN_LIMIT = 200;
+var GET_TRACES_MAX_SPAN_NAMES = 50;
+var spanFieldSchema = _enum([
+  "input",
+  "output",
+  "reasoning",
+  "content",
+  "errors",
+  "contexts"
+]);
 var GET_TRACE_ASSERTIONS_MAX_IDS = 100;
 var MAX_ASSERTIONS_PER_REQUEST = 50;
 var MAX_ASSIGNEE_EMAIL_LENGTH = 320;
@@ -14704,10 +14716,14 @@ var searchTraces = {
 var getTraces = {
   name: "get_traces",
   title: "Get Traces",
-  description: 'Read one or more traces by ID. Includes inputs, outputs, status, environment tag, trace-level duration (ms), token usage (in/out/cached/total), and model (when available). Use these to compare latency and cost between a trace and its replay. Returns span details (input, output, reasoning, content, context, errors) plus per-span duration, tokens, time-to-first-token, and model when available. Use `scope: "summary"` when scanning many traces to keep the response small; `scope: "full"` when you need the complete untruncated detail of a few traces. To load only labels + annotations for many traces at once (no span content), use get_trace_labels instead.',
+  description: `Read one or more traces by ID. Includes inputs, outputs, status, environment tag, trace-level duration (ms), token usage (in/out/cached/total), and model (when available). Use these to compare latency and cost between a trace and its replay. Returns span details (input, output, reasoning, content, context, errors) plus per-span duration, tokens, time-to-first-token, and model when available. Use \`scope: "summary"\` when scanning many traces to keep the response small; \`scope: "full"\` when you need the complete untruncated detail of a few traces. Spans come back one page at a time (${GET_TRACES_DEFAULT_SPAN_LIMIT} per trace by default) and the whole response is capped in size, so it always fits in context. When a trace has more spans than one page, the response lists every span name with its count and says which spanOffset reads the next page: narrow with spanNames (only spans with those names) and spanFields (only those fields) rather than paging through thousands of spans, and fetch any one truncated field in full with get_span_field. To load only labels + annotations for many traces at once (no span content), use get_trace_labels instead.`,
   inputSchema: {
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(10)).describe("Trace IDs to read (1-10)"),
-    scope: _enum(["summary", "full"]).optional().default("summary").describe('Level of span detail. "summary" (default) renders the same span structure as full but caps each span (its fields share a ~1500-char budget) and each trace-level field (~2000 chars), keeping the response small enough not to spill to disk: prefer it when scanning or identifying candidate traces. "full" renders every field untruncated up to 10k chars each, with no per-span ceiling, so reading several large traces can produce a big response: use it when you need complete detail on a handful of traces.')
+    scope: _enum(["summary", "full"]).optional().default("summary").describe('Level of span detail. "summary" (default) renders the same span structure as full but caps each span (its fields share a ~1500-char budget) and each trace-level field (~2000 chars), and leaves out any span field over 10k chars, printing its size instead (name it in spanFields to preview it anyway, or read it in full with get_span_field): prefer it when scanning or identifying candidate traces. "full" renders every field untruncated up to 10k chars each, with no per-span ceiling, until the response size cap: use it when you need complete detail on a handful of spans, ideally narrowed with spanNames.'),
+    spanNames: preprocess(parseJsonString, array(string2().min(1)).min(1).max(GET_TRACES_MAX_SPAN_NAMES)).optional().describe("Only show spans whose name exactly matches one of these. A trace with more spans than one page lists its span names and counts, so read that list first and pass the names you need. Omit to show every span."),
+    spanOffset: preprocess(parseJsonString, number2().int().min(0)).optional().describe("Skip this many spans in each trace, counted after the spanNames filter (default 0). The response says which offset reads the next page."),
+    spanLimit: preprocess(parseJsonString, number2().int().min(1).max(GET_TRACES_MAX_SPAN_LIMIT)).optional().describe(`Show at most this many spans per trace (default ${GET_TRACES_DEFAULT_SPAN_LIMIT}, max ${GET_TRACES_MAX_SPAN_LIMIT}). The response size cap can stop a page early, and says so when it does.`),
+    spanFields: preprocess(parseJsonString, array(spanFieldSchema).max(6)).optional().describe("Only show these span fields (input, output, reasoning, content, errors, contexts). Omit to show all of them, with fields over 10k chars left out in summary scope. A field named here is previewed even when it is large. Pass [] to list spans with only their name, ID, duration, tokens, and model, which is the cheapest way to see a large trace's shape.")
   }
 };
 var getTraceLabels = {
@@ -14730,12 +14746,13 @@ var generateLabelEvidence = {
 var getSpanField = {
   name: "get_span_field",
   title: "Get Span Field",
-  description: "Fetch the COMPLETE, untruncated value of a single span field. get_traces truncates large span fields and prints a note telling you to call this when you need the full text. Pass the traceId, the spanId (the `[ID: ...]` shown for that span in get_traces output), and the field to retrieve. Returns up to 100k chars by default; pass a higher maxChars to read more of an extremely large field. Prefer this over re-reading the whole trace when you only need one large field in full.",
+  description: `Fetch the COMPLETE, untruncated value of a single span field. get_traces truncates or leaves out large span fields and prints a note telling you to call this when you need the full text. Pass the traceId, the spanId (the \`[ID: ...]\` shown for that span in get_traces output), and the field to retrieve. Returns up to ${SPAN_READ_MAX_RESPONSE_CHARS} chars per call so the response fits in context; when the field is longer, the response says which offset reads the next part. Prefer this over re-reading the whole trace when you only need one large field in full.`,
   inputSchema: {
     traceId: uuid2().describe("The trace ID the span belongs to"),
     spanId: uuid2().describe("The span ID to read, taken from the `[ID: ...]` shown for the span in get_traces output"),
-    field: _enum(["input", "output", "reasoning", "content", "errors", "contexts"]).describe("Which span field to return in full: input, output, reasoning, content, errors, or contexts"),
-    maxChars: preprocess(parseJsonString, number2().int().positive()).optional().describe("Maximum characters to return (default 100000). Raise it to read further into an extremely large field.")
+    field: spanFieldSchema.describe("Which span field to return in full: input, output, reasoning, content, errors, or contexts"),
+    maxChars: preprocess(parseJsonString, number2().int().positive()).optional().describe(`Maximum characters to return (default and upper limit ${SPAN_READ_MAX_RESPONSE_CHARS}). Larger values are treated as ${SPAN_READ_MAX_RESPONSE_CHARS}.`),
+    offset: preprocess(parseJsonString, number2().int().min(0)).optional().describe("Character position to start reading from (default 0). Pass the offset a previous response gave to read the next part of a long field.")
   }
 };
 var labelEvidenceShape = preprocess(parseJsonString, array(object({
