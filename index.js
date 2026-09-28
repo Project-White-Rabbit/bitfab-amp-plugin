@@ -16364,10 +16364,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.63.2",
-  python: "0.63.2",
-  ruby: "0.63.2",
-  go: "0.63.3"
+  typescript: "0.63.3",
+  python: "0.63.3",
+  ruby: "0.63.3",
+  go: "0.63.4"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
