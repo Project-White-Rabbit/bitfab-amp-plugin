@@ -16364,10 +16364,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.64.3",
-  python: "0.64.3",
-  ruby: "0.64.3",
-  go: "0.64.2"
+  typescript: "0.64.4",
+  python: "0.64.4",
+  ruby: "0.64.4",
+  go: "0.64.3"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
@@ -16941,6 +16941,16 @@ var directFileSchema = object({
   verdicts: array(unknown()).min(1)
 });
 var assertionIdSchema = uuid2();
+// ../bitfab-plugin-lib/dist/replayCloudResult.js
+var cloudSummarySchema = object({
+  cloudSummary: literal(true),
+  experimentId: string2().optional(),
+  experimentUrl: string2().optional(),
+  testRunId: string2().optional(),
+  testRunUrl: string2().optional(),
+  counts: record(string2(), number2()).optional()
+}).passthrough();
+
 // ../bitfab-plugin-lib/dist/replayRunDir.js
 var EXPERIMENT_ID_KEYS = [
   "experimentId",
@@ -20005,7 +20015,7 @@ cd <project-dir> && {{command:replayProgress}} --label <pipeline-name> --run-dir
 
    For every item you can judge during the run, key the verdict by its **original trace id** (the \`originalTraceId\` field in each item file, the same \`item.originalTraceId\` on progress rows), the original trace the item was replayed from, which the server resolves to this run's replay trace, no local-to-server id mapping step. You need the run's \`experimentId\` to persist (enriched progress rows may carry \`event.experimentId\`; older scripts may only reveal it in the final \`ReplayResult\`). As soon as a small batch of judged items has its original trace ids and you know the \`experimentId\`, persist that batch with \`{{command:persistReplayLabels}}\`. Keep a set of original trace IDs already persisted so the final reconciliation never double-writes a verdict.
 
-4. **When the background command finishes, read the final \`type: "complete"\` row from this run's \`events.jsonl\`**. Its \`result\` carries run metadata (\`experimentId\`, \`experimentUrl\`, \`itemCount\`) and its \`items\` array carries item refs. Read each needed \`items[].itemPath\` for the full replay item (trace ID, duration, tokens, model, and full original/new outputs). Read from the **files**, not from the captured command output, which the harness truncates in the middle.
+4. **When the background command finishes, read the final \`type: "complete"\` row from this run's \`events.jsonl\`**. Its \`result\` carries run metadata (\`experimentId\`, \`experimentUrl\`, \`itemCount\`) and its \`items\` array carries item refs. Read each needed \`items[].itemPath\` for the full replay item (trace ID, duration, tokens, model, and full original/new outputs). Read from the **files**, not from the captured command output, which the harness truncates in the middle. A \`--cloud\` replay leaves \`items\` empty and sets \`result.cloudSummary: true\`, with the counts and each errored trace in \`result.erroredItems\`: read its items from Bitfab instead, {{tool:listExperimentTraces}} with the \`experimentId\` for each replay trace ID and its original, then \`{{command:readTracesBatched}} <replay and original trace IDs...> --scope full\` for their inputs and outputs.
 
 **Before running: verify the installed replay command returns the full original and new output values AND at least one verdict persist key (\`item.originalTraceId\` or \`item.traceId\`) for every item** (not just lengths, counts, hashes, or truncated previews) so the run's \`items/*.json\` files carry them. Modern items may carry both: prefer lineage persistence by \`item.originalTraceId\` (older SDKs may print it under the deprecated \`sourceTraceId\` alias), and fall back to the server replay \`item.traceId\` only when original lineage is absent. After an item's replay trace is flushed, its \`item.traceId\` is available to lifecycle callbacks and in the final result. The oldest SDKs have no \`item.originalTraceId\` and persist by \`item.traceId\`. If the installed command returns neither, upgrade the SDK first; the Replay Output Contract and registry examples live in the SDK reference at \`https://docs.bitfab.ai/<language>-sdk.md\`. Subagents can't evaluate an improvement from \`5 \u2192 7 (+2)\`, and an item that carries no persist key blocks verdict persistence for that item.
 
@@ -21127,7 +21137,7 @@ If the block prints \`ERROR: Bitfab plugin not installed\`, the user hasn't inst
     inspect: "Diagnose (and offer to fix) your tracing setup: auth, what's instrumented, plugin/SDK freshness, replay coverage, trace arrival.",
     "switch-org": "Switch which Bitfab org the plugin reads and writes (replaces the local API key).",
     replay: "Create or update replay registry modules for instrumented workflows.",
-    cloud: "Run your normal replay on your own GitHub Actions by adding --cloud: same options, same output, same exit code. One workflow file in the repository; no Bitfab repository connection or GitHub CLI required.",
+    cloud: "Run your normal replay on your own GitHub Actions by adding --cloud: same options and exit code, with a short summary of the result. One workflow file in the repository; no Bitfab repository connection or GitHub CLI required.",
     "db-snapshot": "Set up per-trace database snapshots so replay runs against the DB state at trace time (TypeScript, Python, Ruby).",
     templates: "Iterate on the span-rendering templates for one trace function.",
     "analyze-repo": "Read-only discovery: scan source, rank the top workflows to instrument, and report recommendations without creating artifacts or changing code."
@@ -21186,7 +21196,7 @@ Read function signatures and bodies before instrumenting. Instrument the real pr
           kind: "action",
           title: "Inspect the replay environment",
           toolCalls: ["bash", "read", "glob", "grep", "ask"],
-          body: `Cloud replay is the user's normal replay plus --cloud: every replay option works the same, the runner replays a snapshot of their working tree (changed files, plus new files git does not ignore) from the same directory, and the command prints the replay's own output and exits with its exit code. The code ships inside the SDK, and the repository keeps one file: .github/workflows/bitfab-replay.yml, which holds only settings.
+          body: `Cloud replay is the user's normal replay plus --cloud: every replay option works the same, the runner replays a snapshot of their working tree (changed files, plus new files git does not ignore) from the same directory, and the command prints the replay's progress and a short summary of its result (experiment ID and URL, replayed, same, changed, and errored counts, and each errored trace with its error), then exits with its exit code. Every trace's input and output are in the experiment in Bitfab, readable through the Bitfab MCP tools; --cloud-full-output prints the whole result instead. The code ships inside the SDK, and the repository keeps one file: .github/workflows/bitfab-replay.yml, which holds only settings.
 
 Run the installed SDK's bitfab-replay --cloud --help; if it does not list --cloud-preview, upgrade the SDK through bitfab:update first. Check that the git origin is github.com and that Python 3.10+ exists (macOS or Linux). GitHub access needs no GitHub CLI: the SDK uses gh when it is logged in, otherwise GH_TOKEN or GITHUB_TOKEN, otherwise the github.com credential git stores. When the repository still has .bitfab/cloud.json from an older SDK, the SDK says to delete it and the old workflow and run --cloud-init again; show the user the old file's settings first.
 
@@ -21220,7 +21230,7 @@ Each replay pushes a temporary bitfab-replay/<UUID> branch. For each push-trigge
 
 Verify with the replay command the user already runs. First add --cloud --cloud-preview, which pushes nothing and lists the changed and new files the snapshot would carry; review them for anything that should not leave the machine, since filename screening is not a secret scanner, and have the user gitignore it. Once the workflow is merged and secrets are set, and remote runs are authorized, run the same command with --cloud --dry-run: a real run that replays nothing but receives the secrets, stops on any empty secret, runs the --check command, and resolves the traces. Then, only when a replay is authorized, run with --cloud alone.
 
-From an agent session always add --cloud-detach, since a replay can run for hours, and follow it with --cloud-watch <UUID> (prints the replay's output and exits with its code), --cloud-status, --cloud-cancel, or --cloud-cleanup. --cloud-timeout <minutes> stops one replay early and keeps finished traces. Report separately whether the workflow is written, secrets are set, the workflow is merged, the preview was reviewed, the dry run passed, and a real replay completed.`,
+From an agent session always add --cloud-detach, since a replay can run for hours, and follow it with --cloud-watch <UUID> (prints the replay's progress and result summary and exits with its code), --cloud-status, --cloud-cancel, or --cloud-cleanup. --cloud-timeout <minutes> stops one replay early and keeps finished traces. Report separately whether the workflow is written, secrets are set, the workflow is merged, the preview was reviewed, the dry run passed, and a real replay completed.`,
           next: "cleanup/finish"
         }
       ]
