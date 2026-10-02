@@ -14755,6 +14755,16 @@ var getSpanField = {
     offset: preprocess(parseJsonString, number2().int().min(0)).optional().describe("Character position to start reading from (default 0). Pass the offset a previous response gave to read the next part of a long field.")
   }
 };
+var getSpan = {
+  name: "get_span",
+  title: "Get Span",
+  description: `Read one span from its span ID alone, with no trace ID: the span's output, and the trace and traced function it belongs to, so you can follow up with get_traces, get_span_field, or get_trace_assertions. Accepts the Bitfab span ID (the \`[ID: ...]\` get_traces prints) or the span ID your code's SDK sent. The output is returned up to ${SPAN_READ_MAX_RESPONSE_CHARS} chars per call; when it is longer, the response says which offset reads the next part. A span that cannot be found names the organization that was searched, because a span from another organization reads as not found: switch organizations and try again.`,
+  inputSchema: {
+    spanId: string2().trim().min(1).max(256).describe("The span ID: Bitfab's span ID, or the span ID your code's SDK sent"),
+    maxChars: preprocess(parseJsonString, number2().int().positive()).optional().describe(`Maximum characters of the span's output to return (default and upper limit ${SPAN_READ_MAX_RESPONSE_CHARS}). Larger values are treated as ${SPAN_READ_MAX_RESPONSE_CHARS}.`),
+    offset: preprocess(parseJsonString, number2().int().min(0)).optional().describe("Character position in the span's output to start reading from (default 0). Pass the offset a previous response gave to read the next part of a long output.")
+  }
+};
 var labelEvidenceShape = preprocess(parseJsonString, array(object({
   spanId: uuid2(),
   text: string2().trim().min(1).max(1e4)
@@ -15210,6 +15220,7 @@ var ALL_TOOL_CONTRACTS = [
   getTraceLabels,
   generateLabelEvidence,
   getSpanField,
+  getSpan,
   saveAgentLabels,
   saveHumanLabels,
   saveAssertionCategory,
@@ -16378,10 +16389,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.64.13",
-  python: "0.64.13",
-  ruby: "0.64.11",
-  go: "0.64.12"
+  typescript: "0.64.14",
+  python: "0.64.14",
+  ruby: "0.64.12",
+  go: "0.64.13"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
