@@ -15202,6 +15202,31 @@ var saveSimPlan = {
     })).min(1).max(500)).describe("Nodes to change (1-500). `name` is the span name; `captureContent` false stops recording that span's inputs and outputs and does the same for every node beneath it, true records them again for that node only.")
   }
 };
+var scenarioTraceIdSchema = uuid2().describe("ID of the trace the scenario was built from.");
+var getScenario = {
+  name: "get_scenario",
+  title: "Get Scenario",
+  description: "Read the scenario built from one trace: the situation the trace function's run was in, as the trigger that started the run and the data available when it arrived, with a name and a description. It describes the situation only, never what the run did or should do. Returns the trigger and data summaries, then the name, description, trigger, and data as JSON in exactly the shape save_scenario accepts. Call it before save_scenario so an edit starts from what is saved.",
+  inputSchema: {
+    traceId: scenarioTraceIdSchema
+  }
+};
+var saveScenario = {
+  name: "save_scenario",
+  title: "Save Scenario",
+  description: "Update the scenario built from one trace, for example to add history the run had available, record data it was missing, or correct the trigger. name, description, trigger, and data each replace the saved value whole, and fields left out are kept. To add to the data without resending it, use appendData instead of data: its history entries go after the saved ones and its missing items after the saved missing items, in one step that cannot lose another caller's append made at the same time. Send data or appendData, not both. trigger, data, and appendData entries must keep the shape get_scenario returns. A history entry's source names the span on this trace its text came from; set it to null or leave it out when the text is not in the trace, and the entry still counts as data the run had but cannot be cited as evidence when the scenario is turned into assertions. A source naming a span that is not on this trace is refused. The trigger and data summaries are rebuilt from what is saved. It only updates a scenario that already exists; a trace with no scenario is refused. Returns the saved scenario.",
+  inputSchema: {
+    traceId: scenarioTraceIdSchema,
+    name: string2().min(1).optional().describe("The scenario's name."),
+    description: string2().min(1).optional().describe("The scenario's description."),
+    trigger: preprocess(parseJsonString, record(string2(), unknown())).optional().describe("The whole trigger object, in the shape get_scenario returns: what started the run."),
+    data: preprocess(parseJsonString, record(string2(), unknown())).optional().describe("The whole data object, in the shape get_scenario returns: topic, history (earlier facts in time order, each with its source span), and missing (what the run did not have). Replaces the saved data. Leave it out when sending appendData."),
+    appendData: preprocess(parseJsonString, object({
+      history: array(record(string2(), unknown())).optional(),
+      missing: array(string2()).optional()
+    })).optional().describe("Data to add to the saved data: history entries (same shape as data.history, source optional, in time order, after the saved ones) and missing items. At least one of the two must be non-empty. Leave data out when sending this.")
+  }
+};
 var ALL_TOOL_CONTRACTS = [
   getGraderLabels,
   saveGraderLabels,
@@ -15254,7 +15279,9 @@ var ALL_TOOL_CONTRACTS = [
   getTemplate,
   saveTemplate,
   getSimPlan,
-  saveSimPlan
+  saveSimPlan,
+  getScenario,
+  saveScenario
 ];
 var TOOL_NAMES = ALL_TOOL_CONTRACTS.map((contract) => contract.name).sort();
 
@@ -16389,10 +16416,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.64.15",
-  python: "0.64.15",
-  ruby: "0.64.13",
-  go: "0.64.14"
+  typescript: "0.64.16",
+  python: "0.64.16",
+  ruby: "0.64.14",
+  go: "0.64.15"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
