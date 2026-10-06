@@ -1,6 +1,6 @@
 {
   "name": "bitfab-amp-plugin",
-  "version": "0.12.53",
+  "version": "0.12.54",
   "description": "Automated regression testing and improvements for your prompts, context, and tool calls.",
   "type": "module",
   "scripts": {
@@ -34,7 +34,7 @@
     "@ampcode/plugin": "0.0.0-20260902001824-gcbd038f",
     "@types/bun": "^1.3.10",
     "@types/node": "^26.1.2",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
 }
