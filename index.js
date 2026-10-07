@@ -15246,9 +15246,9 @@ var saveScenario = {
 var generateScenarioAssertions = {
   name: "generate_scenario_assertions",
   title: "Generate Scenario Assertions",
-  description: "Turn a person's label on the scenario built from one trace into up to four assertions, saved as pending agent assertions on that trace for review. The note says what the run got right or wrong; the verdict says whether the run was right overall. Each assertion cites the spans that settle its values, from the scenario's trigger, history, and records the run saw; records the run never saw are context only. A note that gives nothing a reviewer could check against a replay yields no assertions. A trace that is a replay, or a trace with no scenario, is refused. Returns the saved assertions.",
+  description: "Turn a person's label on one scenario, found by its id or by a trace it was built from, into up to four assertions, saved as pending agent assertions for review on the trace the scenario was built from. Create the scenario first with save_scenario and check its trigger, data, and records before calling this. The note says what the run got right or wrong; the verdict says whether the run was right overall. Each assertion cites the spans that settle its values, from the scenario's trigger, history, and records the run saw, and is saved on the trace those spans are on; records the run never saw are context only. A note that gives nothing a reviewer could check against a replay yields no assertions. A trace with no scenario, a scenario id that does not exist, or a scenario built from a replay is refused. Returns the saved assertions.",
   inputSchema: {
-    traceId: uuid2().describe("ID of the trace whose run the person labeled. Its scenario supplies the context, and the assertions are saved on this trace."),
+    ...scenarioTargetSchema,
     verdict: preprocess(parseJsonString, boolean2()).optional().describe("true when the person said the run was right, false when wrong. Leave it out when they gave no verdict."),
     note: string2().min(1).describe("What the person said was right or wrong about the run, in their words.")
   }
