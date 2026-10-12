@@ -14288,6 +14288,14 @@ function object(shape, params) {
   };
   return new ZodObject(def);
 }
+function strictObject(shape, params) {
+  return new ZodObject({
+    type: "object",
+    shape,
+    catchall: never(),
+    ...normalizeParams(params)
+  });
+}
 function looseObject(shape, params) {
   return new ZodObject({
     type: "object",
@@ -15222,13 +15230,13 @@ var scenarioTargetSchema = {
 var getScenario = {
   name: "get_scenario",
   title: "Get Scenario",
-  description: "Read one scenario, found by its id or by a trace it was built from: the situation the trace function's run was in, as the trigger that started the run and the data available when it arrived, with a name and a description. It describes the situation only, never what the run did or should do. Returns the trigger and data summaries, then the name, description, trigger, and data as JSON in exactly the shape save_scenario accepts. data.sources, when saved, says where the records came from and, for each kind of data, whether it was read in full, as of the run or as of capture, with columns the capture predates, or not captured at all. Call it before save_scenario so an edit starts from what is saved.",
+  description: "Read one scenario, found by its id or by a trace it was built from: the situation the trace function's run was in, as the trigger that started the run and the data available when it arrived, with a name and a description. The name, description, trigger, and data describe the situation only, never what the run did or should do. Returns the trigger and data summaries, then the actual outcome when one was saved (what the run actually did: one example, not what it should have done), then the name, description, trigger, data, and actualOutcome as JSON in exactly the shape save_scenario accepts. data.sources, when saved, says where the records came from and, for each kind of data, whether it was read in full, as of the run or as of capture, with columns the capture predates, or not captured at all. Call it before save_scenario so an edit starts from what is saved.",
   inputSchema: scenarioTargetSchema
 };
 var saveScenario = {
   name: "save_scenario",
   title: "Save Scenario",
-  description: "Create or update one scenario. To create a scenario, or to replace its records, send traceId with records or recordsPath: the records your own system holds that relate to that trace's run, as of the run. Create the scenario first by sending traceId with records as an empty list: Bitfab builds only the trigger from the trace (so far only for traces of Noah's noah-agent-turn function; any other trace with no scenario is refused), and the data starts empty, with no records. The data holds only what you send afterwards: the trace shows what happened in the run, not all the data your system held when it ran. Check that the returned trigger is not empty before sending records. Records that are not empty are refused for a trace with no scenario yet, and for a scenario whose trigger is empty. Bitfab looks for each record's quote, and failing that its text, in the inputs and outputs of the trace's spans. A record found in a span cites that span and can back an assertion; a record found in no span is kept as context the run never saw. A trace that is a replay is refused, because a scenario belongs on the original. Send sources beside records to say where the records came from and how much of each kind of data was read; recordsPath forwards the file's sources on its own. records and recordsPath replace the saved records and sources whole (records with no sources clear the saved sources), need traceId rather than scenarioId, and cannot be sent with any field other than sources. To edit a scenario that already exists, find it by its id or by a trace it was built from and send name, description, trigger, data, or appendData, for example to add history the run had available, record data it was missing, or correct the trigger. name, description, trigger, and data each replace the saved value whole, and fields left out are kept. To add to the data without resending it, use appendData instead of data: its history entries go after the saved ones and its missing items after the saved missing items, in one step that cannot lose another caller's append made at the same time. Send data or appendData, not both. trigger, data, and appendData entries must keep the shape get_scenario returns. A history entry's source names the span its text came from, on any trace linked to the scenario (a trace that finds it by traceId is one); set it to null or leave it out when the text is not in such a trace, and the entry still counts as data the run had but cannot be cited as evidence when the scenario is turned into assertions. A source naming a span on any other trace is refused. The trigger and data summaries are rebuilt from what is saved. An edit to a trace with no scenario, or to a scenario id that does not exist, is refused. Returns the saved scenario.",
+  description: "Create or update one scenario. To create a scenario, or to replace its records, send traceId with records or recordsPath: the records your own system holds that relate to that trace's run, as of the run. Create the scenario first by sending traceId with records as an empty list: Bitfab builds only the trigger from the trace (so far only for traces of Noah's noah-agent-turn function; any other trace with no scenario is refused), and the data starts empty, with no records. The data holds only what you send afterwards: the trace shows what happened in the run, not all the data your system held when it ran. Check that the returned trigger is not empty before sending records. Records that are not empty are refused for a trace with no scenario yet, and for a scenario whose trigger is empty. Bitfab looks for each record's quote, and failing that its text, in the inputs and outputs of the trace's spans. A record found in a span cites that span and can back an assertion; a record found in no span is kept as context the run never saw. A trace that is a replay is refused, because a scenario belongs on the original. Send sources beside records to say where the records came from and how much of each kind of data was read; recordsPath forwards the file's sources on its own. records and recordsPath replace the saved records and sources whole (records with no sources clear the saved sources), need traceId rather than scenarioId, and cannot be sent with any field other than sources. To edit a scenario that already exists, find it by its id or by a trace it was built from and send name, description, trigger, data, or appendData, for example to add history the run had available, record data it was missing, or correct the trigger. name, description, trigger, and data each replace the saved value whole, and fields left out are kept. To record what the run actually did, send actualOutcome, read from the trace: its final output for the summary and the tool calls that ran for the actions. It is shown below the trigger as one example of how the run handled the situation, never as what it should have done, and it is not evidence for assertions. Bitfab does not fill it. Send null to clear it. To add to the data without resending it, use appendData instead of data: its history entries go after the saved ones and its missing items after the saved missing items, in one step that cannot lose another caller's append made at the same time. Send data or appendData, not both. trigger, data, and appendData entries must keep the shape get_scenario returns. A history entry's source names the span its text came from, on any trace linked to the scenario (a trace that finds it by traceId is one); set it to null or leave it out when the text is not in such a trace, and the entry still counts as data the run had but cannot be cited as evidence when the scenario is turned into assertions. A source naming a span on any other trace is refused. The trigger and data summaries are rebuilt from what is saved. An edit to a trace with no scenario, or to a scenario id that does not exist, is refused. Returns the saved scenario.",
   inputSchema: {
     ...scenarioTargetSchema,
     name: string2().min(1).optional().describe("The scenario's name."),
@@ -15239,6 +15247,21 @@ var saveScenario = {
       history: array(record(string2(), unknown())).optional(),
       missing: array(string2()).optional()
     })).optional().describe("Data to add to the saved data: history entries (same shape as data.history, source optional, in time order, after the saved ones) and missing items. At least one of the two must be non-empty. Leave data out when sending this."),
+    actualOutcome: preprocess(parseJsonString, strictObject({
+      summary: string2().describe("The run's outcome in a few sentences, in your own words."),
+      actions: array(strictObject({
+        name: string2().min(1).describe('The action the run took, such as "send_sms_message".'),
+        details: record(string2(), unknown()).describe("The action's arguments, as an object."),
+        result: string2().nullable().describe("What came back from the action, or null."),
+        failed: boolean2().describe("Whether the action did not go through."),
+        at: string2().nullable().describe("When the action happened (ISO 8601), or null.")
+      })).describe("What the run did, in order. Leave out lookups that changed nothing. Empty when the run took no action."),
+      source: strictObject({
+        spanId: uuid2().describe("The span the summary came from."),
+        sourceField: _enum(["input", "output"]).describe("Which side of the span holds the text."),
+        text: string2().describe("The text, as it appears in the span.")
+      }).nullable().optional().describe("The span the summary came from, on a trace linked to the scenario, or null.")
+    }).nullable()).optional().describe("What the run actually did. Replaces the saved actual outcome whole. Send null to clear it."),
     records: preprocess(parseJsonString, array(record(string2(), unknown()))).optional().describe(`The records related to this run, each { kind, ref, at, asOf, title, text, quote }. kind is one of "message", "contact", "preference", "memory", "email", "calendar_event", "action_item". ref is your own pointer to the row, such as "Input:234605". at is when the record came to exist, or null. asOf is "run" when the record is as it was at the run, or "now" when no history is kept for it. quote is a short exact string to look for in the run's spans, or null to look for the whole text. Prefer recordsPath, so the records never pass through the conversation. Send records or recordsPath, not both.`),
     recordsPath: string2().min(1).optional().describe("Path to a local JSON file holding the records, either as an array or as an object with a records array. The Bitfab plugin reads the file and sends its records, so they never pass through the conversation. When the object also has frameAt, capturedAt, windows, and coverage, as Noah's scenario builder writes them, the plugin sends those as sources. Send records or recordsPath, not both."),
     sources: preprocess(parseJsonString, record(string2(), unknown())).optional().describe(`Where the records came from, as { frameAt, capturedAt, windows, coverage }: when the run started, when its data was captured (or null), how many days each windowed kind reaches (such as { "messagesDays": 3, "calendarDays": 7 }), and coverage, which gives each kind of data its capture status ("rewound-to-frame" for as of the run, "current-at-capture" for as of capture, "not-recorded" or "unavailable" for not captured) plus filledColumns { absentNullable, defaultedNonNullable }, the "table.column" names the capture predates. Only with records, never with recordsPath, which sends the file's own.`)
@@ -16506,10 +16529,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.64.23",
-  python: "0.64.21",
-  ruby: "0.64.19",
-  go: "0.64.20"
+  typescript: "0.64.24",
+  python: "0.64.22",
+  ruby: "0.64.20",
+  go: "0.64.21"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
