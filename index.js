@@ -14971,11 +14971,12 @@ var listGraders = {
 var saveDataset = {
   name: "save_dataset",
   title: "Save Dataset",
-  description: "Create or edit a labeled dataset for a traced function. Datasets are named buckets of traces (e.g. 'Hallucination failures', 'Edge cases for grader X') that humans review and that experiments replay against. Pass traceFunctionKey, a short human-readable name, and an optional description. Saving with the name of an existing dataset on the same trace function updates that dataset instead of creating a duplicate, so re-running a flow is safe; pass a new description to change it, or omit it to leave the current one. Returns the dataset id; use it with add_traces_to_dataset to populate. Call list_datasets first when you need to see what already exists.",
+  description: "Create or edit a labeled dataset for a traced function. Datasets are named buckets of traces (e.g. 'Hallucination failures', 'Edge cases for grader X') that humans review and that experiments replay against. To create, pass traceFunctionKey, a short human-readable name, and an optional description. Saving with the name of an existing dataset on the same trace function updates that dataset instead of creating a duplicate, so re-running a flow is safe; pass a new description to change it, or omit it to leave the current one. To rename a dataset or change its description in place, pass its datasetId with a new name and/or description; its id, traces, and graders are kept, and a name already used by another dataset on the same trace function is refused. Returns the dataset id; use it with add_traces_to_dataset to populate. Call list_datasets first when you need to see what already exists.",
   inputSchema: {
-    traceFunctionKey: string2().min(1).describe("The trace function key the dataset is scoped to (must match traces you'll add)"),
-    name: string2().min(1).describe("Short human-readable name shown in the labeling UI (e.g. 'Hallucination failures')"),
-    description: string2().optional().describe("Optional longer description of what's in the dataset")
+    datasetId: uuid2().optional().describe("Existing dataset id (from list_datasets) to rename or redescribe in place. Omit to create a dataset or save one by name."),
+    traceFunctionKey: string2().min(1).optional().describe("The trace function key the dataset is scoped to (must match traces you'll add). Required without datasetId."),
+    name: string2().min(1).optional().describe("Short human-readable name shown in the labeling UI (e.g. 'Hallucination failures'). Required without datasetId. With datasetId, the new name; omit to keep the current one."),
+    description: string2().optional().describe("Optional longer description of what's in the dataset. With datasetId, omit to keep the current one or pass an empty string to clear it.")
   }
 };
 var listDatasets = {
@@ -16529,10 +16530,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.64.25",
-  python: "0.64.22",
-  ruby: "0.64.20",
-  go: "0.64.21"
+  typescript: "0.64.26",
+  python: "0.64.23",
+  ruby: "0.64.21",
+  go: "0.64.22"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
