@@ -15091,7 +15091,7 @@ var listExperiments = {
 var listExperimentTraces = {
   name: "list_experiment_traces",
   title: "List Experiment Traces",
-  description: "Get individual trace results for an experiment, including each replay trace's verdict (fixed, regressed, still-passing, still-failing, original-unlabeled, replay-unlabeled, capture-incomplete, unpaired, skipped) by comparing against the original trace's label, plus token usage (input, output, cached, total) for the replay and the paired original so you can reason about cost and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
+  description: "Get individual trace results for an experiment, including each replay trace's verdict (fixed, regressed, still-passing, still-failing, original-unlabeled, replay-unlabeled, capture-incomplete, unpaired, skipped) by comparing against the original trace's label, plus the replay's duration and token usage (input, output, cached, total) for the replay and the paired original so you can reason about latency, cost, and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
   inputSchema: {
     experimentId: uuid2().describe("The experiment ID to get traces for")
   }
@@ -16530,10 +16530,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.64.26",
-  python: "0.64.23",
-  ruby: "0.64.21",
-  go: "0.64.22"
+  typescript: "0.64.27",
+  python: "0.64.24",
+  ruby: "0.64.22",
+  go: "0.64.23"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
