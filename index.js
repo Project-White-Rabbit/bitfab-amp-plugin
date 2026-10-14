@@ -4879,13 +4879,32 @@ var require_data = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.5/node_modules/fast-uri/lib/utils.js
+// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/utils.js
 var require_utils = __commonJS(function(exports, module) {
   var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
   var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
+  var isPort = RegExp.prototype.test.bind(/^\d*$/u);
   var isHexPair = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu);
   var isUnreserved = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu);
-  var isPathCharacter = RegExp.prototype.test.bind(/^[\da-z\-._~!$&'()*+,;=:@/]$/iu);
+  var isPathCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/]$/u);
+  var isQueryFragmentCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/?]$/u);
+  var isUserinfoCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:]$/u);
+  var BYTE_HEX = new Array(256);
+  {
+    const HEX_DIGITS = "0123456789ABCDEF";
+    for (let i = 0;i < 256; i++) {
+      BYTE_HEX[i] = "%" + HEX_DIGITS[i >> 4] + HEX_DIGITS[i & 15];
+    }
+  }
+  function percentEncodeNonAscii(cp) {
+    if (cp < 2048) {
+      return BYTE_HEX[192 | cp >> 6] + BYTE_HEX[128 | cp & 63];
+    }
+    if (cp < 65536) {
+      return BYTE_HEX[224 | cp >> 12] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+    }
+    return BYTE_HEX[240 | cp >> 18] + BYTE_HEX[128 | cp >> 12 & 63] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+  }
   function stringArrayToHexStripped(input) {
     let acc = "";
     let code = 0;
@@ -4910,91 +4929,122 @@ var require_utils = __commonJS(function(exports, module) {
     }
     return acc;
   }
+  var isHextet = RegExp.prototype.test.bind(/^[\dA-Fa-f]{1,4}$/);
+  var isIPvFuture = RegExp.prototype.test.bind(/^[vV][\dA-Fa-f]+\.[A-Za-z\d\-._~!$&'()*+,;=:]+$/);
+  var isZoneCharacter = RegExp.prototype.test.bind(/^[A-Za-z\d\-._~]$/);
   var nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
-  function consumeIsZone(buffer) {
-    buffer.length = 0;
-    return true;
-  }
-  function consumeHextets(buffer, address, output) {
-    if (buffer.length) {
-      const hex = stringArrayToHexStripped(buffer);
-      if (hex !== "") {
-        address.push(hex);
-      } else {
-        output.error = true;
-        return false;
+  function isZoneIdentifier(zone) {
+    if (zone.length === 0)
+      return false;
+    for (let i = 0;i < zone.length; i++) {
+      if (isZoneCharacter(zone[i]))
+        continue;
+      if (zone[i] === "%" && i + 2 < zone.length && isHexPair(zone.slice(i + 1, i + 3))) {
+        i += 2;
+        continue;
       }
-      buffer.length = 0;
+      return false;
     }
     return true;
   }
-  function getIPV6(input) {
-    let tokenCount = 0;
-    const output = { error: false, address: "", zone: "" };
-    const address = [];
-    const buffer = [];
-    let endipv6Encountered = false;
-    let endIpv6 = false;
-    let consume = consumeHextets;
-    for (let i = 0;i < input.length; i++) {
-      const cursor = input[i];
-      if (cursor === "[" || cursor === "]") {
-        continue;
-      }
-      if (cursor === ":") {
-        if (endipv6Encountered === true) {
-          endIpv6 = true;
+  function compressIPv6ZeroRun(hextets) {
+    let bestStart = -1;
+    let bestLength = 0;
+    let runStart = -1;
+    let runLength = 0;
+    for (let i = 0;i < hextets.length; i++) {
+      if (hextets[i] === "0") {
+        if (runStart === -1)
+          runStart = i;
+        runLength++;
+        if (runLength > bestLength) {
+          bestLength = runLength;
+          bestStart = runStart;
         }
-        if (!consume(buffer, address, output)) {
-          break;
-        }
-        if (++tokenCount > 7) {
-          output.error = true;
-          break;
-        }
-        if (i > 0 && input[i - 1] === ":") {
-          endipv6Encountered = true;
-        }
-        address.push(":");
-        continue;
-      } else if (cursor === "%") {
-        if (!consume(buffer, address, output)) {
-          break;
-        }
-        consume = consumeIsZone;
       } else {
-        buffer.push(cursor);
-        continue;
+        runStart = -1;
+        runLength = 0;
       }
     }
-    if (buffer.length) {
-      if (consume === consumeIsZone) {
-        output.zone = buffer.join("");
-      } else if (endIpv6) {
-        address.push(buffer.join(""));
-      } else {
-        address.push(stringArrayToHexStripped(buffer));
-      }
+    if (bestLength < 2)
+      return hextets.join(":");
+    const head = hextets.slice(0, bestStart).join(":");
+    const tail = hextets.slice(bestStart + bestLength).join(":");
+    return head + "::" + tail;
+  }
+  function normalizeIPv6Address(input) {
+    const compression = input.indexOf("::");
+    if (compression !== -1 && input.indexOf("::", compression + 1) !== -1)
+      return;
+    const left = compression === -1 ? input.split(":") : input.slice(0, compression).split(":");
+    const right = compression === -1 ? [] : input.slice(compression + 2).split(":");
+    if (compression !== -1) {
+      if (left.length === 1 && left[0] === "")
+        left.length = 0;
+      if (right.length === 1 && right[0] === "")
+        right.length = 0;
     }
-    output.address = address.join("");
-    return output;
+    const parts = left.concat(right);
+    let hextetCount = 0;
+    for (let i = 0;i < parts.length; i++) {
+      const part = parts[i];
+      if (part === "")
+        return;
+      if (part.indexOf(".") !== -1) {
+        if (i !== parts.length - 1 || compression !== -1 && right.length === 0 || !isIPv4(part))
+          return;
+        hextetCount += 2;
+        continue;
+      }
+      if (!isHextet(part))
+        return;
+      parts[i] = parseInt(part, 16).toString(16);
+      hextetCount++;
+    }
+    if (compression === -1) {
+      if (hextetCount !== 8)
+        return;
+      return compressIPv6ZeroRun(parts);
+    }
+    if (hextetCount >= 8)
+      return;
+    const expanded = parts.slice(0, left.length);
+    for (let i = hextetCount;i < 8; i++)
+      expanded.push("0");
+    for (let i = left.length;i < parts.length; i++)
+      expanded.push(parts[i]);
+    return compressIPv6ZeroRun(expanded);
   }
   function normalizeIPv6(host) {
-    if (findToken(host, ":") < 2) {
-      return { host, isIPV6: false };
+    const bracketed = host[0] === "[" && host[host.length - 1] === "]";
+    const hasBracket = host[0] === "[" || host[host.length - 1] === "]";
+    if (hasBracket && !bracketed)
+      return { host, isIPV6: false, error: true };
+    let input = bracketed ? host.slice(1, -1) : host;
+    if (bracketed && isIPvFuture(input)) {
+      input = input.toLowerCase();
+      return { host: `[${input}]`, escapedHost: input, isIPV6: false, isIPVFuture: true };
     }
-    const ipv6 = getIPV6(host);
-    if (!ipv6.error) {
-      let newHost = ipv6.address;
-      let escapedHost = ipv6.address;
-      if (ipv6.zone) {
-        newHost += "%" + ipv6.zone;
-        escapedHost += "%25" + ipv6.zone;
-      }
-      return { host: newHost, isIPV6: true, escapedHost };
-    } else {
-      return { host, isIPV6: false };
+    if (findToken(input, ":") < 2) {
+      return { host, isIPV6: false, error: bracketed };
     }
+    let zoneIdentifier = "";
+    const zoneSeparator = input.indexOf("%");
+    if (zoneSeparator !== -1) {
+      const separatorLength = input.slice(zoneSeparator, zoneSeparator + 3).toLowerCase() === "%25" ? 3 : 1;
+      zoneIdentifier = input.slice(zoneSeparator + separatorLength);
+      if (!isZoneIdentifier(zoneIdentifier))
+        return { host, isIPV6: false, error: true };
+      input = input.slice(0, zoneSeparator);
+    }
+    const address = normalizeIPv6Address(input);
+    if (address === undefined)
+      return { host, isIPV6: false, error: true };
+    return {
+      host: address + (zoneIdentifier ? "%" + zoneIdentifier : ""),
+      escapedHost: address + (zoneIdentifier ? "%25" + zoneIdentifier : ""),
+      isIPV6: true
+    };
   }
   function findToken(str, token) {
     let ind = 0;
@@ -5114,7 +5164,8 @@ var require_utils = __commonJS(function(exports, module) {
   function normalizePathEncoding(input) {
     let output = "";
     for (let i = 0;i < input.length; i++) {
-      if (input[i] === "%" && i + 2 < input.length) {
+      const ch = input[i];
+      if (ch === "%" && i + 2 < input.length) {
         const hex = input.slice(i + 1, i + 3);
         if (isHexPair(hex)) {
           const normalizedHex = hex.toUpperCase();
@@ -5128,10 +5179,152 @@ var require_utils = __commonJS(function(exports, module) {
           continue;
         }
       }
-      if (isPathCharacter(input[i])) {
-        output += input[i];
+      if (isPathCharacter(ch)) {
+        output += ch;
       } else {
-        output += escape(input[i]);
+        const code = input.charCodeAt(i);
+        if (code < 128) {
+          output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+        } else if (code < 55296 || code > 57343) {
+          output += percentEncodeNonAscii(code);
+        } else if (code <= 56319 && i + 1 < input.length) {
+          const low = input.charCodeAt(i + 1);
+          if (low >= 56320 && low <= 57343) {
+            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+            i++;
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        } else {
+          output += percentEncodeNonAscii(65533);
+        }
+      }
+    }
+    return output;
+  }
+  function serializePathEncoding(input, pathNoScheme = false) {
+    let output = "";
+    let firstSegment = pathNoScheme && input[0] !== "/";
+    for (let i = 0;i < input.length; i++) {
+      const ch = input[i];
+      if (ch === "%" && i + 2 < input.length) {
+        const hex = input.slice(i + 1, i + 3);
+        if (isHexPair(hex)) {
+          output += "%" + hex.toUpperCase();
+          i += 2;
+          continue;
+        }
+      }
+      if (ch === "/") {
+        firstSegment = false;
+      }
+      if (isPathCharacter(ch) && (ch !== ":" || !firstSegment)) {
+        output += ch;
+      } else {
+        const code = input.charCodeAt(i);
+        if (code < 128) {
+          output += BYTE_HEX[code];
+        } else if (code < 55296 || code > 57343) {
+          output += percentEncodeNonAscii(code);
+        } else if (code <= 56319 && i + 1 < input.length) {
+          const low = input.charCodeAt(i + 1);
+          if (low >= 56320 && low <= 57343) {
+            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+            i++;
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        } else {
+          output += percentEncodeNonAscii(65533);
+        }
+      }
+    }
+    return output;
+  }
+  function encodeComponent(input, isAllowed) {
+    let output = "";
+    for (let i = 0;i < input.length; i++) {
+      const ch = input[i];
+      if (ch === "%" && i + 2 < input.length) {
+        const hex = input.slice(i + 1, i + 3);
+        if (isHexPair(hex)) {
+          output += "%" + hex.toUpperCase();
+          i += 2;
+          continue;
+        }
+      }
+      if (isAllowed(ch)) {
+        output += ch;
+      } else {
+        const code = input.charCodeAt(i);
+        if (code < 128) {
+          output += BYTE_HEX[code];
+        } else if (code < 55296 || code > 57343) {
+          output += percentEncodeNonAscii(code);
+        } else if (code <= 56319 && i + 1 < input.length) {
+          const low = input.charCodeAt(i + 1);
+          if (low >= 56320 && low <= 57343) {
+            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+            i++;
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        } else {
+          output += percentEncodeNonAscii(65533);
+        }
+      }
+    }
+    return output;
+  }
+  function encodeUserinfo(input) {
+    return encodeComponent(input, isUserinfoCharacter);
+  }
+  function encodeQuery(input) {
+    return encodeComponent(input, isQueryFragmentCharacter);
+  }
+  function encodeFragment(input) {
+    return encodeComponent(input, isQueryFragmentCharacter);
+  }
+  function isEscapeSafe(cp) {
+    return cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 42 || cp === 43 || cp === 45 || cp === 46 || cp === 47 || cp === 64 || cp === 95;
+  }
+  function normalizeQueryFragmentEncoding(input) {
+    let output = "";
+    for (let i = 0;i < input.length; i++) {
+      const ch = input[i];
+      if (ch === "%" && i + 2 < input.length) {
+        const hex = input.slice(i + 1, i + 3);
+        if (isHexPair(hex)) {
+          const normalizedHex = hex.toUpperCase();
+          const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
+          if (isUnreserved(decoded)) {
+            output += decoded;
+          } else {
+            output += "%" + normalizedHex;
+          }
+          i += 2;
+          continue;
+        }
+      }
+      if (isQueryFragmentCharacter(ch)) {
+        output += ch;
+      } else {
+        const code = input.charCodeAt(i);
+        if (code < 128) {
+          output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+        } else if (code < 55296 || code > 57343) {
+          output += percentEncodeNonAscii(code);
+        } else if (code <= 56319 && i + 1 < input.length) {
+          const low = input.charCodeAt(i + 1);
+          if (low >= 56320 && low <= 57343) {
+            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+            i++;
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        } else {
+          output += percentEncodeNonAscii(65533);
+        }
       }
     }
     return output;
@@ -5154,14 +5347,18 @@ var require_utils = __commonJS(function(exports, module) {
   function recomposeAuthority(component) {
     const uriTokens = [];
     if (component.userinfo !== undefined) {
-      uriTokens.push(component.userinfo);
+      uriTokens.push(encodeUserinfo(component.userinfo));
       uriTokens.push("@");
     }
     if (component.host !== undefined) {
-      let host = unescape(component.host);
+      let host = component.host;
       if (!isIPv4(host)) {
-        const ipV6res = normalizeIPv6(host);
-        if (ipV6res.isIPV6 === true) {
+        let ipV6res = normalizeIPv6(host);
+        if (ipV6res.isIPV6 !== true && ipV6res.isIPVFuture !== true) {
+          host = normalizePercentEncoding(host, true);
+          ipV6res = normalizeIPv6(host);
+        }
+        if (ipV6res.isIPV6 === true || ipV6res.isIPVFuture === true) {
           host = `[${ipV6res.escapedHost}]`;
         } else {
           host = reescapeHostDelimiters(host, false);
@@ -5170,8 +5367,12 @@ var require_utils = __commonJS(function(exports, module) {
       uriTokens.push(host);
     }
     if (typeof component.port === "number" || typeof component.port === "string") {
+      const port = String(component.port);
+      if (!isPort(port)) {
+        throw new TypeError("URI port is malformed.");
+      }
       uriTokens.push(":");
-      uriTokens.push(String(component.port));
+      uriTokens.push(port);
     }
     return uriTokens.length ? uriTokens.join("") : undefined;
   }
@@ -5181,6 +5382,11 @@ var require_utils = __commonJS(function(exports, module) {
     reescapeHostDelimiters,
     normalizePercentEncoding,
     normalizePathEncoding,
+    serializePathEncoding,
+    normalizeQueryFragmentEncoding,
+    encodeUserinfo,
+    encodeQuery,
+    encodeFragment,
     escapePreservingEscapes,
     removeDotSegments,
     isIPv4,
@@ -5190,10 +5396,10 @@ var require_utils = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.5/node_modules/fast-uri/lib/schemes.js
+// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/schemes.js
 var require_schemes = __commonJS(function(exports, module) {
   var { isUUID } = require_utils();
-  var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
+  var URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
   var supportedSchemeNames = [
     "http",
     "https",
@@ -5248,9 +5454,10 @@ var require_schemes = __commonJS(function(exports, module) {
       wsComponent.secure = undefined;
     }
     if (wsComponent.resourceName) {
-      const [path, query] = wsComponent.resourceName.split("?");
+      const queryIndex = wsComponent.resourceName.indexOf("?");
+      const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
       wsComponent.path = path && path !== "/" ? path : undefined;
-      wsComponent.query = query;
+      wsComponent.query = queryIndex === -1 ? undefined : wsComponent.resourceName.slice(queryIndex + 1);
       wsComponent.resourceName = undefined;
     }
     wsComponent.fragment = undefined;
@@ -5262,7 +5469,7 @@ var require_schemes = __commonJS(function(exports, module) {
       return urnComponent;
     }
     const matches = urnComponent.path.match(URN_REG);
-    if (matches) {
+    if (matches && matches[0] === urnComponent.path) {
       const scheme = options.scheme || urnComponent.scheme || "urn";
       urnComponent.nid = matches[1].toLowerCase();
       urnComponent.nss = matches[2];
@@ -5364,10 +5571,19 @@ var require_schemes = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.5/node_modules/fast-uri/index.js
+// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS(function(exports, module) {
-  var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
+  var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
   var { SCHEMES, getSchemeHandler } = require_schemes();
+  var VALID_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
+  var MALFORMED_SCHEME_ERROR = "URI scheme is malformed.";
+  function decodeValidScheme(scheme) {
+    const decodedScheme = unescape(String(scheme));
+    if (!VALID_SCHEME.test(decodedScheme)) {
+      throw new TypeError(MALFORMED_SCHEME_ERROR);
+    }
+    return decodedScheme;
+  }
   function normalize(uri, options) {
     if (typeof uri === "string") {
       uri = normalizeString(uri, options);
@@ -5378,12 +5594,34 @@ var require_fast_uri = __commonJS(function(exports, module) {
   }
   function resolve(baseURI, relativeURI, options) {
     const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-    const { parsed: baseParsed, malformedAuthorityOrPort: baseMalformed } = parseWithStatus(baseURI, schemelessOptions);
-    const { parsed: relativeParsed, malformedAuthorityOrPort: relativeMalformed } = parseWithStatus(relativeURI, schemelessOptions);
-    if (baseMalformed || relativeMalformed) {
+    const {
+      parsed: baseParsed,
+      malformedAuthorityOrPort: baseMalformed,
+      malformedPercentEncoding: baseMalformedPercentEncoding,
+      malformedSchemeSpecific: baseMalformedSchemeSpecific,
+      malformedHost: baseMalformedHost,
+      malformedScheme: baseMalformedScheme
+    } = parseWithStatus(baseURI, schemelessOptions);
+    const {
+      parsed: relativeParsed,
+      malformedAuthorityOrPort: relativeMalformed,
+      malformedPercentEncoding: relativeMalformedPercentEncoding,
+      malformedSchemeSpecific: relativeMalformedSchemeSpecific,
+      malformedHost: relativeMalformedHost,
+      malformedScheme: relativeMalformedScheme
+    } = parseWithStatus(relativeURI, schemelessOptions);
+    if (baseMalformed || relativeMalformed || baseMalformedPercentEncoding || relativeMalformedPercentEncoding || baseMalformedSchemeSpecific || relativeMalformedSchemeSpecific || baseMalformedHost || relativeMalformedHost || baseMalformedScheme || relativeMalformedScheme) {
       throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
     }
     const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
+    const resolvedSchemeHandler = getSchemeHandler(options && options.scheme || resolved.scheme);
+    const resolvedHost = resolved.host;
+    const resolvedHostIsIP = resolvedHost !== undefined && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
+    canonicalizeHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP);
+    const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !/\P{ASCII}/u.test(resolvedHost);
+    if (resolved.error && !encodedASCIIHost) {
+      throw new Error(resolved.error);
+    }
     schemelessOptions.skipEscape = true;
     return serialize(resolved, schemelessOptions);
   }
@@ -5443,7 +5681,7 @@ var require_fast_uri = __commonJS(function(exports, module) {
   function equal(uriA, uriB, options) {
     const normalizedA = normalizeComparableURI(uriA, options);
     const normalizedB = normalizeComparableURI(uriB, options);
-    return normalizedA !== undefined && normalizedB !== undefined && normalizedA.toLowerCase() === normalizedB.toLowerCase();
+    return normalizedA !== undefined && normalizedB !== undefined && normalizedA === normalizedB;
   }
   function serialize(cmpts, opts) {
     const component = {
@@ -5464,20 +5702,23 @@ var require_fast_uri = __commonJS(function(exports, module) {
     };
     const options = Object.assign({}, opts);
     const uriTokens = [];
+    if (component.scheme) {
+      component.scheme = decodeValidScheme(component.scheme);
+    }
     const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
     if (schemeHandler && schemeHandler.serialize)
       schemeHandler.serialize(component, options);
+    const hasAuthority = component.userinfo !== undefined || component.host !== undefined || component.port !== undefined;
+    const pathNoScheme = !options.skipEscape && component.scheme === undefined && !hasAuthority;
     if (component.path !== undefined) {
       if (!options.skipEscape) {
-        component.path = escapePreservingEscapes(component.path);
-        if (component.scheme !== undefined) {
-          component.path = component.path.split("%3A").join(":");
-        }
+        component.path = serializePathEncoding(component.path, pathNoScheme);
       } else {
         component.path = normalizePercentEncoding(component.path);
       }
     }
     if (options.reference !== "suffix" && component.scheme) {
+      component.scheme = decodeValidScheme(component.scheme);
       uriTokens.push(component.scheme, ":");
     }
     const authority = recomposeAuthority(component);
@@ -5495,16 +5736,19 @@ var require_fast_uri = __commonJS(function(exports, module) {
       if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
         s = removeDotSegments(s);
       }
+      if (pathNoScheme) {
+        s = serializePathEncoding(s, true);
+      }
       if (authority === undefined && s[0] === "/" && s[1] === "/") {
         s = "/%2F" + s.slice(2);
       }
       uriTokens.push(s);
     }
     if (component.query !== undefined) {
-      uriTokens.push("?", component.query);
+      uriTokens.push("?", encodeQuery(component.query));
     }
     if (component.fragment !== undefined) {
-      uriTokens.push("#", component.fragment);
+      uriTokens.push("#", encodeFragment(component.fragment));
     }
     return uriTokens.join("");
   }
@@ -5520,6 +5764,36 @@ var require_fast_uri = __commonJS(function(exports, module) {
     }
     return;
   }
+  function hasMalformedPercentEncoding(component) {
+    if (component === undefined)
+      return false;
+    let percent = component.indexOf("%");
+    while (percent !== -1) {
+      if (percent + 2 >= component.length || !/^[\da-f]{2}$/iu.test(component.slice(percent + 1, percent + 3))) {
+        return true;
+      }
+      percent = component.indexOf("%", percent + 3);
+    }
+    return false;
+  }
+  function isIPLiteral(host) {
+    return host[0] === "[" && host[host.length - 1] === "]";
+  }
+  function hasMalformedComponentPercentEncoding(matches) {
+    const host = matches[4];
+    return hasMalformedPercentEncoding(matches[3]) || host !== undefined && !isIPLiteral(host) && hasMalformedPercentEncoding(host) || hasMalformedPercentEncoding(matches[6]) || hasMalformedPercentEncoding(matches[7]) || hasMalformedPercentEncoding(matches[8]);
+  }
+  function canonicalizeHost(parsed, options, schemeHandler, isIP) {
+    if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport) && parsed.host && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
+      try {
+        parsed.host = new URL("http://" + parsed.host).hostname;
+      } catch (e) {
+        parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
+        return true;
+      }
+    }
+    return false;
+  }
   function parseWithStatus(uri, opts) {
     const options = Object.assign({}, opts);
     const parsed = {
@@ -5532,6 +5806,11 @@ var require_fast_uri = __commonJS(function(exports, module) {
       fragment: undefined
     };
     let malformedAuthorityOrPort = false;
+    let malformedPercentEncoding = false;
+    let malformedSchemeSpecific = false;
+    let malformedHost = false;
+    let malformedIPLiteral = false;
+    let malformedScheme = false;
     let isIP = false;
     if (options.reference === "suffix") {
       if (options.scheme) {
@@ -5568,6 +5847,19 @@ var require_fast_uri = __commonJS(function(exports, module) {
       parsed.path = matches[6] || "";
       parsed.query = matches[7];
       parsed.fragment = matches[8];
+      if (parsed.scheme !== undefined) {
+        const decodedScheme = unescape(parsed.scheme);
+        if (VALID_SCHEME.test(decodedScheme)) {
+          parsed.scheme = decodedScheme.toLowerCase();
+        } else {
+          parsed.error = parsed.error || MALFORMED_SCHEME_ERROR;
+          malformedScheme = true;
+        }
+      }
+      malformedPercentEncoding = hasMalformedComponentPercentEncoding(matches);
+      if (malformedPercentEncoding) {
+        parsed.error = parsed.error || "URI contains malformed percent-encoding.";
+      }
       if (isNaN(parsed.port)) {
         parsed.port = matches[5];
       }
@@ -5579,9 +5871,16 @@ var require_fast_uri = __commonJS(function(exports, module) {
       if (parsed.host) {
         const ipv4result = isIPv4(parsed.host);
         if (ipv4result === false) {
+          const bracketedIPLiteral = isIPLiteral(parsed.host);
+          const hasIPLiteralBracket = parsed.host.indexOf("[") !== -1 || parsed.host.indexOf("]") !== -1;
           const ipv6result = normalizeIPv6(parsed.host);
-          parsed.host = ipv6result.host.toLowerCase();
-          isIP = ipv6result.isIPV6;
+          isIP = ipv6result.isIPV6 || ipv6result.isIPVFuture === true;
+          malformedIPLiteral = hasIPLiteralBracket && (!bracketedIPLiteral || ipv6result.error === true);
+          parsed.host = isIP ? ipv6result.host : ipv6result.host.toLowerCase();
+          if (malformedIPLiteral) {
+            parsed.error = parsed.error || "URI host is malformed.";
+            malformedAuthorityOrPort = true;
+          }
         } else {
           isIP = true;
         }
@@ -5599,42 +5898,37 @@ var require_fast_uri = __commonJS(function(exports, module) {
         parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
       }
       const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
-      if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
-        if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
-          try {
-            parsed.host = new URL("http://" + parsed.host).hostname;
-          } catch (e) {
-            parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
-          }
+      if (!malformedIPLiteral) {
+        malformedHost = canonicalizeHost(parsed, options, schemeHandler, isIP);
+      }
+      if (uri.indexOf("%") !== -1 && parsed.host !== undefined && !malformedIPLiteral) {
+        let host = isIP ? parsed.host : normalizePercentEncoding(parsed.host, true);
+        if (!isIP) {
+          host = normalizePercentEncoding(host.toLowerCase());
         }
+        parsed.host = reescapeHostDelimiters(host, isIP);
       }
       if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
-        if (uri.indexOf("%") !== -1) {
-          if (parsed.scheme !== undefined) {
-            parsed.scheme = unescape(parsed.scheme);
-          }
-          if (parsed.host !== undefined) {
-            parsed.host = reescapeHostDelimiters(unescape(parsed.host), isIP);
-          }
-        }
         if (parsed.path) {
           parsed.path = normalizePathEncoding(parsed.path);
         }
+        if (parsed.query) {
+          parsed.query = normalizeQueryFragmentEncoding(parsed.query);
+        }
         if (parsed.fragment) {
-          try {
-            parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
-          } catch {
-            parsed.error = parsed.error || "URI malformed";
-          }
+          parsed.fragment = normalizeQueryFragmentEncoding(parsed.fragment);
         }
       }
       if (schemeHandler && schemeHandler.parse) {
         schemeHandler.parse(parsed, options);
+        if (schemeHandler === SCHEMES.urn && parsed.nid === undefined) {
+          malformedSchemeSpecific = true;
+        }
       }
     } else {
       parsed.error = parsed.error || "URI can not be parsed.";
     }
-    return { parsed, malformedAuthorityOrPort };
+    return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
   }
   function parse(uri, opts) {
     return parseWithStatus(uri, opts).parsed;
@@ -5643,20 +5937,28 @@ var require_fast_uri = __commonJS(function(exports, module) {
     return normalizeStringWithStatus(uri, opts).normalized;
   }
   function normalizeStringWithStatus(uri, opts) {
-    const { parsed, malformedAuthorityOrPort } = parseWithStatus(uri, opts);
+    const { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = parseWithStatus(uri, opts);
     return {
-      normalized: malformedAuthorityOrPort ? uri : serialize(parsed, opts),
-      malformedAuthorityOrPort
+      normalized: malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? uri : serialize(parsed, opts),
+      malformedAuthorityOrPort,
+      malformedPercentEncoding,
+      malformedSchemeSpecific,
+      malformedHost,
+      malformedScheme
     };
   }
   function normalizeComparableURI(uri, opts) {
-    if (typeof uri === "string") {
-      const { normalized, malformedAuthorityOrPort } = normalizeStringWithStatus(uri, opts);
-      return malformedAuthorityOrPort ? undefined : normalized;
+    if (typeof uri !== "string" && typeof uri !== "object") {
+      return;
     }
-    if (typeof uri === "object") {
-      return serialize(uri, opts);
+    let value;
+    try {
+      value = typeof uri === "string" ? uri : serialize(uri, opts);
+    } catch {
+      return;
     }
+    const { normalized, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = normalizeStringWithStatus(value, opts);
+    return malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? undefined : normalized;
   }
   var fastUri = {
     SCHEMES,
@@ -8466,7 +8768,7 @@ var require_dist = __commonJS(function(exports, module) {
 import { readFile } from "fs/promises";
 import { resolve } from "path";
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/util.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
   const numericValues = Object.values(entries).filter((v) => typeof v === "number");
   const values = Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
@@ -8812,6 +9114,18 @@ function prefixIssues(path, issues) {
 function unwrapMessage(message) {
   return typeof message === "string" ? message : message?.message;
 }
+function sizeCaps(defChecks) {
+  const caps = [];
+  for (const ch of defChecks ?? []) {
+    const d = ch._zod.def;
+    if (!/_(length|size)$|_equals$/.test(d.check))
+      break;
+    const max = d.maximum ?? d.length ?? d.size;
+    if (max >= 0)
+      caps.push([max, ch]);
+  }
+  return caps;
+}
 function attachSchema(issues, start, inst) {
   var _a;
   for (let i = start;i < issues.length; i++) {
@@ -9009,7 +9323,7 @@ function constantCatch(value) {
   return fn;
 }
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/core.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js
 var _a;
 var _zodDesc = { value: undefined, enumerable: false };
 var _E = "captureStackTrace" in Error ? Error : null;
@@ -9127,7 +9441,7 @@ function config(newConfig) {
     Object.assign(globalConfig, newConfig);
   return globalConfig;
 }
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/errors.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/errors.js
 function _getMessage() {
   const internals = this._zod;
   internals.message ?? (internals.message = JSON.stringify(internals.def, jsonStringifyReplacer, 2));
@@ -9242,7 +9556,7 @@ function formatError(error, mapper = (issue) => issue.message) {
   return fieldErrors;
 }
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/parse.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
   return { callee: params?.callee ?? callee, Err: params?.Err };
 }
@@ -9389,7 +9703,7 @@ var _safeEncodeAsync = (_Err) => async (schema, value, _ctx) => {
 var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx);
 };
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/regexes.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/regexes.js
 var cuid = /^[cC][0-9a-z]{6,}$/;
 var cuid2 = /^[0-9a-z]+$/;
 var ulid = /^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$/;
@@ -9448,7 +9762,7 @@ var _null = /^null$/i;
 var lowercase = /^[^A-Z]*$/;
 var uppercase = /^[^a-z]*$/;
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/checks.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a;
   inst._zod ?? (inst._zod = {});
@@ -9764,7 +10078,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/doc.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/doc.js
 class Doc {
   constructor(args = [], closed = {}) {
     this.content = [];
@@ -9806,14 +10120,14 @@ ${content.join(`
   }
 }
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/versions.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 6,
-  patch: 5
+  patch: 7
 };
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/schemas.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a;
   inst ?? (inst = {});
@@ -10379,6 +10693,29 @@ var $ZodNever = /* @__PURE__ */ $constructor("$ZodNever", (inst, def) => {
     return payload;
   };
 });
+function capSize(inst, size) {
+  const caps = sizeCaps(inst._zod.def.checks);
+  if (!caps.length)
+    return;
+  const cap = Math.min(...caps.map((c) => c[0]));
+  const parse = inst._zod.parse;
+  inst._zod.parse = (payload, ctx) => {
+    const n = size(payload.value);
+    if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
+      for (const [max, ch] of sizeCaps(inst._zod.def.checks)) {
+        if (n > max && ch._zod.def.when(payload)) {
+          const start = payload.issues.length;
+          ch._zod.check(payload);
+          payload.issues[start].continue = false;
+          attachSchema(payload.issues, start, inst);
+          return payload;
+        }
+      }
+    }
+    return parse(payload, ctx);
+  };
+}
+var arraySize = (input) => Array.isArray(input) ? input.length : -1;
 function handleArrayResult(result, final, index) {
   if (result.issues.length) {
     final.issues.push(...prefixIssues(index, result.issues));
@@ -10422,6 +10759,7 @@ var $ZodArray = /* @__PURE__ */ $constructor("$ZodArray", (inst, def) => {
     }
     return payload;
   };
+  capSize(inst, arraySize);
 });
 function handlePropertyResult(result, final, key, input, optin, optout) {
   const isPresent = key in input;
@@ -11445,7 +11783,7 @@ function handleRefineResult(result, payload, input, inst) {
     payload.issues.push(issue(_iss));
   }
 }
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/memoizer.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/memoizer.js
 class $ZodCyclicError extends Error {
   constructor() {
     super(`Cannot parse a reference cycle that closes through a transform`);
@@ -11714,7 +12052,7 @@ function isBackEdge(ctx, value) {
   const backEdges = ctx[STATE]?.backEdges;
   return backEdges !== undefined && isRef(value) && backEdges.has(value);
 }
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/locales/en.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/en.js
 var error = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -11836,7 +12174,7 @@ function en_default() {
     localeError: error()
   };
 }
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/registries.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/registries.js
 var _a2;
 class $ZodRegistry {
   constructor() {
@@ -11883,7 +12221,7 @@ function registry() {
 }
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/api.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/api.js
 function snapshotChecks(def) {
   if (def.checks)
     def.checks = [...def.checks];
@@ -12348,7 +12686,7 @@ function _check(fn, params) {
   ch._zod.check = fn;
   return ch;
 }
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/to-json-schema.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/to-json-schema.js
 function assignProps(target, ...sources) {
   for (const source of sources) {
     for (const key of Reflect.ownKeys(source)) {
@@ -12871,7 +13209,7 @@ var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) =
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
 };
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/json-schema-processors.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/json-schema-processors.js
 var narrowMin = (agg, key, value) => {
   if (agg[key] === undefined || value > agg[key])
     agg[key] = value;
@@ -13614,7 +13952,7 @@ function toJSONSchema(input, params) {
   extractDefs(ctx, input);
   return finalize(ctx, input);
 }
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/errors.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/errors.js
 var _installedErrorProtos = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
 function _lazyMethod(proto, key, make) {
   Object.defineProperty(proto, key, {
@@ -13659,7 +13997,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, undefi
   Parent: Error
 });
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/parse.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/parse.js
 var parse2 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -13673,7 +14011,7 @@ var safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/schemas.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/schemas.js
 function _ensureDefaultLocale() {
   if (!globalConfig.localeError)
     config(en_default());
@@ -14617,7 +14955,7 @@ function preprocess(fn, schema) {
     out: schema
   });
 }
-// ../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/classic/iso.js
+// ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/iso.js
 function datetime2(params) {
   return _isoDateTime(ZodISODateTime, params);
 }
@@ -16549,10 +16887,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.65.1",
-  python: "0.65.1",
-  ruby: "0.65.1",
-  go: "0.65.1"
+  typescript: "0.65.2",
+  python: "0.65.2",
+  ruby: "0.65.2",
+  go: "0.65.2"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
@@ -21387,7 +21725,7 @@ Read function signatures and bodies before instrumenting. Instrument the real pr
           toolCalls: ["bash", "read", "glob", "grep", "ask"],
           body: `Cloud replay is the user's normal replay plus --cloud: every replay option works the same, the runner replays a snapshot of their working tree (changed files, plus new files git does not ignore) from the same directory, and the command prints the replay's progress and a short summary of its result (experiment ID and URL, replayed, same, changed, and errored counts, and each errored trace with its error), then exits with its exit code. Every trace's input and output are in the experiment in Bitfab; read them through the Bitfab MCP tools, as after a local replay. --cloud-full-output prints the whole result instead, and is refused on a public repository. The code ships inside the SDK, and the repository keeps one file: .github/workflows/bitfab-replay.yml, which holds only settings.
 
-Run the installed SDK's bitfab-replay --cloud --help; if it does not list --cloud-preview, upgrade the SDK through bitfab:update first. Check that the git origin is github.com and that Python 3.10+ exists (macOS or Linux). GitHub access needs no GitHub CLI: the SDK uses gh when it is logged in, otherwise GH_TOKEN or GITHUB_TOKEN, otherwise the github.com credential git stores. When the repository still has .bitfab/cloud.json from an older SDK, the SDK says to delete it and the old workflow and run --cloud-init again; show the user the old file's settings first.
+Run the installed SDK's bitfab-replay --cloud --help; if it does not list --cloud-preview, upgrade the SDK through bitfab:update first. Check that the git origin is github.com and that Python 3.10+ exists (macOS or Linux). GitHub access needs no GitHub CLI: the SDK uses gh when it is logged in, otherwise GH_TOKEN or GITHUB_TOKEN, otherwise the github.com credential git stores. Without any of them, or when that account cannot read or push to the repository, a replay still runs as long as git can push and the workflow also starts on a push to a bitfab-replay/ branch (--cloud-init writes that trigger and --cloud-update adds it): the command warns that it gets no updates, prints the Actions page to watch, and returns once the branch is pushed. That run uses the workflow's BITFAB_API_KEY secret, and the user deletes the snapshot branch once it finishes. --cloud-full-output, --cloud-allow-file, and --cloud-ref still need GitHub access. When the repository still has .bitfab/cloud.json from an older SDK, the SDK says to delete it and the old workflow and run --cloud-init again; show the user the old file's settings first.
 
 Read the existing GitHub Actions, lockfiles, replay registry, and environment-variable NAMES; never read or print secret values. Note what the replay needs beyond an install (build or code-generation steps, services, the working directory) and which environment variables it reads from secrets. For database reads, prefer database branching: it needs no database secret, but only works when every registry entry that reads the database sets dbBranch and the application takes its connection per call from the replay branch URL (getCurrentReplayBranch().databaseUrl, or the Python, Ruby, or Go equivalent); offer db-snapshot mode when either piece is missing. Do not silently give replay production side effects.
 
@@ -21405,7 +21743,7 @@ State who can start a replay: once GitHub registers the workflow, anyone with wr
 
 Edit the workflow directly for anything detection missed, such as a build step, code generation, a monorepo install filter, or a service, and pin any added action to a commit SHA. When the user normally starts replay through a wrapper that sets environment variables, add them to the replay step's env. Every variable read from a secret stays in that env as a GitHub expression reading secrets.<name>, which is how --cloud-secrets and the runner's empty-secret check find them; a secret stored under another name is mapped directly, such as OPENAI_API_KEY reading secrets.EVAL_OPENAI_API_KEY, and a non-secret value reads vars.<name>. When a setup step needs a credential file, write it under $RUNNER_TEMP with umask 077 and export its path through $GITHUB_ENV; do not use google-github-actions/auth or similar actions that write the key into the checked-out workspace. Do not copy deployment steps or secret values into the workflow.
 
-For BITFAB_API_KEY, have the user create a dedicated key for the runner on the Bitfab dashboard's API keys page, in the organization that holds the registry's traces, named for what it is (such as "GitHub cloud replay"), and set it by hand. Each replay started with bitfab-replay --cloud runs as whoever started it, through a one-time token in the key_id input that only a run of that workflow, on that replay's branch, in that repository can trade for a short-lived key, which it proves with GitHub's OIDC token for the run. This secret is the key a run falls back to when no token can be passed, such as a dispatch from another workflow. Keep the key_id input and the id-token: write permission --cloud-init writes. When a workflow already exists, run --cloud-update (the same command as --cloud-init) anyway: it adds a missing key_id input and id-token: write permission, removes the BITFAB_REPLAY_BITFAB_API_KEY line older SDKs wrote (it made GitHub hand the runner every secret in the repository), leaves the rest alone, and lists anything it could not place for you to add by hand. Its result also lists in oldKeySecrets any BITFAB_REPLAY_KEY_* secrets an older SDK left in the repository, each a copy of the Bitfab API key of whoever started that replay. Name them to the user and ask once whether to delete them; on yes, run --cloud-update --remove-old-key-secrets, which returns removedOldKeySecrets and lists any it could not delete with the page to delete them on. For the other secrets, when local environment files define them, ask once whether to copy them, then run bitfab-replay --cloud-secrets --env-file <file> --dry-run, then without --dry-run. It pipes values to gh on standard input, creates a missing Environment, and without the GitHub CLI returns createByHand with the page to create them on; relay that list instead of treating it as a failure. Never hand-extract a value with grep, cut, or a shell variable. Warn before copying a value a runner cannot use, such as a localhost URL. Setting secrets needs the same explicit authorization as any other remote write.
+For BITFAB_API_KEY, have the user create a dedicated key for the runner on the Bitfab dashboard's API keys page, in the organization that holds the registry's traces, named for what it is (such as "GitHub cloud replay"), and set it by hand. Each replay started with bitfab-replay --cloud runs as whoever started it, through a one-time token in the key_id input that only a run of that workflow, on that replay's branch, in that repository can trade for a short-lived key, which it proves with GitHub's OIDC token for the run. This secret is the key a run falls back to when no token can be passed, such as a dispatch from another workflow. Keep the key_id input, the id-token: write permission, and the push trigger with the replay job's if: condition that --cloud-init writes; a replay started through the GitHub API marks its snapshot commit [skip actions] so the push starts nothing, and the condition skips the push run an older SDK's snapshot would start, so each replay runs once. When a workflow already exists, run --cloud-update (the same command as --cloud-init) anyway: it adds a missing key_id input and id-token: write permission, removes the BITFAB_REPLAY_BITFAB_API_KEY line older SDKs wrote (it made GitHub hand the runner every secret in the repository), leaves the rest alone, and lists anything it could not place for you to add by hand. Its result also lists in oldKeySecrets any BITFAB_REPLAY_KEY_* secrets an older SDK left in the repository, each a copy of the Bitfab API key of whoever started that replay. Name them to the user and ask once whether to delete them; on yes, run --cloud-update --remove-old-key-secrets, which returns removedOldKeySecrets and lists any it could not delete with the page to delete them on. For the other secrets, when local environment files define them, ask once whether to copy them, then run bitfab-replay --cloud-secrets --env-file <file> --dry-run, then without --dry-run. It pipes values to gh on standard input, creates a missing Environment, and without the GitHub CLI returns createByHand with the page to create them on; relay that list instead of treating it as a failure. Never hand-extract a value with grep, cut, or a shell variable. Warn before copying a value a runner cannot use, such as a localhost URL. Setting secrets needs the same explicit authorization as any other remote write.
 
 Each replay pushes a temporary bitfab-replay/<UUID> branch. For each push-triggered workflow or deployment in reviewPushTriggers, offer to exclude those branches: branches-ignore: [bitfab-replay/**] on a push trigger (or a last !bitfab-replay/** entry when it already lists branches), and git.deploymentEnabled {"bitfab-replay/**": false} in vercel.json. Ask before changing existing CI or deployments.`,
           next: "cloud/verify"
@@ -23670,7 +24008,7 @@ async function collectSessionStartMessages(currentVersion, platform, pluginRoot,
   } catch {}
   return messages;
 }
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.1_@cfworker+json-schema@4.1.1_zod@4.6.5/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
 var JSONRPC_VERSION = "2.0";
 var AssertObjectSchema = custom((v) => v !== null && (typeof v === "object" || typeof v === "function"));
@@ -24469,21 +24807,21 @@ var ServerResultSchema = union([
   CreateTaskResultSchema
 ]);
 
-// ../node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@4.6.5/node_modules/zod-to-json-schema/dist/esm/Options.js
+// ../node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@4.6.7/node_modules/zod-to-json-schema/dist/esm/Options.js
 var ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
-// ../node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@4.6.5/node_modules/zod-to-json-schema/dist/esm/parsers/string.js
+// ../node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@4.6.7/node_modules/zod-to-json-schema/dist/esm/parsers/string.js
 var ALPHA_NUMERIC = new Set("ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvxyz0123456789");
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.1_@cfworker+json-schema@4.1.1_zod@4.6.5/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
 var import_ajv_formats = __toESM(require_dist(), 1);
 
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.1_@cfworker+json-schema@4.1.1_zod@4.6.5/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
 var COMPLETABLE_SYMBOL = Symbol.for("mcp.completable");
 var McpZodTypeKind;
 (function(McpZodTypeKind) {
   McpZodTypeKind["Completable"] = "McpCompletable";
 })(McpZodTypeKind || (McpZodTypeKind = {}));
 
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.1_@cfworker+json-schema@4.1.1_zod@4.6.5/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
 var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
 // src/platform.ts
 var platform = {
