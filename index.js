@@ -15134,7 +15134,7 @@ var saveTemplate = {
 var saveExperimentGroup = {
   name: "save_experiment_group",
   title: "Save Experiment Group",
-  description: "Create or edit an experiment group. To create, omit experimentGroupId and provide experimentIds plus an optional name and notes; the supplied experiments are grouped together. To edit, provide experimentGroupId and at least one of name or notes, but omit experimentIds; editing metadata does not change membership. Creation is idempotent when all supplied experiments already share one group. All resources must belong to the active organization.",
+  description: "Create or edit an experiment group. To group runs you have not launched yet, do not call this tool first: generate a new UUID and pass it to every replay with --experiment-group-id (plus --experiment-group-name to name it); the first replay that persists creates the group and the rest join it. This tool groups experiments that already exist. To create, omit experimentGroupId and provide experimentIds plus an optional name and notes; the supplied experiments are grouped together. To edit, provide experimentGroupId and at least one of name or notes, but omit experimentIds; editing metadata does not change membership. Editing works only once a replay or a create has made the group. Creation is idempotent when all supplied experiments already share one group. All resources must belong to the active organization.",
   inputSchema: {
     experimentGroupId: uuid2().optional().describe("Existing experiment group id to rename. Omit when creating."),
     experimentIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).optional().describe("Experiment IDs to group (1-100). Required when creating; omit when editing."),
@@ -16530,10 +16530,10 @@ var semver3 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.64.27",
-  python: "0.64.24",
-  ruby: "0.64.22",
-  go: "0.64.23"
+  typescript: "0.64.28",
+  python: "0.64.25",
+  ruby: "0.64.23",
+  go: "0.64.24"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
