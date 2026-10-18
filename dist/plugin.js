@@ -1,4 +1,4 @@
-import { captureAmpAgentEnd, captureAmpAgentStart, captureAmpBitfabToolCall, captureAmpSessionStart, collectSessionStartMessages, createBitfabToolHandlers, getConfig, } from "bitfab-plugin-lib";
+import { buildMcpInstructions, captureAmpAgentEnd, captureAmpAgentStart, captureAmpBitfabToolCall, captureAmpSessionStart, collectSessionStartMessages, createBitfabToolHandlers, getConfig, } from "bitfab-plugin-lib";
 import { z } from "zod";
 import { platform } from "./platform.js";
 import { getVersion } from "./version.js";
@@ -13,6 +13,7 @@ function resultText(result) {
     return result.content.map((block) => block.text).join("\n");
 }
 let sessionNoticesShown = false;
+const threadsGivenUsageGuide = new Set();
 async function showSessionNotices(amp, ctx, pluginVersion) {
     let notices;
     try {
@@ -47,13 +48,18 @@ function registerSessionCapture(amp, pluginVersion) {
         void showSessionNotices(amp, ctx, pluginVersion);
     });
     amp.on("agent.start", (event) => {
+        const threadId = String(event.thread.id);
         void captureAmpAgentStart({
-            threadId: String(event.thread.id),
+            threadId,
             prompt: event.message,
             platform,
             pluginVersion,
         });
-        return {};
+        if (threadsGivenUsageGuide.has(threadId)) {
+            return {};
+        }
+        threadsGivenUsageGuide.add(threadId);
+        return { message: { content: buildMcpInstructions(platform) } };
     });
     amp.on("agent.end", async (event) => {
         await captureAmpAgentEnd({

@@ -31,7 +31,7 @@ Read `the user's request` first. If its first token is exactly one of the mode n
 
 ## Setup
 
-0. Amp does not inject a plugin-root env var. Resolve it first (same block used by `setup` and `assistant`):
+0. Amp does not inject a plugin-root env var. Resolve it first (same block used by `setup`):
 
    ```bash
    if [ -z "$BITFAB_PLUGIN_DIR" ]; then

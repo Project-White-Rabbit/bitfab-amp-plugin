@@ -55,6 +55,20 @@ describe("Amp event handlers", () => {
         ]);
     });
 });
+describe("usage guide", () => {
+    it("adds the usage guide to the first turn of each thread only", async () => {
+        const handlers = await registeredHandlers();
+        const agentStart = handlers.get("agent.start");
+        const turn = (threadId) => agentStart?.({ thread: { id: threadId }, message: "hi", id: "M-1" });
+        const firstTurn = turn("T-1");
+        const secondTurn = turn("T-1");
+        const otherThread = turn("T-2");
+        expect(firstTurn.message?.content).toContain("bitfab-replay --registry <registry-path>");
+        expect(firstTurn.message?.content).toContain("`bitfab:setup`");
+        expect(secondTurn.message).toBeUndefined();
+        expect(otherThread.message?.content).toContain("--resume <experiment-id>");
+    });
+});
 describe("session start notices", () => {
     it("shows the update notice once, not on every thread switch", async () => {
         mocks.collectSessionStartMessages.mockResolvedValue([

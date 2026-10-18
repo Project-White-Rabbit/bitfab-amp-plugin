@@ -1,6 +1,7 @@
 import type { PluginAPI, PluginToolDefinition, PluginUI } from "@ampcode/plugin"
 import {
   type AmpThreadMessage,
+  buildMcpInstructions,
   captureAmpAgentEnd,
   captureAmpAgentStart,
   captureAmpBitfabToolCall,
@@ -32,6 +33,7 @@ function resultText(result: ToolCallResult): string {
 }
 
 let sessionNoticesShown = false
+const threadsGivenUsageGuide = new Set<string>()
 
 async function showSessionNotices(
   amp: PluginAPI,
@@ -73,13 +75,18 @@ function registerSessionCapture(amp: PluginAPI, pluginVersion: string): void {
   })
 
   amp.on("agent.start", (event) => {
+    const threadId = String(event.thread.id)
     void captureAmpAgentStart({
-      threadId: String(event.thread.id),
+      threadId,
       prompt: event.message,
       platform,
       pluginVersion,
     })
-    return {}
+    if (threadsGivenUsageGuide.has(threadId)) {
+      return {}
+    }
+    threadsGivenUsageGuide.add(threadId)
+    return { message: { content: buildMcpInstructions(platform) } }
   })
 
   amp.on("agent.end", async (event) => {

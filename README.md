@@ -41,7 +41,7 @@ amp plugins list
 | Skill | What it does |
 |---|---|
 | `bitfab:setup` | Instrument workflows, modify existing traces, inspect, replay, database snapshots, templates, analyze the repo |
-| `bitfab:assistant` | Improve a traced function: datasets, labeling, graders, experiments, replay, cost optimization |
+| `bitfab:assistant` | Retired. Says so and suggests asking the agent directly instead |
 | `bitfab:update` | Update the plugin and the Bitfab SDK |
 
 Ask Amp for a skill by name, e.g. `bitfab:setup instrument the checkout agent`,
