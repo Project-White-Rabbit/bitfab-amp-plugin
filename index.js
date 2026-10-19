@@ -15636,6 +15636,15 @@ var saveScenario = {
     sources: preprocess(parseJsonString, record(string2(), unknown())).optional().describe(`Where the records came from, as { frameAt, capturedAt, windows, coverage }: when the run started, when its data was captured (or null), how many days each windowed kind reaches (such as { "messagesDays": 3, "calendarDays": 7 }), and coverage, which gives each kind of data its capture status ("rewound-to-frame" for as of the run, "current-at-capture" for as of capture, "not-recorded" or "unavailable" for not captured) plus filledColumns { absentNullable, defaultedNonNullable }, the "table.column" names the capture predates. Only with records, never with recordsPath, which sends the file's own.`)
   }
 };
+var saveTraceCategories = {
+  name: "save_trace_categories",
+  title: "Save Trace Categories",
+  description: "File one trace under categories, replacing its whole set. Send categoryIds with every category the trace belongs to; an empty list clears them. Categories are held by the trace's scenario, so every trace linked to that scenario shows the same categories. A trace with no scenario yet gets a dummy one, which has no trigger or data until save_scenario generates it and keeps its categories when it does. Category ids come from save_category or list_categories, and an id not in this organization is refused. Returns the trace's categories after the save and the scenario that holds them.",
+  inputSchema: {
+    traceId: uuid2().describe("The trace to file."),
+    categoryIds: preprocess(parseJsonString, array(uuid2()).max(100)).describe("Every category the trace belongs to, replacing its saved set. An empty list clears it.")
+  }
+};
 var generateScenarioAssertions = {
   name: "generate_scenario_assertions",
   title: "Generate Scenario Assertions",
@@ -15706,6 +15715,7 @@ var ALL_TOOL_CONTRACTS = [
   listScenarios,
   getScenario,
   saveScenario,
+  saveTraceCategories,
   generateScenarioAssertions
 ];
 var TOOL_NAMES = ALL_TOOL_CONTRACTS.map((contract) => contract.name).sort();
