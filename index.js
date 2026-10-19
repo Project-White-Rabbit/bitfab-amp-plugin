@@ -14973,7 +14973,7 @@ var dateOnlyStringSchema = string2().regex(DATE_PATTERN, "Must be YYYY-MM-DD for
   const date = parseDateOnly(value);
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }, "Must be a valid calendar date");
-var GET_TRACE_LABELS_MAX_IDS = 100;
+var GET_TRACE_VERDICTS_MAX_IDS = 100;
 var GET_TRACES_DEFAULT_SPAN_LIMIT = 50;
 var SPAN_READ_MAX_RESPONSE_CHARS = 32000;
 var GET_TRACES_MAX_SPAN_LIMIT = 200;
@@ -14997,10 +14997,10 @@ var spanFieldSchema = _enum([
 var GET_TRACE_ASSERTIONS_MAX_IDS = 100;
 var MAX_ASSERTIONS_PER_REQUEST = 50;
 var MAX_ASSIGNEE_EMAIL_LENGTH = 320;
-var GET_GRADER_LABELS_MAX_IDS = 100;
-var DEFAULT_GRADER_LABEL_LIMIT = 50;
-var MAX_GRADER_LABEL_LIMIT = 200;
-var SAVE_GRADER_LABELS_MAX_ENTRIES = 200;
+var GET_GRADER_VERDICTS_MAX_IDS = 100;
+var DEFAULT_GRADER_VERDICT_LIMIT = 50;
+var MAX_GRADER_VERDICT_LIMIT = 200;
+var SAVE_GRADER_VERDICTS_MAX_ENTRIES = 200;
 function parseJsonString(val) {
   if (typeof val !== "string") {
     return val;
@@ -15062,19 +15062,21 @@ var searchTraces = {
     ]))).optional().describe("Filter by up to 10 caller metadata key/value pairs. Matches exact values case-insensitively; all pairs must match."),
     name: string2().trim().min(1).max(256).transform((value) => value.toLowerCase()).optional().describe("Filter by the trace's name, the title set by setName or seedTrace. Matches the name's words in order, so 'Order ABC' also matches 'Order ABC 123', and it matches whole words rather than inside a word. Case-insensitive. Use nameContains to match inside a word or on a partial word."),
     nameContains: string2().trim().min(3).max(256).transform((value) => value.toLowerCase()).optional().describe("Filter by any part of the trace's name, including inside a word, matched case-insensitively. Needs at least 3 characters. Use name instead to match whole words in order."),
-    labelSource: _enum(["human", "agent"]).optional().describe('Filter by who authored the label: "human" for human-authored labels only, "agent" for agent-authored labels only. Omit to include any source. This is a pure authorship filter - for trust/validation, use the separate `validated` parameter.'),
-    validated: preprocess(parseJsonString, boolean2()).optional().describe('If true, only return traces with a validated label - a label that is either human-authored OR an agent-authored label that a human has approved (`approvedAt` is set). Use this when you want trustworthy/reviewed labels. Combine with `labelSource: "agent"` to get only approved-agent labels (excluding pure-human labels). Omit (or pass false) to include unapproved labels too.'),
-    labelResult: preprocess(parseJsonString, boolean2()).optional().describe("Filter by label result: true for passing labels, false for failing labels"),
-    includeReplays: preprocess(parseJsonString, boolean2()).optional().describe("Include replayed traces (traces from experiments) in results. Defaults to false because replays have new inputs, not the original production inputs, so they're not useful when selecting traces to label or when sampling real user behavior. Set to true only when you specifically want to inspect replay results."),
+    verdictSource: _enum(["human", "agent"]).optional().describe('Filter by who gave the verdict: "human" for verdicts a person gave, "agent" for verdicts an agent gave. Omit to include any source. This filters on authorship only; for trust, use the separate `validated` parameter.'),
+    labelSource: _enum(["human", "agent"]).optional().meta({ deprecated: true }).describe("Deprecated: the old name for verdictSource. Ignored when verdictSource is also sent."),
+    validated: preprocess(parseJsonString, boolean2()).optional().describe('If true, only return traces with a validated verdict: one a person gave, or one an agent gave that a person has approved (`approvedAt` is set). Use this when you want verdicts someone has reviewed. Combine with `verdictSource: "agent"` to get only approved agent verdicts (leaving out the ones a person gave). Omit (or pass false) to include unapproved verdicts too.'),
+    verdictResult: preprocess(parseJsonString, boolean2()).optional().describe("Filter by verdict: true for passing verdicts, false for failing verdicts"),
+    labelResult: preprocess(parseJsonString, boolean2()).optional().meta({ deprecated: true }).describe("Deprecated: the old name for verdictResult. Ignored when verdictResult is also sent."),
+    includeReplays: preprocess(parseJsonString, boolean2()).optional().describe("Include replayed traces (traces from experiments) in results. Defaults to false because replays have new inputs, not the original production inputs, so they're not useful when selecting traces to judge or when sampling real user behavior. Set to true only when you specifically want to inspect replay results."),
     experimentId: uuid2().optional().describe("Filter to traces from a specific experiment ID. Automatically sets includeReplays to true."),
-    datasetId: uuid2().optional().describe("Filter to traces belonging to a specific dataset. Combine with other filters (status, labelResult, etc.) to narrow within the dataset."),
+    datasetId: uuid2().optional().describe("Filter to traces belonging to a specific dataset. Combine with other filters (status, verdictResult, etc.) to narrow within the dataset."),
     hasDbSnapshot: preprocess(parseJsonString, boolean2()).optional().describe("Filter by whether the trace captured a database snapshot reference. true returns only traces that can be replayed against a pinned historical DB branch (the 'Snapshot captured' traces); false returns only traces with no snapshot. Omit to include both.")
   }
 };
 var getTraces = {
   name: "get_traces",
   title: "Get Traces",
-  description: `Read one or more traces by ID. Includes inputs, outputs, status, environment tag, trace-level duration (ms), token usage (in/out/cached/total), and model (when available). Use these to compare latency and cost between a trace and its replay. Returns span details (input, output, reasoning, content, context, errors) plus per-span duration, tokens, time-to-first-token, and model when available. Use \`scope: "summary"\` when scanning many traces to keep the response small; \`scope: "full"\` when you need the complete untruncated detail of a few traces. Spans come back one page at a time (${GET_TRACES_DEFAULT_SPAN_LIMIT} per trace by default) and the whole response is capped in size, so it always fits in context. When a trace has more spans than one page, the response lists every span name and span type with its count and says which spanOffset reads the next page: narrow with spanNames (only spans with those names), spanTypes (only spans of those types, e.g. ["llm"] for the model calls) and spanFields (only those fields) rather than paging through thousands of spans, and fetch any one truncated field in full with get_span_field. To load only labels + annotations for many traces at once (no span content), use get_trace_labels instead.`,
+  description: `Read one or more traces by ID. Includes inputs, outputs, status, environment tag, trace-level duration (ms), token usage (in/out/cached/total), and model (when available). Use these to compare latency and cost between a trace and its replay. Returns span details (input, output, reasoning, content, context, errors) plus per-span duration, tokens, time-to-first-token, and model when available. Use \`scope: "summary"\` when scanning many traces to keep the response small; \`scope: "full"\` when you need the complete untruncated detail of a few traces. Spans come back one page at a time (${GET_TRACES_DEFAULT_SPAN_LIMIT} per trace by default) and the whole response is capped in size, so it always fits in context. When a trace has more spans than one page, the response lists every span name and span type with its count and says which spanOffset reads the next page: narrow with spanNames (only spans with those names), spanTypes (only spans of those types, e.g. ["llm"] for the model calls) and spanFields (only those fields) rather than paging through thousands of spans, and fetch any one truncated field in full with get_span_field. To load only verdicts + annotations for many traces at once (no span content), use get_trace_verdicts instead.`,
   inputSchema: {
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(10)).describe("Trace IDs to read (1-10)"),
     scope: _enum(["summary", "full"]).optional().default("summary").describe('Level of span detail. "summary" (default) renders the same span structure as full but caps each span (its fields share a ~1500-char budget) and each trace-level field (~2000 chars), and leaves out any span field over 10k chars, printing its size instead (name it in spanFields to preview it anyway, or read it in full with get_span_field): prefer it when scanning or identifying candidate traces. "full" renders every field untruncated up to 10k chars each, with no per-span ceiling, until the response size cap: use it when you need complete detail on a handful of spans, ideally narrowed with spanNames.'),
@@ -15085,18 +15087,18 @@ var getTraces = {
     spanFields: preprocess(parseJsonString, array(spanFieldSchema).max(6)).optional().describe("Only show these span fields (input, output, reasoning, content, errors, contexts). Omit to show all of them, with fields over 10k chars left out in summary scope. A field named here is previewed even when it is large. Pass [] to list spans with only their name, ID, duration, tokens, and model, which is the cheapest way to see a large trace's shape.")
   }
 };
-var getTraceLabels = {
-  name: "get_trace_labels",
-  title: "Get Trace Labels",
-  description: `Read just the labels for one or more traces by ID: returns each trace's pass/fail verdict, its annotation (the reviewer's reasoning), its saved { spanId, text } evidence, and whether the label is human-validated (a human authored or approved it). Per-assertion verdicts follow on indented lines, one per assertion, keyed by the assertionId the write used, each with its own verdict, annotation, evidence, confidence, and author, so a verdict written per assertion reads back per assertion rather than as a tally. A verdict reads ABSTAINED when the judge could not find the evidence the assertion needed: it counts as a fail in the passed/failed tally and the trace's verdict, and the tally also says how many of the fails were abstentions, so you can tell judge coverage from the agent's behavior. No span content, inputs, or outputs are loaded, so the response is small and one call accepts up to ${GET_TRACE_LABELS_MAX_IDS} IDs. Use this to load a whole dataset's verdicts into context in a single call (e.g. when building or confirming a dataset). When you need a trace's actual inputs/outputs/spans, use get_traces instead. This returns verdicts on runs that already happened; for what a trace SHOULD do on its next replay, use get_trace_assertions.`,
+var getTraceVerdicts = {
+  name: "get_trace_verdicts",
+  title: "Get Trace Verdicts",
+  description: `Read just the verdicts for one or more traces by ID: returns each trace's pass/fail verdict, its annotation (the reviewer's reasoning), its saved { spanId, text } evidence, and whether the verdict is human-validated (a person gave or approved it). Per-assertion verdicts follow on indented lines, one per assertion, keyed by the assertionId the write used, each with its own verdict, annotation, evidence, confidence, and author, so a verdict written per assertion reads back per assertion rather than as a tally. A verdict reads ABSTAINED when the judge could not find the evidence the assertion needed: it counts as a fail in the passed/failed tally and the trace's verdict, and the tally also says how many of the fails were abstentions, so you can tell judge coverage from the agent's behavior. No span content, inputs, or outputs are loaded, so the response is small and one call accepts up to ${GET_TRACE_VERDICTS_MAX_IDS} IDs. Use this to load a whole dataset's verdicts into context in a single call (e.g. when building or confirming a dataset). When you need a trace's actual inputs/outputs/spans, use get_traces instead. This returns verdicts on runs that already happened; for what a trace SHOULD do on its next replay, use get_trace_assertions.`,
   inputSchema: {
-    traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_TRACE_LABELS_MAX_IDS)).describe(`Trace IDs to read labels for (1-${GET_TRACE_LABELS_MAX_IDS})`)
+    traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_TRACE_VERDICTS_MAX_IDS)).describe(`Trace IDs to read verdicts for (1-${GET_TRACE_VERDICTS_MAX_IDS})`)
   }
 };
-var generateLabelEvidence = {
-  name: "generate_label_evidence",
-  title: "Generate Label Evidence",
-  description: "Suggest span-by-span evidence that could support a label for one assertion on a specific evaluated trace. Pass the original or replay trace being judged; an inherited assertion is checked against that replay's spans. The service narrows the selected trace to spans relevant to the assertion, then returns evidence items with traceId, assertionId, spanId, text, spanName, signature-only parameters (names and runtime types, never values), spanType, and isMocked. Use get_trace_assertions to obtain assertion IDs. Saved `{ spanId, text }` evidence is read with get_trace_labels instead.",
+var generateVerdictEvidence = {
+  name: "generate_verdict_evidence",
+  title: "Generate Verdict Evidence",
+  description: "Suggest span-by-span evidence that could support a verdict on one assertion on a specific evaluated trace. Pass the original or replay trace being judged; an inherited assertion is checked against that replay's spans. The service narrows the selected trace to spans relevant to the assertion, then returns evidence items with traceId, assertionId, spanId, text, spanName, signature-only parameters (names and runtime types, never values), spanType, and isMocked. Use get_trace_assertions to obtain assertion IDs. Saved `{ spanId, text }` evidence is read with get_trace_verdicts instead.",
   inputSchema: {
     traceId: uuid2().describe("The original or replay trace whose spans should be evaluated."),
     assertionId: uuid2().describe("The assertion the evidence would support.")
@@ -15124,45 +15126,53 @@ var getSpan = {
     offset: preprocess(parseJsonString, number2().int().min(0)).optional().describe("Character position in the span's output to start reading from (default 0). Pass the offset a previous response gave to read the next part of a long output.")
   }
 };
-var labelEvidenceShape = preprocess(parseJsonString, array(object({
+var verdictEvidenceShape = preprocess(parseJsonString, array(object({
   spanId: uuid2(),
   text: string2().trim().min(1).max(1e4)
 })).min(1).max(50));
-var saveAgentLabels = {
-  name: "save_agent_labels",
-  title: "Save Agent Labels",
-  description: "Set, skip, abstain on, or archive the agent's pass/fail verdict on one or more of a trace's approved assertions (`labelSource=\"agent\"`). Every verdict, skip, and abstention scores ONE assertion and must carry its `assertionId` (the `[ID: ...]` get_trace_assertions prints). Labels are only ever written on assertions, never directly on a trace: a trace with no approved assertions gets no verdict, so add assertions first (save_trace_assertions) or report your judgment in the conversation. Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `label` (true=PASS, false=FAIL) and `annotation` (your reasoning, shown to the human reviewer in the labeling UI). Add `evidence` as `{ spanId, text }` entries to ground that reasoning in spans on the evaluated trace. Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are, surfaced in the labeling UI so reviewers can prioritize low-confidence verdicts. To explicitly skip an assertion you cannot decide on (instead of leaving it unlabeled), pass `skip: true` and omit label. That records an explicit skip so coverage checks know you intentionally did not verdict it, and `annotation` still applies: pass it to say why the verdict was withheld (the check never ran, the tape was punctured, the run never terminated), which is the only place a reader learns that. A skip with no annotation clears the note the previous verdict carried, so a stale reason never sits under a withheld verdict. When you read the trace and the evidence does not show the part of the run the assertion checks at all (the message it sent, the call it made, the answer it gave), so nothing can confirm or deny the assertion, pass `abstain: true` and omit label. That is counted as a FAIL in every pass rate, since anything short of an evidenced pass is a fail, but it is stored and shown as an abstention so a reader sees judge coverage rather than the agent's behavior; `annotation` says what the evidence would have had to show. Abstain is not a skip: a skip is for a check that never ran, an abstention is for a check that ran and found nothing to judge. To clear a previously-set agent verdict (e.g., you changed your mind or labeled the wrong trace), pass `archive: true` and omit label/annotation; an archive may omit `assertionId` to clear an old whole-trace agent verdict. A verdict counts as soon as it is written; there is no approval step, and a person can override it with their own label. Archiving is non-destructive: the row is hidden from all reads but kept for audit, and you can immediately re-label the trace from scratch. For replay results, key each label by the replay item's `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `experimentId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item's `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective label line per entry you sent (so a trace scored on several assertions gets one line per assertion), keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence. Before judging a replay, call get_trace_assertions on the original trace ids: an assertion says what the user asked this specific case to do, so the verdict is measured against that rather than a guess. When an assertion's target cannot be found on the trace you are judging, the check never ran, so pass `skip: true` for that assertion rather than recording a FAIL. Send one entry per assertion, all in the same call. get_trace_labels reads these back one line per assertion, keyed by the same assertionId, so a per-assertion write is verifiable per assertion.",
+var confidenceShape = _enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]);
+var MAX_VERDICTS_PER_REQUEST = 200;
+var agentVerdictEntryShape = object({
+  traceId: uuid2().optional().describe("The trace ID to update. Provide this OR originalTraceId, not both."),
+  assertionId: uuid2().optional().describe("The assertion this verdict scores, taken from the `[ID: ...]` get_trace_assertions prints. Required unless `archive` is true: verdicts are never written directly on a trace. A replay may name an assertion it inherited from the original trace it was replayed from."),
+  originalTraceId: uuid2().optional().describe("For replay verdicts: the original trace ID the replay item was replayed from (the replay item's originalTraceId). The server resolves it to the replay trace via lineage, so you never need a server replay trace id. Requires the top-level experimentId. Provide this OR traceId, not both."),
+  sourceTraceId: uuid2().optional().meta({ deprecated: true }).describe("Deprecated alias for originalTraceId. Prefer originalTraceId; accepted for back-compat."),
+  attempt: number2().int().min(0).optional().describe("For replay verdicts on an experiment that ran each trace more than once: which attempt of originalTraceId this verdict is for (0-based, the replay item's attempt). Defaults to 0, so single-attempt callers never need it."),
+  verdict: _enum(["pass", "fail", "abstained"]).optional().describe('"pass" or "fail" for your judgment of the assertion. "abstained" when the evidence does not show the part of the run this assertion checks, so there was nothing to judge: it counts as a FAIL in every pass rate but is stored and shown as an abstention, apart from a fail. Required unless `archive` or `skip` is true.'),
+  label: boolean2().optional().meta({ deprecated: true }).describe('Deprecated: the old spelling of verdict. true is "pass", false is "fail". Refused when verdict is also sent.'),
+  abstain: boolean2().optional().meta({ deprecated: true }).describe('Deprecated: the old spelling of verdict "abstained".'),
+  archive: boolean2().optional().describe("If true, archive the existing agent verdict on this assertion and ignore verdict/annotation/skip/confidence. Default false."),
+  skip: boolean2().optional().describe("If true, record an explicit skip (cannot judge) and ignore verdict/confidence. Pass `annotation` alongside it to record why the verdict was withheld. Default false."),
+  annotation: string2().min(1).optional().describe('Your reasoning, shown to the human reviewer beside the verdict. Required for a "pass" or "fail" verdict. Optional alongside `skip: true`, where it says why the verdict was withheld, and alongside verdict "abstained", where it says what the evidence would have had to show.'),
+  confidence: confidenceShape.optional().describe('How confident you are in this verdict: VeryLow / Low / Medium / High / VeryHigh. Shown beside the verdict; low-confidence verdicts are put first for human review. Optional; only meaningful with a "pass" or "fail" verdict.'),
+  evidence: verdictEvidenceShape.nullable().optional().describe("Span-by-span evidence for this verdict. Omit it to preserve existing evidence. Pass null to clear existing evidence.")
+});
+var saveAgentVerdicts = {
+  name: "save_agent_verdicts",
+  title: "Save Agent Verdicts",
+  description: 'Set, skip, abstain on, or archive the agent\'s pass/fail verdict on one or more of a trace\'s approved assertions (`verdictSource="agent"`). Every verdict, skip, and abstention scores ONE assertion and must carry its `assertionId` (the `[ID: ...]` get_trace_assertions prints). Verdicts are only ever written on assertions, never directly on a trace: a trace with no approved assertions gets no verdict, so add assertions first (save_trace_assertions) or report your judgment in the conversation. Use this AFTER you have read the traces with get_traces and decided yourself whether each one looks like a pass, a fail, or genuinely cannot be judged. To set a verdict, pass `verdict` ("pass" or "fail") and `annotation` (your reasoning, shown to the human reviewer beside the verdict). Add `evidence` as `{ spanId, text }` entries to ground that reasoning in spans on the evaluated trace. Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`) to record how confident you are, shown beside the verdict so reviewers can look at low-confidence verdicts first. To explicitly skip an assertion you cannot decide on (instead of leaving it with no verdict), pass `skip: true` and omit verdict. That records an explicit skip so coverage checks know you intentionally did not judge it, and `annotation` still applies: pass it to say why the verdict was withheld (the check never ran, the tape was punctured, the run never terminated), which is the only place a reader learns that. A skip with no annotation clears the note the previous verdict carried, so a stale reason never sits under a withheld verdict. When you read the trace and the evidence does not show the part of the run the assertion checks at all (the message it sent, the call it made, the answer it gave), so nothing can confirm or deny the assertion, pass `verdict: "abstained"`. That is counted as a FAIL in every pass rate, since anything short of an evidenced pass is a fail, but it is stored and shown as an abstention so a reader sees judge coverage rather than the agent\'s behavior; `annotation` says what the evidence would have had to show. Abstaining is not a skip: a skip is for a check that never ran, an abstention is for a check that ran and found nothing to judge. To clear a previously-set agent verdict (e.g., you changed your mind or judged the wrong trace), pass `archive: true` and omit verdict/annotation; an archive may omit `assertionId` to clear an old whole-trace agent verdict. A verdict counts as soon as it is written; there is no approval step, and a person can override it with their own verdict. Archiving is non-destructive: the row is hidden from all reads but kept for audit, and you can immediately judge the assertion again from scratch. For replay results, key each verdict by the replay item\'s `originalTraceId` (the original trace it was replayed from; `sourceTraceId` is accepted as a deprecated alias) plus the top-level `experimentId` instead of a `traceId`: the server resolves it to the replay trace via lineage, so you never need a server-generated replay trace id. When the experiment ran each trace more than once, also pass the item\'s `attempt` so each attempt gets its own verdict. Returns an agent-readable summary with one parseable effective verdict line per entry you sent (so a trace scored on several assertions gets one line per assertion), keyed by the id you supplied (`originalTraceId` for replay verdicts, otherwise `traceId`), so command callers can verify persistence. Before judging a replay, call get_trace_assertions on the original trace ids: an assertion says what the user asked this specific case to do, so the verdict is measured against that rather than a guess. When an assertion\'s target cannot be found on the trace you are judging, the check never ran, so pass `skip: true` for that assertion rather than recording a FAIL. Send one entry per assertion, all in the same call. get_trace_verdicts reads these back one line per assertion, keyed by the same assertionId, so a per-assertion write is verifiable per assertion. The old `labels` array, with `label` (true or false) and `abstain` on each entry, is still accepted.',
   inputSchema: {
-    experimentId: uuid2().optional().describe("The experiment ID. Required when any label targets a trace by originalTraceId (replay verdicts); ignored otherwise."),
-    labels: preprocess(parseJsonString, array(object({
-      traceId: uuid2().optional().describe("The trace ID to update. Provide this OR originalTraceId, not both."),
-      assertionId: uuid2().optional().describe("The assertion this verdict scores, taken from the `[ID: ...]` get_trace_assertions prints. Required unless `archive` is true: labels are never written directly on a trace. A replay may name an assertion it inherited from the original trace it was replayed from."),
-      originalTraceId: uuid2().optional().describe("For replay verdicts: the original trace ID the replay item was replayed from (the replay item's originalTraceId). The server resolves it to the replay trace via lineage, so you never need a server replay trace id. Requires the top-level experimentId. Provide this OR traceId, not both."),
-      sourceTraceId: uuid2().optional().meta({ deprecated: true }).describe("Deprecated alias for originalTraceId. Prefer originalTraceId; accepted for back-compat."),
-      attempt: number2().int().min(0).optional().describe("For replay verdicts on an experiment that ran each trace more than once: which attempt of originalTraceId this verdict is for (0-based, the replay item's attempt). Defaults to 0, so single-attempt callers never need it."),
-      archive: boolean2().optional().describe("If true, archive the existing agent label for this trace and ignore label/annotation/skip/confidence. Default false."),
-      skip: boolean2().optional().describe("If true, record an explicit skip (cannot judge) and ignore label/confidence. Pass `annotation` alongside it to record why the verdict was withheld. Default false."),
-      abstain: boolean2().optional().describe("If true, record that the evidence does not show the part of the run this assertion checks, so there was nothing to judge. Counted as a FAIL in every pass rate but stored and shown as an abstention, apart from a fail. Ignore label/confidence; pass `annotation` to say what the evidence would have had to show. Default false."),
-      label: boolean2().optional().describe("true for PASS, false for FAIL. Required when archive, skip, and abstain are all false/omitted."),
-      annotation: string2().min(1).optional().describe("Your reasoning, shown to the human reviewer in the labeling UI. Required when archive, skip, and abstain are all false/omitted. Optional alongside `skip: true`, where it says why the verdict was withheld, and alongside `abstain: true`, where it says what the evidence would have had to show."),
-      confidence: _enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]).optional().describe("How confident you are in this verdict: VeryLow / Low / Medium / High / VeryHigh. Surfaced as a chip in the labeling UI; low-confidence labels are prioritized for human review. Optional; only meaningful when paired with a label."),
-      evidence: labelEvidenceShape.nullable().optional().describe("Span-by-span evidence for this verdict. Omit it to preserve existing evidence. Pass null to clear existing evidence.")
-    })).min(1).max(200)).describe("One entry per approved assertion, each carrying its assertionId; an archive entry may omit it (1-200)")
+    experimentId: uuid2().optional().describe("The experiment ID. Required when any verdict targets a trace by originalTraceId (replay verdicts); ignored otherwise."),
+    verdicts: preprocess(parseJsonString, array(agentVerdictEntryShape).min(1).max(MAX_VERDICTS_PER_REQUEST)).optional().describe(`One entry per approved assertion, each carrying its assertionId; an archive entry may omit it (1-${MAX_VERDICTS_PER_REQUEST}). Required unless the deprecated labels is sent.`),
+    labels: preprocess(parseJsonString, array(agentVerdictEntryShape).min(1).max(MAX_VERDICTS_PER_REQUEST)).optional().meta({ deprecated: true }).describe("Deprecated: the old name for verdicts. Refused when verdicts is also sent.")
   }
 };
-var saveHumanLabels = {
-  name: "save_human_labels",
-  title: "Save Human Labels",
-  description: "Record one or more human-authored pass/fail verdicts that are VALIDATED immediately (`labelSource=\"human\"`) on one or more of a trace's approved assertions. Unlike save_agent_labels (the agent's own verdicts), labels set here join the validated dataset the instant they are written and satisfy `search_traces` with `validated: true`. Pass `label` (true=PASS, false=FAIL), `annotation` (the reasoning behind the verdict), and optionally `evidence` as `{ spanId, text }` entries grounded in the evaluated trace. Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`). USE ONLY when a human has explicitly decided the verdict, for example saving a known production bug as a test case. This records a verdict on a run that already happened; to record what a trace should do on its next replay, use save_trace_assertions. Do NOT use this for the agent's own first-pass guesses; use save_agent_labels for those. Every entry must carry the `assertionId` of the ONE assertion the human judged (the `[ID: ...]` get_trace_assertions prints), one entry per assertion: labels are never written directly on a trace, so a trace with no approved assertions needs assertions first (save_trace_assertions). get_trace_labels reads these back one line per assertion, keyed by the same assertionId, so a per-assertion write is verifiable per assertion.",
+var humanVerdictEntryShape = object({
+  traceId: uuid2().describe("The trace ID the verdict is on"),
+  assertionId: uuid2().describe("The assertion this verdict scores, taken from the `[ID: ...]` get_trace_assertions prints. Required: verdicts are never written directly on a trace."),
+  verdict: _enum(["pass", "fail"]).optional().describe('"pass" or "fail". Required unless the deprecated label is sent. A person never abstains.'),
+  label: boolean2().optional().meta({ deprecated: true }).describe('Deprecated: the old spelling of verdict. true is "pass", false is "fail". Refused when verdict is also sent.'),
+  annotation: string2().min(1).describe("The reasoning behind the verdict. Required."),
+  confidence: confidenceShape.optional().describe("How confident the verdict is: VeryLow / Low / Medium / High / VeryHigh. Optional."),
+  evidence: verdictEvidenceShape.nullable().optional().describe("Span-by-span evidence for this verdict. Omit it to preserve existing evidence. Pass null to clear existing evidence.")
+});
+var saveHumanVerdicts = {
+  name: "save_human_verdicts",
+  title: "Save Human Verdicts",
+  description: 'Record one or more pass/fail verdicts a person gave, which are VALIDATED immediately (`verdictSource="human"`), on one or more of a trace\'s approved assertions. Unlike save_agent_verdicts (the agent\'s own verdicts), verdicts set here join the validated dataset the instant they are written and satisfy `search_traces` with `validated: true`. Pass `verdict` ("pass" or "fail"), `annotation` (the reasoning behind the verdict), and optionally `evidence` as `{ spanId, text }` entries grounded in the evaluated trace. Optionally pass `confidence` (`VeryLow|Low|Medium|High|VeryHigh`). USE ONLY when a person has explicitly decided the verdict, for example saving a known production bug as a test case. This records a verdict on a run that already happened; to record what a trace should do on its next replay, use save_trace_assertions. Do NOT use this for the agent\'s own first-pass guesses; use save_agent_verdicts for those. Every entry must carry the `assertionId` of the ONE assertion the person judged (the `[ID: ...]` get_trace_assertions prints), one entry per assertion: verdicts are never written directly on a trace, so a trace with no approved assertions needs assertions first (save_trace_assertions). get_trace_verdicts reads these back one line per assertion, keyed by the same assertionId, so a per-assertion write is verifiable per assertion. The old `labels` array, with `label` (true or false) on each entry, is still accepted.',
   inputSchema: {
-    labels: preprocess(parseJsonString, array(object({
-      traceId: uuid2().describe("The trace ID to label"),
-      assertionId: uuid2().describe("The assertion this verdict scores, taken from the `[ID: ...]` get_trace_assertions prints. Required: labels are never written directly on a trace."),
-      label: boolean2().describe("true for PASS, false for FAIL. Required."),
-      annotation: string2().min(1).describe("The reasoning behind the verdict. Required."),
-      confidence: _enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]).optional().describe("How confident the verdict is: VeryLow / Low / Medium / High / VeryHigh. Optional."),
-      evidence: labelEvidenceShape.nullable().optional().describe("Span-by-span evidence for this verdict. Omit it to preserve existing evidence. Pass null to clear existing evidence.")
-    })).min(1).max(200)).describe("One entry per approved assertion, each carrying its assertionId (1-200)")
+    verdicts: preprocess(parseJsonString, array(humanVerdictEntryShape).min(1).max(MAX_VERDICTS_PER_REQUEST)).optional().describe(`One entry per approved assertion, each carrying its assertionId (1-${MAX_VERDICTS_PER_REQUEST}). Required unless the deprecated labels is sent.`),
+    labels: preprocess(parseJsonString, array(humanVerdictEntryShape).min(1).max(MAX_VERDICTS_PER_REQUEST)).optional().meta({ deprecated: true }).describe("Deprecated: the old name for verdicts. Refused when verdicts is also sent.")
   }
 };
 var assertionTargetShape = discriminatedUnion("kind", [
@@ -15229,6 +15239,10 @@ var saveAssertionCategory = deprecatedAlias(saveCategory, "save_assertion_catego
 var listAssertionCategories = deprecatedAlias(listCategories, "list_assertion_categories", "List Assertion Categories");
 var getAssertionCategory = deprecatedAlias(getCategory, "get_assertion_category", "Get Assertion Category");
 var deleteAssertionCategory = deprecatedAlias(deleteCategory, "delete_assertion_category", "Delete Assertion Category");
+var getTraceLabels = deprecatedAlias(getTraceVerdicts, "get_trace_labels", "Get Trace Labels");
+var generateLabelEvidence = deprecatedAlias(generateVerdictEvidence, "generate_label_evidence", "Generate Label Evidence");
+var saveAgentLabels = deprecatedAlias(saveAgentVerdicts, "save_agent_labels", "Save Agent Labels");
+var saveHumanLabels = deprecatedAlias(saveHumanVerdicts, "save_human_labels", "Save Human Labels");
 var generateTraceAssertions = {
   name: "generate_trace_assertions",
   title: "Generate Trace Assertions",
@@ -15243,7 +15257,7 @@ var generateTraceAssertions = {
 var saveTraceAssertions = {
   name: "save_trace_assertions",
   title: "Save Trace Assertions",
-  description: `Record what SHOULD happen when this trace is replayed. Bitfab stores two kinds of label on a trace. A VERDICT says how a run that already happened turned out, and that is save_agent_labels / save_human_labels. An ASSERTION, which is what this tool writes, says what a correct run looks like for THIS specific input, carries no pass/fail of its own, and is checked against a later replay once a reviewer approves it. A trace holds any number of assertions, and each verdict is recorded on one of them. Call it when the user describes the right answer for a particular case, for example "this booking should have picked the 6am flight, not the 9am". This is not a verdict on a run that already happened, which is save_agent_labels, and it is not a check that applies to every trace of a function, which is save_grader. Pass \`assertion\` plus optional \`passCriteria\` / \`failCriteria\`, the same trio save_grader takes, so an assertion that proves out across many traces can later be promoted into a grader with no rewriting. \`humanNote\` stores people-only context on the assertion; preserve and return it, but never use it to judge whether a replay passed. \`assigneeEmail\` names the member who should review it, which routes the assertion to that person without deciding anything, so it never changes the approval state. Pass an entry's \`id\` to edit an existing assertion, or omit it to add a new one, so two callers adding different assertions to one trace never overwrite each other. What this tool writes is saved awaiting review, so nothing checks it yet; a reviewer approves it, in Bitfab or with \`approvalState\` on a later call here, and from then on every replay of the trace is judged against it. \`approvalState\` decides an assertion that already exists, so deciding one is \`{ id, approvalState }\` with nothing else: an omitted \`assertion\` keeps the current wording. It is refused on a new assertion, so the call that invents a claim is never the call that puts it into force. One decision covers the assertion and the category it is filed under, so set \`category_id\` and \`approvalState\` in the same entry when you are deciding both; recategorizing on a later call without deciding returns it to not reviewed, since the approval covered the old category. What it gates is whether replays check the assertion at all, so decide from the assertion and the spans it cites rather than from memory of having written it. Rewording an assertion, or changing its criteria, target, or category, returns it to not reviewed unless the same call says otherwise. Call get_trace_assertions first to find the assertion to edit and to avoid creating a duplicate, and read them back before judging a replay, where it lists the approved ones by default. Pass it \`approvalStates: ["pending"]\` to read back drafts awaiting review, including the ones you just wrote. Each assertion with new text is checked against the trace and rewritten when it breaks the writing rules, unless \`guidedRewrite\` is false, so read the response for what was saved and for any claim to save separately. Up to ${MAX_ASSERTIONS_PER_REQUEST} per call.`,
+  description: `Record what SHOULD happen when this trace is replayed. Bitfab stores two kinds of record on a trace. A VERDICT says how a run that already happened turned out, and that is save_agent_verdicts / save_human_verdicts. An ASSERTION, which is what this tool writes, says what a correct run looks like for THIS specific input, carries no pass/fail of its own, and is checked against a later replay once a reviewer approves it. A trace holds any number of assertions, and each verdict is recorded on one of them. Call it when the user describes the right answer for a particular case, for example "this booking should have picked the 6am flight, not the 9am". This is not a verdict on a run that already happened, which is save_agent_verdicts, and it is not a check that applies to every trace of a function, which is save_grader. Pass \`assertion\` plus optional \`passCriteria\` / \`failCriteria\`, the same trio save_grader takes, so an assertion that proves out across many traces can later be promoted into a grader with no rewriting. \`humanNote\` stores people-only context on the assertion; preserve and return it, but never use it to judge whether a replay passed. \`assigneeEmail\` names the member who should review it, which routes the assertion to that person without deciding anything, so it never changes the approval state. Pass an entry's \`id\` to edit an existing assertion, or omit it to add a new one, so two callers adding different assertions to one trace never overwrite each other. What this tool writes is saved awaiting review, so nothing checks it yet; a reviewer approves it, in Bitfab or with \`approvalState\` on a later call here, and from then on every replay of the trace is judged against it. \`approvalState\` decides an assertion that already exists, so deciding one is \`{ id, approvalState }\` with nothing else: an omitted \`assertion\` keeps the current wording. It is refused on a new assertion, so the call that invents a claim is never the call that puts it into force. One decision covers the assertion and the category it is filed under, so set \`category_id\` and \`approvalState\` in the same entry when you are deciding both; recategorizing on a later call without deciding returns it to not reviewed, since the approval covered the old category. What it gates is whether replays check the assertion at all, so decide from the assertion and the spans it cites rather than from memory of having written it. Rewording an assertion, or changing its criteria, target, or category, returns it to not reviewed unless the same call says otherwise. Call get_trace_assertions first to find the assertion to edit and to avoid creating a duplicate, and read them back before judging a replay, where it lists the approved ones by default. Pass it \`approvalStates: ["pending"]\` to read back drafts awaiting review, including the ones you just wrote. Each assertion with new text is checked against the trace and rewritten when it breaks the writing rules, unless \`guidedRewrite\` is false, so read the response for what was saved and for any claim to save separately. Up to ${MAX_ASSERTIONS_PER_REQUEST} per call.`,
   inputSchema: {
     traceId: uuid2().describe("The ORIGINAL trace to attach assertions to. A replay trace id is refused, and the error names the original to retry with, because a replay reads its original's assertions automatically."),
     assertions: preprocess(parseJsonString, array(object({
@@ -15266,7 +15280,7 @@ var saveTraceAssertions = {
 var getTraceAssertions = {
   name: "get_trace_assertions",
   title: "Get Trace Assertions",
-  description: `Read what SHOULD happen when one or more traces are replayed: each trace's assertions, their review state, their pass/fail criteria, people-only human note, who is assigned to review each one, and what part of the evaluated trace each one checks. By default only assertions a person has approved are returned, because only those are checked on a replay; a trace whose assertions are all still awaiting review reads the same as one with none. Pass \`approvalStates\` to read other review states: \`["pending"]\` for the assertions still awaiting review, including the drafts generate_trace_assertions saved, so a batch of them can be reviewed and then decided with save_trace_assertions \`approvalState\`; add \`"rejected"\` to see the ones turned down. Judge a replay only against the approved ones. To find assertions without knowing which traces carry them, such as every draft awaiting review on a function, use list_trace_assertions. Each trace also reports its assertion generation, if one ran: running, completed with how many drafts it saved for review, or failed with the reason. Categorized assertions include category_id and the category's id, title, and description. A human note is returned so it can be read and edited, but it is never assessment evidence: judge only from the assertion, pass/fail criteria, and evaluated trace. Call this before judging a replay so the verdict is measured against what the user actually asked for rather than a guess, and before save_trace_assertions to find the assertion to edit or to avoid creating a duplicate. No span content is loaded, so one call accepts up to ${GET_TRACE_ASSERTIONS_MAX_IDS} ids. Accepts original trace ids and replay trace ids alike: a replay with no assertions of its own reads its original's, and the response says which original they came from. An assertion whose target cannot be found on the trace being evaluated is errored, never passed, so record it with save_agent_labels \`skip\` rather than a FAIL.`,
+  description: `Read what SHOULD happen when one or more traces are replayed: each trace's assertions, their review state, their pass/fail criteria, people-only human note, who is assigned to review each one, and what part of the evaluated trace each one checks. By default only assertions a person has approved are returned, because only those are checked on a replay; a trace whose assertions are all still awaiting review reads the same as one with none. Pass \`approvalStates\` to read other review states: \`["pending"]\` for the assertions still awaiting review, including the drafts generate_trace_assertions saved, so a batch of them can be reviewed and then decided with save_trace_assertions \`approvalState\`; add \`"rejected"\` to see the ones turned down. Judge a replay only against the approved ones. To find assertions without knowing which traces carry them, such as every draft awaiting review on a function, use list_trace_assertions. Each trace also reports its assertion generation, if one ran: running, completed with how many drafts it saved for review, or failed with the reason. Categorized assertions include category_id and the category's id, title, and description. A human note is returned so it can be read and edited, but it is never assessment evidence: judge only from the assertion, pass/fail criteria, and evaluated trace. Call this before judging a replay so the verdict is measured against what the user actually asked for rather than a guess, and before save_trace_assertions to find the assertion to edit or to avoid creating a duplicate. No span content is loaded, so one call accepts up to ${GET_TRACE_ASSERTIONS_MAX_IDS} ids. Accepts original trace ids and replay trace ids alike: a replay with no assertions of its own reads its original's, and the response says which original they came from. An assertion whose target cannot be found on the trace being evaluated is errored, never passed, so record it with save_agent_verdicts \`skip\` rather than a FAIL.`,
   inputSchema: {
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_TRACE_ASSERTIONS_MAX_IDS)).describe(`Original trace IDs to read assertions for (1-${GET_TRACE_ASSERTIONS_MAX_IDS})`),
     approvalStates: preprocess(parseJsonString, array(_enum(["pending", "approved", "rejected"])).min(1).max(3)).optional().describe('Review states to include: "approved" (checked on every replay), "pending" (awaiting review, including generated drafts), "rejected" (turned down, never checked). Defaults to ["approved"], which is what a replay is judged against. Pass ["pending"] to review drafts, or all three to see everything.')
@@ -15296,7 +15310,7 @@ var archiveTraceAssertions = {
 var saveGrader = {
   name: "save_grader",
   title: "Save Grader",
-  description: `Create or edit a grader: a pass/fail check that describes what must hold for a traced function (e.g. 'The reply never invents order numbers'). Call when the user asks to add, define, update, rename, archive, or restore a grader or check for a traced function. By default the grader is an LLM-as-judge that Bitfab runs; pass external: true when the user evaluates traces themselves. To create, pass traceFunctionKey + name + evaluationFocus. To edit, pass graderId (from list_graders) plus only the fields to change; saving with the name of an existing grader on the same function updates that grader instead of creating a duplicate. Set status to "archived" to retire a grader; any later save that omits status (or sets "active") restores it. On edit, pass an empty string for passCriteria/failCriteria to clear them. After a successful create or update, present the returned grader definition to the user, including its evaluation focus and any pass/fail criteria; do not respond with only a generic success confirmation. Graders are definitions only for now: nothing auto-evaluates them on new traces yet, so do not promise live grading. Call list_graders first to find ids and avoid duplicates. An external grader is one the user runs themselves (their own eval harness, CI, a human review queue): Bitfab never runs it, and its verdicts are posted with save_grader_labels. A grader's external setting is fixed at creation and cannot be changed on edit, and external graders take no model.`,
+  description: `Create or edit a grader: a pass/fail check that describes what must hold for a traced function (e.g. 'The reply never invents order numbers'). Call when the user asks to add, define, update, rename, archive, or restore a grader or check for a traced function. By default the grader is an LLM-as-judge that Bitfab runs; pass external: true when the user evaluates traces themselves. To create, pass traceFunctionKey + name + evaluationFocus. To edit, pass graderId (from list_graders) plus only the fields to change; saving with the name of an existing grader on the same function updates that grader instead of creating a duplicate. Set status to "archived" to retire a grader; any later save that omits status (or sets "active") restores it. On edit, pass an empty string for passCriteria/failCriteria to clear them. After a successful create or update, present the returned grader definition to the user, including its evaluation focus and any pass/fail criteria; do not respond with only a generic success confirmation. Graders are definitions only for now: nothing auto-evaluates them on new traces yet, so do not promise live grading. Call list_graders first to find ids and avoid duplicates. An external grader is one the user runs themselves (their own eval harness, CI, a human review queue): Bitfab never runs it, and its verdicts are posted with save_grader_verdicts. A grader's external setting is fixed at creation and cannot be changed on edit, and external graders take no model.`,
   inputSchema: {
     graderId: uuid2().optional().describe("Id of an existing grader to edit (from list_graders or a previous save). Omit to create a new grader (or update-by-name)."),
     traceFunctionKey: string2().min(1).optional().describe("The traced function the grader applies to. Required when graderId is omitted; ignored when it is set."),
@@ -15306,13 +15320,13 @@ var saveGrader = {
     failCriteria: string2().optional().describe("Optional: what a FAILING trace looks like. On edit, omit to keep the stored value; pass an empty string to clear it."),
     status: _enum(["active", "archived"]).optional().describe(`The grader's status: "active" (the default for a create or edit) or "archived" to retire it (hidden from list_graders by default). Omit on edit to keep it active / restore an archived grader.`),
     model: _enum(["gemini-2-5-flash", "sol", "terra", "opus-4-8", "gemini-3-1-pro"]).optional().describe("Optional: the judge model this grader runs on. One of: gemini-2-5-flash, sol, terra, opus-4-8, gemini-3-1-pro. Omit to keep the current value (defaults to gemini-2-5-flash)."),
-    external: boolean2().optional().describe("Create an external grader: Bitfab never runs it, and its verdicts arrive through save_grader_labels. Only honored when creating; on edit it must match the grader or be omitted.")
+    external: boolean2().optional().describe("Create an external grader: Bitfab never runs it, and its verdicts arrive through save_grader_verdicts. Only honored when creating; on edit it must match the grader or be omitted.")
   }
 };
 var listGraders = {
   name: "list_graders",
   title: "List Graders",
-  description: "List the graders for a traced function: LLM-as-judge graders Bitfab runs, and external graders (marked 'Runs: externally') whose verdicts the user posts with save_grader_labels. Each comes with id, name, status, evaluation focus, and pass/fail criteria. Call before save_grader to find the grader to edit or to avoid creating a duplicate. Results are newest-first and paginated. Archived graders are hidden unless includeArchived is true.",
+  description: "List the graders for a traced function: LLM-as-judge graders Bitfab runs, and external graders (marked 'Runs: externally') whose verdicts the user posts with save_grader_verdicts. Each comes with id, name, status, evaluation focus, and pass/fail criteria. Call before save_grader to find the grader to edit or to avoid creating a duplicate. Results are newest-first and paginated. Archived graders are hidden unless includeArchived is true.",
   inputSchema: {
     traceFunctionKey: string2().min(1).describe("The trace function key to list graders for"),
     includeArchived: preprocess(parseJsonString, boolean2()).optional().describe("Include archived graders (default false)"),
@@ -15324,11 +15338,11 @@ var listGraders = {
 var saveDataset = {
   name: "save_dataset",
   title: "Save Dataset",
-  description: "Create or edit a labeled dataset for a traced function. Datasets are named buckets of traces (e.g. 'Hallucination failures', 'Edge cases for grader X') that humans review and that experiments replay against. To create, pass traceFunctionKey, a short human-readable name, and an optional description. Saving with the name of an existing dataset on the same trace function updates that dataset instead of creating a duplicate, so re-running a flow is safe; pass a new description to change it, or omit it to leave the current one. To rename a dataset or change its description in place, pass its datasetId with a new name and/or description; its id, traces, and graders are kept, and a name already used by another dataset on the same trace function is refused. Pass golden: true to mark the dataset as golden, a trusted reference set to replay and grade changes against (golden datasets are listed first, for the whole organization, in the Bitfab app and in list_datasets), or golden: false to unmark it; omit golden to leave it as it is. This works on create, on a save by name, and with datasetId. Returns the dataset id; use it with add_traces_to_dataset to populate. Call list_datasets first when you need to see what already exists.",
+  description: "Create or edit a dataset for a traced function. Datasets are named buckets of traces (e.g. 'Hallucination failures', 'Edge cases for grader X') that humans review and that experiments replay against. To create, pass traceFunctionKey, a short human-readable name, and an optional description. Saving with the name of an existing dataset on the same trace function updates that dataset instead of creating a duplicate, so re-running a flow is safe; pass a new description to change it, or omit it to leave the current one. To rename a dataset or change its description in place, pass its datasetId with a new name and/or description; its id, traces, and graders are kept, and a name already used by another dataset on the same trace function is refused. Pass golden: true to mark the dataset as golden, a trusted reference set to replay and grade changes against (golden datasets are listed first, for the whole organization, in the Bitfab app and in list_datasets), or golden: false to unmark it; omit golden to leave it as it is. This works on create, on a save by name, and with datasetId. Returns the dataset id; use it with add_traces_to_dataset to populate. Call list_datasets first when you need to see what already exists.",
   inputSchema: {
     datasetId: uuid2().optional().describe("Existing dataset id (from list_datasets) to rename or redescribe in place. Omit to create a dataset or save one by name."),
     traceFunctionKey: string2().min(1).optional().describe("The trace function key the dataset is scoped to (must match traces you'll add). Required without datasetId."),
-    name: string2().min(1).optional().describe("Short human-readable name shown in the labeling UI (e.g. 'Hallucination failures'). Required without datasetId. With datasetId, the new name; omit to keep the current one."),
+    name: string2().min(1).optional().describe("Short human-readable name shown in the Bitfab app (e.g. 'Hallucination failures'). Required without datasetId. With datasetId, the new name; omit to keep the current one."),
     description: string2().optional().describe("Optional longer description of what's in the dataset. With datasetId, omit to keep the current one or pass an empty string to clear it."),
     golden: boolean2().optional().describe("true marks the dataset as golden, false unmarks it. Omit to leave it as it is.")
   }
@@ -15380,7 +15394,7 @@ var removeGradersFromDataset = {
 var rerunGradersOnDataset = {
   name: "rerun_graders_on_dataset",
   title: "Re-run Graders on Dataset",
-  description: "Re-score every trace in a dataset with its attached graders, overwriting their previous verdicts. This is how you grade traces that were added before a grader existed, or re-score everything after editing a grader's criteria: attaching a grader does not itself grade anything. Omit graderIds to re-run every grader attached to the dataset, or pass a subset; ids that are not attached are rejected rather than silently skipped. Waits up to 90 seconds for the run to finish and reports how many traces were graded; if it is still running, call again with the same arguments to check progress (it reports the running job rather than starting a second one). Read the resulting verdicts with get_grader_labels.",
+  description: "Re-score every trace in a dataset with its attached graders, overwriting their previous verdicts. This is how you grade traces that were added before a grader existed, or re-score everything after editing a grader's criteria: attaching a grader does not itself grade anything. Omit graderIds to re-run every grader attached to the dataset, or pass a subset; ids that are not attached are rejected rather than silently skipped. Waits up to 90 seconds for the run to finish and reports how many traces were graded; if it is still running, call again with the same arguments to check progress (it reports the running job rather than starting a second one). Read the resulting verdicts with get_grader_verdicts.",
   inputSchema: {
     datasetId: uuid2().describe("The dataset id (from save_dataset or list_datasets)"),
     graderIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).optional().describe("Grader ids to re-run (1-100). Omit to re-run every grader attached to the dataset.")
@@ -15389,7 +15403,7 @@ var rerunGradersOnDataset = {
 var rerunGradersOnExperiment = {
   name: "rerun_graders_on_experiment",
   title: "Re-run Graders on Experiment",
-  description: "Re-score an experiment's completed replay traces with its attached graders, overwriting their previous verdicts. Use this after attaching a grader to an already-completed experiment (which persists the assignment but does not grade the existing traces) or after editing a grader's criteria. Only the replays belonging to this experiment are graded, never the originals they were compared against. Omit graderIds to re-run every grader attached to the experiment, or pass a subset; ids that are not attached are rejected. Waits up to 90 seconds and reports how many traces were graded; if it is still running, call again with the same arguments to check progress. Read the resulting verdicts with get_grader_labels.",
+  description: "Re-score an experiment's completed replay traces with its attached graders, overwriting their previous verdicts. Use this after attaching a grader to an already-completed experiment (which persists the assignment but does not grade the existing traces) or after editing a grader's criteria. Only the replays belonging to this experiment are graded, never the originals they were compared against. Omit graderIds to re-run every grader attached to the experiment, or pass a subset; ids that are not attached are rejected. Waits up to 90 seconds and reports how many traces were graded; if it is still running, call again with the same arguments to check progress. Read the resulting verdicts with get_grader_verdicts.",
   inputSchema: {
     experimentId: uuid2().describe("The experiment ID, from list_experiments"),
     graderIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).optional().describe("Grader ids to re-run (1-100). Omit to re-run every grader attached to the experiment.")
@@ -15445,7 +15459,7 @@ var listExperiments = {
 var listExperimentTraces = {
   name: "list_experiment_traces",
   title: "List Experiment Traces",
-  description: "Get individual trace results for an experiment, including each replay trace's verdict (fixed, regressed, still-passing, still-failing, original-unlabeled, replay-unlabeled, capture-incomplete, unpaired, skipped) by comparing against the original trace's label, plus the replay's duration and token usage (input, output, cached, total) for the replay and the paired original so you can reason about latency, cost, and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
+  description: "Get individual trace results for an experiment, including each replay trace's verdict (fixed, regressed, still-passing, still-failing, original-no-verdict (the original has no verdict), replay-no-verdict (the replay has no verdict yet), capture-incomplete, unpaired, skipped) by comparing against the original trace's verdict, plus the replay's duration and token usage (input, output, cached, total) for the replay and the paired original so you can reason about latency, cost, and cache-read deltas. Use after list_experiments to drill into a specific experiment's results.",
   inputSchema: {
     experimentId: uuid2().describe("The experiment ID to get traces for")
   }
@@ -15532,31 +15546,36 @@ var getExperiment = {
     experimentId: uuid2().describe("The experiment ID, from list_experiments")
   }
 };
-var getGraderLabels = {
-  name: "get_grader_labels",
-  title: "Get Grader Labels",
-  description: `Read the INDIVIDUAL verdicts each grader recorded, one row per grader per trace, with the grader's reason, its failure diagnostic, the confidence, and whether the verdict came from a human, a grader Bitfab ran, or an external grader whose verdict was posted from outside Bitfab with save_grader_labels. This is the per-grader breakdown that get_trace_labels does not show: that tool returns one grader-agnostic verdict per trace, so use it for a dataset's overall pass/fail and use this one to see WHICH check failed and why. Pass traceIds to see every grader's verdict on those traces, graderId to see that grader's most recent verdicts across traces (newest first, use it to diagnose a grader that is misfiring), or both to narrow to one grader on specific traces. Call list_graders first if you need grader ids.`,
+var getGraderVerdicts = {
+  name: "get_grader_verdicts",
+  title: "Get Grader Verdicts",
+  description: `Read the INDIVIDUAL verdicts each grader recorded, one row per grader per trace, with the grader's reason, its failure diagnostic, the confidence, and whether the verdict came from a person, a grader Bitfab ran, or an external grader whose verdict was posted from outside Bitfab with save_grader_verdicts. This is the per-grader breakdown that get_trace_verdicts does not show: that tool returns one grader-agnostic verdict per trace, so use it for a dataset's overall pass/fail and use this one to see WHICH check failed and why. Pass traceIds to see every grader's verdict on those traces, graderId to see that grader's most recent verdicts across traces (newest first, use it to diagnose a grader that is misfiring), or both to narrow to one grader on specific traces. Call list_graders first if you need grader ids.`,
   inputSchema: {
-    traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_GRADER_LABELS_MAX_IDS)).optional().describe(`Trace IDs to read grader verdicts for (1-${GET_GRADER_LABELS_MAX_IDS}). Omit to read by grader instead.`),
+    traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(GET_GRADER_VERDICTS_MAX_IDS)).optional().describe(`Trace IDs to read grader verdicts for (1-${GET_GRADER_VERDICTS_MAX_IDS}). Omit to read by grader instead.`),
     graderId: uuid2().optional().describe("Restrict to one grader (from list_graders). On its own, returns that grader's most recent verdicts across all traces."),
-    limit: preprocess(parseJsonString, number2().int().min(1).max(MAX_GRADER_LABEL_LIMIT)).optional().describe(`Max labels to return when reading by grader alone (default ${DEFAULT_GRADER_LABEL_LIMIT}, max ${MAX_GRADER_LABEL_LIMIT}). Ignored when traceIds is given.`)
+    limit: preprocess(parseJsonString, number2().int().min(1).max(MAX_GRADER_VERDICT_LIMIT)).optional().describe(`Max verdicts to return when reading by grader alone (default ${DEFAULT_GRADER_VERDICT_LIMIT}, max ${MAX_GRADER_VERDICT_LIMIT}). Ignored when traceIds is given.`)
   }
 };
-var saveGraderLabels = {
-  name: "save_grader_labels",
-  title: "Save Grader Labels",
-  description: `Record verdicts for EXTERNAL graders: graders created with save_grader external: true, which Bitfab never runs because the user evaluates traces somewhere else (their own eval harness, CI, a review queue). Each entry is one grader's pass/fail on one trace, written as that grader's own verdict, so it shows up everywhere Bitfab-run grader verdicts do: get_grader_labels, dataset and experiment pass rates, and the trace's grader panel. Saving again for the same grader and trace replaces the earlier verdict. Rejects every grader that is not external: Bitfab runs its own graders, and a human's verdict on a trace belongs in save_human_labels. Up to ${SAVE_GRADER_LABELS_MAX_ENTRIES} entries per call; the whole call is rejected if any entry is invalid.`,
+var graderVerdictEntryShape = object({
+  graderId: uuid2().describe("The external grader that produced this verdict (from list_graders or save_grader)."),
+  traceId: uuid2().describe("The trace the verdict is about."),
+  verdict: _enum(["pass", "fail"]).optional().describe('"pass" or "fail". Required unless the deprecated label is sent.'),
+  label: boolean2().optional().meta({ deprecated: true }).describe('Deprecated: the old spelling of verdict. true is "pass", false is "fail". Refused when verdict is also sent.'),
+  reason: string2().min(1).optional().describe("Why the grader reached this verdict. Optional."),
+  failureDiagnostic: string2().min(1).optional().describe("For a FAIL: what went wrong in the trace, in a form someone fixing it can act on. Optional."),
+  confidence: confidenceShape.optional().describe("How confident the grader is: VeryLow / Low / Medium / High / VeryHigh. Optional.")
+});
+var saveGraderVerdicts = {
+  name: "save_grader_verdicts",
+  title: "Save Grader Verdicts",
+  description: `Record verdicts for EXTERNAL graders: graders created with save_grader external: true, which Bitfab never runs because the user evaluates traces somewhere else (their own eval harness, CI, a review queue). Each entry is one grader's pass/fail on one trace, written as that grader's own verdict, so it shows up everywhere Bitfab-run grader verdicts do: get_grader_verdicts, dataset and experiment pass rates, and the trace's grader panel. Saving again for the same grader and trace replaces the earlier verdict. Rejects every grader that is not external: Bitfab runs its own graders, and a person's verdict on a trace belongs in save_human_verdicts. Up to ${SAVE_GRADER_VERDICTS_MAX_ENTRIES} entries per call; the whole call is rejected if any entry is invalid. The old \`labels\` array, with \`label\` (true or false) on each entry, is still accepted.`,
   inputSchema: {
-    labels: preprocess(parseJsonString, array(object({
-      graderId: uuid2().describe("The external grader that produced this verdict (from list_graders or save_grader)."),
-      traceId: uuid2().describe("The trace the verdict is about."),
-      label: boolean2().describe("true for PASS, false for FAIL. Required."),
-      reason: string2().min(1).optional().describe("Why the grader reached this verdict. Optional."),
-      failureDiagnostic: string2().min(1).optional().describe("For a FAIL: what went wrong in the trace, in a form someone fixing it can act on. Optional."),
-      confidence: _enum(["VeryLow", "Low", "Medium", "High", "VeryHigh"]).optional().describe("How confident the grader is: VeryLow / Low / Medium / High / VeryHigh. Optional.")
-    })).min(1).max(SAVE_GRADER_LABELS_MAX_ENTRIES)).describe(`One entry per grader per trace (1-${SAVE_GRADER_LABELS_MAX_ENTRIES}).`)
+    verdicts: preprocess(parseJsonString, array(graderVerdictEntryShape).min(1).max(SAVE_GRADER_VERDICTS_MAX_ENTRIES)).optional().describe(`One entry per grader per trace (1-${SAVE_GRADER_VERDICTS_MAX_ENTRIES}). Required unless the deprecated labels is sent.`),
+    labels: preprocess(parseJsonString, array(graderVerdictEntryShape).min(1).max(SAVE_GRADER_VERDICTS_MAX_ENTRIES)).optional().meta({ deprecated: true }).describe("Deprecated: the old name for verdicts. Refused when verdicts is also sent.")
   }
 };
+var getGraderLabels = deprecatedAlias(getGraderVerdicts, "get_grader_labels", "Get Grader Labels");
+var saveGraderLabels = deprecatedAlias(saveGraderVerdicts, "save_grader_labels", "Save Grader Labels");
 var getSimPlan = {
   name: "get_sim_plan",
   title: "Get Sim Plan",
@@ -15656,6 +15675,8 @@ var generateScenarioAssertions = {
   }
 };
 var ALL_TOOL_CONTRACTS = [
+  getGraderVerdicts,
+  saveGraderVerdicts,
   getGraderLabels,
   saveGraderLabels,
   getExperiment,
@@ -15670,10 +15691,14 @@ var ALL_TOOL_CONTRACTS = [
   listTraceFunctions,
   searchTraces,
   getTraces,
+  getTraceVerdicts,
+  generateVerdictEvidence,
   getTraceLabels,
   generateLabelEvidence,
   getSpanField,
   getSpan,
+  saveAgentVerdicts,
+  saveHumanVerdicts,
   saveAgentLabels,
   saveHumanLabels,
   saveCategory,
@@ -16095,12 +16120,18 @@ function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
   function proxyToolCall(toolName, args) {
     return proxy.toolCall(getConfig(), toolName, withLegacyExperimentKeys(args));
   }
-  async function handleSaveAgentLabels(args) {
-    const { experimentId, labels } = args;
-    return proxyToolCall("save_agent_labels", {
-      experimentId,
-      labels: labels.map((l) => l.originalTraceId !== undefined && l.sourceTraceId === undefined ? { ...l, sourceTraceId: l.originalTraceId } : l)
-    });
+  function withLegacySourceTraceId(entries) {
+    return entries?.map((entry) => entry.originalTraceId !== undefined && entry.sourceTraceId === undefined ? { ...entry, sourceTraceId: entry.originalTraceId } : entry);
+  }
+  function handleSaveAgentVerdictsAs(toolName) {
+    return async (args) => {
+      const { experimentId, verdicts, labels } = args;
+      return proxyToolCall(toolName, {
+        experimentId,
+        verdicts: withLegacySourceTraceId(verdicts),
+        labels: withLegacySourceTraceId(labels)
+      });
+    };
   }
   async function handleSaveExperiment(args) {
     const { experimentId, name, notes, experimentGroupId } = args;
@@ -16150,7 +16181,8 @@ function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
     return proxyToolCall("save_scenario", { ...rest, ...read });
   }
   const specialHandlers = {
-    [saveAgentLabels.name]: handleSaveAgentLabels,
+    [saveAgentVerdicts.name]: handleSaveAgentVerdictsAs(saveAgentVerdicts.name),
+    [saveAgentLabels.name]: handleSaveAgentVerdictsAs(saveAgentLabels.name),
     [saveExperiment.name]: handleSaveExperiment,
     [saveExperimentGroup.name]: handleSaveExperimentGroup,
     [saveScenario.name]: handleSaveScenario
@@ -17023,10 +17055,10 @@ var semver2 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.65.11",
-  python: "0.65.7",
-  ruby: "0.65.7",
-  go: "0.65.7"
+  typescript: "0.66.0",
+  python: "0.66.0",
+  ruby: "0.66.0",
+  go: "0.66.0"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
@@ -18509,7 +18541,7 @@ var assistantFlow = Flow.parse({
   id: "assistant",
   title: "Bitfab Assistant (retired)",
   frontmatter: {
-    description: "Retired. Only use when the user explicitly types the bitfab assistant command by name; it tells them the assistant has been retired. Never use it for requests about traces, datasets, labels, replays, experiments, or improving a traced function: handle those directly with the Bitfab MCP tools"
+    description: "Retired. Only use when the user explicitly types the bitfab assistant command by name; it tells them the assistant has been retired. Never use it for requests about traces, datasets, labels, verdicts, replays, experiments, or improving a traced function: handle those directly with the Bitfab MCP tools"
   },
   entries: {
     default: "retired/explain"
@@ -18924,7 +18956,7 @@ var setupFlow = Flow.parse({
   id: "setup",
   title: "Bitfab Setup",
   frontmatter: {
-    description: "Set up and maintain Bitfab tracing, replay registries, and cloud replay. Use for instrumenting AI/LLM code, adding observability or evaluation, tracing another workflow, changing captured inputs/outputs, re-instrumenting a function, moving side effects across trace boundaries, inspecting missing traces, explaining Bitfab, login, organization switching, session-log consent, database snapshots, templates, or read-only repo instrumentation recommendations (analyze-repo). Also use for 'setup cloud', 'set up cloud replay', or 'replay on GitHub'. Re-enter this skill for each additional function to instrument, even after earlier setup. Do not use for improving output quality, pass rates, labeling, or experiments (the agent does those directly with the Bitfab MCP tools), or upgrading SDK/plugin versions (use bitfab:update)",
+    description: "Set up and maintain Bitfab tracing, replay registries, and cloud replay. Use for instrumenting AI/LLM code, adding observability or evaluation, tracing another workflow, changing captured inputs/outputs, re-instrumenting a function, moving side effects across trace boundaries, inspecting missing traces, explaining Bitfab, login, organization switching, session-log consent, database snapshots, templates, or read-only repo instrumentation recommendations (analyze-repo). Also use for 'setup cloud', 'set up cloud replay', or 'replay on GitHub'. Re-enter this skill for each additional function to instrument, even after earlier setup. Do not use for improving output quality, pass rates, verdicts (labeling), or experiments (the agent does those directly with the Bitfab MCP tools), or upgrading SDK/plugin versions (use bitfab:update)",
     argumentHint: {
       deriveFromModes: true,
       suffix: "[what to do]"
@@ -21414,7 +21446,7 @@ Finding out what happened:
 
 Writing down what should happen:
 - An assertion says what should happen when one trace is replayed. Draft them from what the trace did with ${generateTraceAssertions.name}, or write them with ${saveTraceAssertions.name}. They wait for review until approved. Retire one with ${archiveTraceAssertions.name}.
-- A verdict says whether a run passed one assertion. Read a trace's assertions with ${getTraceAssertions.name}, then record your verdicts with ${saveAgentLabels.name}. Use ${saveHumanLabels.name} only when the user gives the verdict.
+- A verdict says whether a run passed one assertion. Read a trace's assertions with ${getTraceAssertions.name}, then record your verdicts with ${saveAgentVerdicts.name}. Use ${saveHumanVerdicts.name} only when the user gives the verdict.
 - A grader is a pass/fail check for every trace of a function. Create one with ${saveGrader.name}.
 - A scenario describes the situation one run was in. Read it with ${getScenario.name} and build it with ${saveScenario.name}.
 
