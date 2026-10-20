@@ -9555,6 +9555,35 @@ function formatError(error, mapper = (issue) => issue.message) {
   processError(error);
   return fieldErrors;
 }
+function toDotPath(_path) {
+  const segs = [];
+  const path = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path) {
+    if (typeof seg === "number")
+      segs.push(`[${seg}]`);
+    else if (typeof seg === "symbol")
+      segs.push(`[${JSON.stringify(String(seg))}]`);
+    else if (/[^\w$]/.test(seg))
+      segs.push(`[${JSON.stringify(seg)}]`);
+    else {
+      if (segs.length)
+        segs.push(".");
+      segs.push(seg);
+    }
+  }
+  return segs.join("");
+}
+function prettifyError(error) {
+  const lines = [];
+  const issues = [...error.issues].sort((a, b) => (a.path ?? []).length - (b.path ?? []).length);
+  for (const issue of issues) {
+    lines.push(`\u2716 ${issue.message}`);
+    if (issue.path?.length)
+      lines.push(`  \u2192 at ${toDotPath(issue.path)}`);
+  }
+  return lines.join(`
+`);
+}
 
 // ../node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
@@ -17613,7 +17642,7 @@ function formatSdkUpdateLine(status) {
   const rename = status.renameFrom ? ` (rename: ${status.renameFrom} \u2192 ${status.packageName})` : "";
   return `${prefix}${status.language} (${status.packageName}) ${current} \u2192 ${status.latest}${rename}`;
 }
-// ../bitfab-flow/dist/commands.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/commands.js
 function defineCommandCatalog(catalog) {
   return {
     defineCommands(defs) {
@@ -17634,238 +17663,12 @@ function defineCommandCatalog(catalog) {
     }
   };
 }
-// ../bitfab-flow/dist/shared.js
-var CODEX_RESOLVE_PLUGIN_DIR_BASH = `\`\`\`bash
-if [ -z "$BITFAB_PLUGIN_DIR" ]; then
-  BITFAB_PLUGIN_DIR=$(
-    hit=$(find "\${CODEX_HOME:-$HOME/.codex}/plugins/cache" -maxdepth 6 -type f -name status.js \\
-      \\( -path '*/bitfab-internal/bitfab/local/dist/commands/*' \\
-      -o -path '*/bitfab/bitfab/*/dist/commands/*' \\) 2>/dev/null | head -1)
-    echo "\${hit%/dist/commands/status.js}"
-  )
-  export BITFAB_PLUGIN_DIR
-fi
-test -n "$BITFAB_PLUGIN_DIR" || { echo "ERROR: Bitfab plugin not installed"; exit 1; }
-\`\`\``;
-var AMP_RESOLVE_PLUGIN_DIR_BASH = `\`\`\`bash
-if [ -z "$BITFAB_PLUGIN_DIR" ]; then
-  project_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-  for candidate in "$project_root/.amp/plugins/bitfab" "\${XDG_CONFIG_HOME:-$HOME/.config}/amp/plugins/bitfab"; do
-    if [ -f "$candidate/dist/commands/status.js" ]; then
-      BITFAB_PLUGIN_DIR="$candidate"
-      break
-    fi
-  done
-  export BITFAB_PLUGIN_DIR
-fi
-test -n "$BITFAB_PLUGIN_DIR" || { echo "ERROR: Bitfab plugin not installed"; exit 1; }
-\`\`\``;
-
-// ../bitfab-flow/dist/targets.js
-var TARGET_NAMES = ["claude", "cursor", "codex", "amp"];
-var SECTION_TARGETS = {
-  claude: ["claude"],
-  cursor: ["cursor"],
-  codex: ["codex"],
-  amp: ["amp"],
-  "ask-user-question": ["claude", "cursor"],
-  "plugin-dir-lookup": ["codex", "amp"],
-  "exec-polling": ["codex", "amp"],
-  "no-startup-banner": ["codex", "amp"],
-  "web-fetch-tool": ["claude", "cursor"]
-};
-function formatAllowedTools(allowedTools) {
-  return `[${allowedTools.map((t) => JSON.stringify(t)).join(", ")}]`;
-}
-var renderClaudeFrontmatter = ({ description, argumentHint, model, allowedTools }) => {
-  const lines = ["---", `description: ${description}`];
-  if (argumentHint !== undefined) {
-    lines.push(`argument-hint: ${JSON.stringify(argumentHint)}`);
-  }
-  if (model !== undefined) {
-    lines.push(`model: ${model}`);
-  }
-  if (allowedTools !== undefined) {
-    lines.push(`allowed-tools: ${formatAllowedTools(allowedTools)}`);
-  }
-  lines.push("---");
-  return lines.join(`
-`);
-};
-var renderClaudeSkillFrontmatter = ({ flowId, description, model, allowedTools }) => {
-  const lines = [
-    "---",
-    `name: ${flowId}`,
-    `description: ${description}`,
-    "user-invocable: false"
-  ];
-  if (model !== undefined) {
-    lines.push(`model: ${model}`);
-  }
-  if (allowedTools !== undefined) {
-    lines.push(`allowed-tools: ${formatAllowedTools(allowedTools)}`);
-  }
-  lines.push("---");
-  return lines.join(`
-`);
-};
-function renderNamedFrontmatter(name, description, usage, usageInBody = false) {
-  const frontmatter = [
-    "---",
-    `name: ${name}`,
-    `description: "${description}${usageInBody ? "" : usage}"`,
-    "---"
-  ].join(`
-`);
-  return usageInBody && usage !== "" ? `${frontmatter}
-
-${usage.slice(2)}` : frontmatter;
-}
-var renderCursorFrontmatter = ({ flowId, description, argumentHint }) => {
-  const usage = argumentHint !== undefined ? `. Usage: /bitfab-${flowId} ${argumentHint}` : "";
-  return renderNamedFrontmatter(`bitfab-${flowId}`, description, usage);
-};
-var renderCodexFrontmatter = ({ flowId, description, argumentHint }) => {
-  const usage = argumentHint !== undefined ? `. Invoke with $bitfab:${flowId} ${argumentHint}.` : "";
-  return renderNamedFrontmatter(flowId, description, usage);
-};
-var renderAmpFrontmatter = ({ flowId, description, argumentHint }) => {
-  const usage = argumentHint !== undefined ? `. Invoke as bitfab:${flowId} ${argumentHint}.` : "";
-  return renderNamedFrontmatter(flowId, description, usage);
-};
-var renderCursorDevFrontmatter = ({ flowId, description, argumentHint }) => {
-  const usage = argumentHint !== undefined ? `. Usage: /bitfab-dev-${flowId} ${argumentHint}` : "";
-  return renderNamedFrontmatter(`bitfab-dev-${flowId}`, description, usage, true);
-};
-var renderCodexDevFrontmatter = ({ flowId, description, argumentHint }) => {
-  const usage = argumentHint !== undefined ? `. Invoke with $bitfab-dev:${flowId} ${argumentHint}.` : "";
-  return renderNamedFrontmatter(flowId, description, usage, true);
-};
-var renderAmpDevFrontmatter = ({ flowId, description, argumentHint }) => {
-  const usage = argumentHint !== undefined ? `. Invoke as bitfab-dev:${flowId} ${argumentHint}.` : "";
-  return renderNamedFrontmatter(flowId, description, usage, true);
-};
-var ASK_USER_QUESTION_TOKENS = {
-  askUser: "with `AskUserQuestion` ",
-  askVerb: "use `AskUserQuestion`",
-  askVerbCap: "Use `AskUserQuestion`",
-  askNoun: "AskUserQuestion"
-};
-var PLAIN_PROMPT_TOKENS = {
-  askUser: "",
-  askVerb: "ask the user",
-  askVerbCap: "Ask the user",
-  askNoun: "choice prompt"
-};
-var TARGETS = {
-  claude: {
-    name: "claude",
-    tokens: {
-      cmd: "/bitfab:",
-      devCmd: "/bitfab-dev:",
-      editor: "Claude Code",
-      pluginRoot: "${CLAUDE_PLUGIN_ROOT}",
-      pluginDirLookup: "",
-      ...ASK_USER_QUESTION_TOKENS
-    },
-    mcpPrefix: "mcp__plugin_bitfab_Bitfab__",
-    argsToken: "$ARGUMENTS",
-    frontmatter: renderClaudeFrontmatter,
-    subSkillFrontmatter: renderClaudeSkillFrontmatter,
-    subSkillTool: "Skill"
-  },
-  cursor: {
-    name: "cursor",
-    tokens: {
-      cmd: "/bitfab-",
-      devCmd: "/bitfab-dev-",
-      editor: "Cursor",
-      pluginRoot: "${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}",
-      pluginDirLookup: "",
-      ...ASK_USER_QUESTION_TOKENS
-    },
-    mcpPrefix: "mcp__Bitfab__",
-    argsToken: "$ARGUMENTS",
-    frontmatter: renderCursorFrontmatter,
-    subSkillFrontmatter: renderCursorFrontmatter
-  },
-  codex: {
-    name: "codex",
-    tokens: {
-      cmd: "$bitfab:",
-      devCmd: "$bitfab-dev:",
-      editor: "Codex",
-      pluginRoot: "${BITFAB_PLUGIN_DIR}",
-      pluginDirLookup: CODEX_RESOLVE_PLUGIN_DIR_BASH,
-      ...PLAIN_PROMPT_TOKENS
-    },
-    mcpPrefix: "mcp__Bitfab__",
-    argsToken: "$ARGUMENTS",
-    frontmatter: renderCodexFrontmatter,
-    subSkillFrontmatter: renderCodexFrontmatter,
-    dispatchRef: (skillName) => `\`$bitfab:${skillName}\``
-  },
-  amp: {
-    name: "amp",
-    tokens: {
-      cmd: "bitfab:",
-      devCmd: "bitfab-dev:",
-      editor: "Amp",
-      pluginRoot: "${BITFAB_PLUGIN_DIR}",
-      pluginDirLookup: AMP_RESOLVE_PLUGIN_DIR_BASH,
-      ...PLAIN_PROMPT_TOKENS
-    },
-    mcpPrefix: "",
-    argsToken: "the user's request",
-    frontmatter: renderAmpFrontmatter,
-    subSkillFrontmatter: renderAmpFrontmatter,
-    subSkillTool: "skill",
-    dispatchRef: (skillName) => `\`bitfab:${skillName}\``
-  }
-};
-var DEV_TARGETS = {
-  claude: {
-    ...TARGETS.claude,
-    frontmatter: renderClaudeFrontmatter,
-    subSkillFrontmatter: renderClaudeSkillFrontmatter
-  },
-  cursor: {
-    ...TARGETS.cursor,
-    frontmatter: renderCursorDevFrontmatter,
-    subSkillFrontmatter: renderCursorDevFrontmatter
-  },
-  codex: {
-    ...TARGETS.codex,
-    frontmatter: renderCodexDevFrontmatter,
-    subSkillFrontmatter: renderCodexDevFrontmatter,
-    dispatchRef: (skillName) => `\`$bitfab-dev:${skillName}\``
-  },
-  amp: {
-    ...TARGETS.amp,
-    frontmatter: renderAmpDevFrontmatter,
-    subSkillFrontmatter: renderAmpDevFrontmatter,
-    dispatchRef: (skillName) => `\`bitfab-dev:${skillName}\``
-  }
-};
-
-// ../bitfab-flow/dist/schema.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/schema.js
 var StepIdRef = string2().regex(/^[a-z0-9-]+\/[a-z0-9-]+$/, {
   message: "Step references must use the form 'phase-id/step-id'"
 });
 var StepLocalId = string2().regex(/^[a-z0-9-]+$/);
 var PhaseId = string2().regex(/^[a-z0-9-]+$/);
-function PerTarget(inner) {
-  const objectForm = object({
-    default: inner.optional(),
-    claude: inner.optional(),
-    cursor: inner.optional(),
-    codex: inner.optional(),
-    amp: inner.optional()
-  }).refine((v) => v.default !== undefined || TARGET_NAMES.every((target) => v[target] !== undefined), {
-    message: `Per-target object must have \`default\` or define all of ${TARGET_NAMES.join("/")}.`
-  });
-  return union([inner, objectForm]);
-}
 function resolvePerTarget(value, target) {
   if (typeof value !== "object" || value === null) {
     return value;
@@ -17873,23 +17676,18 @@ function resolvePerTarget(value, target) {
   const map = value;
   return map[target] ?? map.default;
 }
-var TargetableString = PerTarget(string2());
-var TargetableNonEmptyString = PerTarget(string2().min(1));
-var RESERVED_TOKEN_NAMES = [
-  "cmd",
-  "devCmd",
-  "editor",
-  "pluginRoot",
-  "pluginDirLookup",
-  "askUser",
-  "askVerb",
-  "askVerbCap",
-  "askNoun",
-  "argsToken"
-];
-var MUSTACHE_SECTION_NAMES = Object.keys(SECTION_TARGETS);
+function resolveTargetableString(value, target, label) {
+  const resolved = resolvePerTarget(value, target);
+  if (resolved === undefined) {
+    throw new Error(`Per-target value missing for ${target}: ${label}`);
+  }
+  return resolved;
+}
 var MODE_SECTION_RE = /\{\{([#^])mode:([a-z0-9-]+)\}\}/g;
 var MODE_SECTION_CLOSE_RE = /\{\{\/mode:([a-z0-9-]+)\}\}/g;
+var TOOL_PLACEHOLDER_RE = /\{\{tool:([a-zA-Z][a-zA-Z0-9_-]*)\}\}/g;
+var COMMAND_PLACEHOLDER_RE = /\{\{command:([a-zA-Z][a-zA-Z0-9_-]*)\}\}/g;
+var TABLE_PLACEHOLDER_RE = /\{\{(table|list):([a-zA-Z][a-zA-Z0-9_-]*):([a-zA-Z0-9_,-]+)\}\}/g;
 var NextRef = StepIdRef.nullable();
 var ByModeNext = object({
   byMode: record(string2(), NextRef)
@@ -17902,6 +17700,17 @@ var EmitLabel = union([
     action: _enum(["started", "completed"])
   })
 ]);
+var BranchOption = object({
+  letter: string2().min(1),
+  label: string2().min(1),
+  description: string2().optional()
+});
+var CompileMode = _enum(["monolith", "split", "split-chain"]);
+function PerTarget(inner) {
+  return union([inner, record(string2(), inner)]);
+}
+var TargetableString = PerTarget(string2());
+var TargetableNonEmptyString = PerTarget(string2().min(1));
 var Base = object({
   id: StepLocalId,
   title: TargetableNonEmptyString,
@@ -17917,11 +17726,6 @@ var Base = object({
 var Action = Base.extend({
   kind: literal("action"),
   next: Next
-});
-var BranchOption = object({
-  letter: string2().min(1),
-  label: string2().min(1),
-  description: string2().optional()
 });
 var Branch = Base.extend({
   kind: literal("branch"),
@@ -17990,24 +17794,25 @@ var Frontmatter = object({
 var ToolDef = object({
   name: PerTarget(string2()),
   kind: _enum(["builtin", "mcp"]),
-  targets: array(_enum(TARGET_NAMES)).nonempty().optional()
+  targets: array(string2()).nonempty().optional()
 });
 var CommandDef = object({
   file: string2().min(1),
   description: string2().min(1),
   args: string2().optional()
 });
-var Language = object({
-  name: string2().min(1),
-  displayName: string2().min(1),
-  imports: string2().optional(),
-  detection: string2().optional(),
-  outdated: string2().optional(),
-  update: string2().optional()
+var Table = object({
+  keyHeader: string2().min(1).default("Name"),
+  columns: record(string2(), string2()).default({}),
+  rows: array(object({
+    key: string2().min(1),
+    label: string2().optional(),
+    cells: record(string2(), string2())
+  })).min(1)
 });
-var Flow = object({
+var FlowBase = object({
   schemaVersion: literal(1),
-  id: string2().min(1),
+  id: string2().regex(/^[a-z0-9-]+$/),
   title: TargetableNonEmptyString,
   frontmatter: Frontmatter,
   intro: TargetableString.optional(),
@@ -18018,13 +17823,12 @@ var Flow = object({
   phases: array(Phase).min(1),
   appendices: array(Appendix).default([]),
   invariants: array(string2()).default([]),
-  languages: array(Language).default([]),
-  languageColumnHeaders: record(string2(), string2()).default({}),
+  tables: record(string2(), Table).default({}),
   tools: record(string2(), ToolDef).default({}),
   commands: record(string2(), CommandDef).default({}),
   variables: record(string2(), TargetableString).default({}),
   compile: object({
-    mode: PerTarget(_enum(["monolith", "split", "split-chain"])).default("monolith"),
+    mode: PerTarget(CompileMode).default("monolith"),
     inlinePhases: array(string2()).default([]),
     continuousStepNumbers: boolean2().default(false)
   }).default({
@@ -18032,428 +17836,324 @@ var Flow = object({
     inlinePhases: [],
     continuousStepNumbers: false
   })
-}).superRefine((flow, ctx) => {
-  const allStepIds = new Set;
-  const phaseIds = new Set;
-  for (const phase of flow.phases) {
-    if (phaseIds.has(phase.id)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["phases", phase.id],
-        message: `duplicate phase id "${phase.id}"`
-      });
-    }
-    phaseIds.add(phase.id);
-    const localIds = new Set;
-    for (const step of phase.steps) {
-      if (localIds.has(step.id)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["phases", phase.id, "steps"],
-          message: `duplicate step id "${step.id}" in phase "${phase.id}"`
-        });
-      }
-      localIds.add(step.id);
-      allStepIds.add(`${phase.id}/${step.id}`);
-    }
-  }
-  for (const phaseId of flow.compile.inlinePhases) {
-    if (!phaseIds.has(phaseId)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["compile", "inlinePhases"],
-        message: `inlinePhases lists unknown phase "${phaseId}"`
-      });
-    }
-  }
-  const declaredModes = Object.keys(flow.entries);
-  const declaredModeSet = new Set(declaredModes);
-  const argumentHint = flow.frontmatter.argumentHint;
-  const argumentHintModes = declaredModes.filter((mode) => mode !== "default" || flow.defaultMode !== "default");
-  if (typeof argumentHint === "object" && "deriveFromModes" in argumentHint && argumentHintModes.length === 0) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["frontmatter", "argumentHint"],
-      message: "deriveFromModes requires at least one non-default mode in entries"
-    });
-  }
-  if (flow.defaultMode !== undefined && !declaredModeSet.has(flow.defaultMode)) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["defaultMode"],
-      message: `defaultMode "${flow.defaultMode}" not declared in entries`
-    });
-  }
-  for (const mode of Object.keys(flow.modeHints)) {
-    if (!declaredModeSet.has(mode)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["modeHints", mode],
-        message: `modeHints key "${mode}" not declared in entries`
-      });
-    }
-  }
-  const refsFromNext = (next) => {
-    if (next === null) {
-      return [];
-    }
-    if (typeof next === "string") {
-      return [next];
-    }
-    return Object.values(next.byMode).filter((v) => typeof v === "string");
-  };
-  const refsFromStep = (s) => {
-    switch (s.kind) {
-      case "action":
-      case "reference":
-      case "parallel":
-        return refsFromNext(s.next);
-      case "branch":
-        return s.branches.flatMap((b) => refsFromNext(b.next));
-      case "loop":
-        return [s.backTo, s.onExit];
-    }
-  };
-  for (const phase of flow.phases) {
-    for (const step of phase.steps) {
-      for (const ref of refsFromStep(step)) {
-        if (!allStepIds.has(ref)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["phases", phase.id, "steps", step.id],
-            message: `edge \u2192 unknown step "${ref}"`
-          });
-        }
-      }
-      const validateByMode = (byMode, path, label) => {
-        for (const mode of Object.keys(byMode)) {
-          if (!declaredModeSet.has(mode)) {
-            ctx.addIssue({
-              code: "custom",
-              path,
-              message: `${label} lists mode "${mode}" not declared in flow.entries`
-            });
-          }
-        }
-        const missingModes = declaredModes.filter((m) => !(m in byMode));
-        if (missingModes.length > 0) {
-          ctx.addIssue({
-            code: "custom",
-            path,
-            message: `${label} byMode is missing entries for mode(s): ${missingModes.join(", ")}`
-          });
-        }
-      };
-      if ((step.kind === "action" || step.kind === "reference" || step.kind === "parallel") && typeof step.next === "object" && step.next !== null) {
-        validateByMode(step.next.byMode, ["phases", phase.id, "steps", step.id, "next", "byMode"], `step "${step.id}" next`);
-      }
-      if (step.kind === "branch") {
-        for (const [i, branch] of step.branches.entries()) {
-          if (typeof branch.next === "object" && branch.next !== null) {
-            const branchLabelText = branch.option !== undefined ? `option "${branch.option.letter}"` : branch.when ?? `branch[${i}]`;
-            validateByMode(branch.next.byMode, [
-              "phases",
-              phase.id,
-              "steps",
-              step.id,
-              "branches",
-              i,
-              "next",
-              "byMode"
-            ], `step "${step.id}" branch ${branchLabelText}`);
-          }
-        }
-      }
-    }
-  }
-  for (const phase of flow.phases) {
-    const preambleCount = phase.steps.filter((s) => s.preamble === true).length;
-    if (preambleCount > 1) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["phases", phase.id, "steps"],
-        message: `phase "${phase.id}" has ${preambleCount} preamble steps; only one is allowed per phase`
-      });
-    }
-  }
-  const appendixIds = new Set(flow.appendices.map((a) => a.id));
-  for (const phase of flow.phases) {
-    for (const step of phase.steps) {
-      const refs = step.refs ?? [];
-      for (const r of refs) {
-        if (!appendixIds.has(r)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["phases", phase.id, "steps", step.id, "refs"],
-            message: `unknown appendix "${r}"`
-          });
-        }
-      }
-    }
-  }
-  const targetNames = ["claude", "cursor", "codex"];
-  for (const [mode, entry] of Object.entries(flow.entries)) {
-    for (const target of targetNames) {
-      const resolved = resolvePerTarget(entry, target);
-      if (resolved === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["entries", mode],
-          message: `entry for mode "${mode}" has no value for target "${target}" (and no default)`
-        });
+});
+function createFlowSchema(options) {
+  const targetNames = [...options.targetNames];
+  const reservedTokenNames = new Set([
+    ...options.reservedTokenNames ?? [],
+    "argsToken"
+  ]);
+  const allowedKeys = new Set(["default", ...targetNames]);
+  return FlowBase.superRefine((flow, ctx) => {
+    const issue = (path, message) => ctx.addIssue({ code: "custom", path, message });
+    for (const { path, value } of targetableFields(flow)) {
+      if (typeof value !== "object" || value === null) {
         continue;
       }
-      if (!allStepIds.has(resolved)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["entries", mode],
-          message: `entry "${mode}" \u2192 "${target}" \u2192 unknown step "${resolved}"`
-        });
+      const map = value;
+      for (const key of Object.keys(map)) {
+        if (!allowedKeys.has(key)) {
+          issue(path, `Unknown target "${key}" in per-target object. Known targets: ${targetNames.join(", ")}.`);
+        }
+      }
+      if (map.default === undefined && !targetNames.every((target) => map[target] !== undefined)) {
+        issue(path, `Per-target object must have \`default\` or define all of ${targetNames.join("/")}.`);
       }
     }
-  }
-  const reachableUnion = new Set;
-  for (const [mode, entry] of Object.entries(flow.entries)) {
-    for (const target of targetNames) {
-      const start = resolvePerTarget(entry, target);
-      if (start === undefined) {
-        continue;
+    const allStepIds = new Set;
+    const phaseIds = new Set;
+    for (const phase of flow.phases) {
+      if (phaseIds.has(phase.id)) {
+        issue(["phases", phase.id], `duplicate phase id "${phase.id}"`);
       }
-      const queue = [start];
-      const seen = new Set;
-      while (queue.length > 0) {
-        const id = queue.shift();
-        if (id === undefined || seen.has(id)) {
-          continue;
+      phaseIds.add(phase.id);
+      const localIds = new Set;
+      for (const step of phase.steps) {
+        if (localIds.has(step.id)) {
+          issue(["phases", phase.id, "steps"], `duplicate step id "${step.id}" in phase "${phase.id}"`);
         }
-        seen.add(id);
-        reachableUnion.add(id);
-        const [phaseId, stepId] = id.split("/");
-        const step = flow.phases.find((p) => p.id === phaseId)?.steps.find((s) => s.id === stepId);
-        if (step === undefined) {
-          continue;
+        localIds.add(step.id);
+        allStepIds.add(`${phase.id}/${step.id}`);
+      }
+    }
+    for (const phaseId of flow.compile.inlinePhases) {
+      if (!phaseIds.has(phaseId)) {
+        issue(["compile", "inlinePhases"], `inlinePhases lists unknown phase "${phaseId}"`);
+      }
+    }
+    const declaredModes = Object.keys(flow.entries);
+    const declaredModeSet = new Set(declaredModes);
+    const argumentHint = flow.frontmatter.argumentHint;
+    const argumentHintModes = declaredModes.filter((mode) => mode !== "default" || flow.defaultMode !== "default");
+    if (typeof argumentHint === "object" && "deriveFromModes" in argumentHint && argumentHintModes.length === 0) {
+      issue(["frontmatter", "argumentHint"], "deriveFromModes requires at least one non-default mode in entries");
+    }
+    if (flow.defaultMode !== undefined && !declaredModeSet.has(flow.defaultMode)) {
+      issue(["defaultMode"], `defaultMode "${flow.defaultMode}" not declared in entries`);
+    }
+    for (const mode of Object.keys(flow.modeHints)) {
+      if (!declaredModeSet.has(mode)) {
+        issue(["modeHints", mode], `modeHints key "${mode}" not declared in entries`);
+      }
+    }
+    for (const phase of flow.phases) {
+      for (const step of phase.steps) {
+        for (const ref of refsFromStep(step)) {
+          if (!allStepIds.has(ref)) {
+            issue(["phases", phase.id, "steps", step.id], `edge \u2192 unknown step "${ref}"`);
+          }
         }
-        for (const n of nextRefsForMode(step, mode)) {
-          if (n !== null) {
-            queue.push(n);
+        const validateByMode = (byMode, path, label) => {
+          for (const mode of Object.keys(byMode)) {
+            if (!declaredModeSet.has(mode)) {
+              issue(path, `${label} lists mode "${mode}" not declared in flow.entries`);
+            }
+          }
+          const missingModes = declaredModes.filter((m) => !(m in byMode));
+          if (missingModes.length > 0) {
+            issue(path, `${label} byMode is missing entries for mode(s): ${missingModes.join(", ")}`);
+          }
+        };
+        if ((step.kind === "action" || step.kind === "reference" || step.kind === "parallel") && typeof step.next === "object" && step.next !== null) {
+          validateByMode(step.next.byMode, ["phases", phase.id, "steps", step.id, "next", "byMode"], `step "${step.id}" next`);
+        }
+        if (step.kind === "branch") {
+          for (const [i, branch] of step.branches.entries()) {
+            if (typeof branch.next === "object" && branch.next !== null) {
+              const branchLabelText = branch.option !== undefined ? `option "${branch.option.letter}"` : branch.when ?? `branch[${i}]`;
+              validateByMode(branch.next.byMode, [
+                "phases",
+                phase.id,
+                "steps",
+                step.id,
+                "branches",
+                i,
+                "next",
+                "byMode"
+              ], `step "${step.id}" branch ${branchLabelText}`);
+            }
           }
         }
       }
     }
-  }
-  for (const id of allStepIds) {
-    if (reachableUnion.has(id)) {
-      continue;
+    for (const phase of flow.phases) {
+      const preambleCount = phase.steps.filter((s) => s.preamble === true).length;
+      if (preambleCount > 1) {
+        issue(["phases", phase.id, "steps"], `phase "${phase.id}" has ${preambleCount} preamble steps; only one is allowed per phase`);
+      }
     }
-    ctx.addIssue({
-      code: "custom",
-      path: ["phases"],
-      message: `unreachable step "${id}" in any (mode, target) combination`
-    });
-  }
-  const inlinePhaseSet = new Set(flow.compile.inlinePhases);
-  const phaseOf = (ref) => ref.split("/")[0];
-  for (const target of targetNames) {
-    if (resolvePerTarget(flow.compile.mode, target) !== "split-chain") {
-      continue;
+    const appendixIds = new Set(flow.appendices.map((a) => a.id));
+    for (const phase of flow.phases) {
+      for (const step of phase.steps) {
+        for (const r of step.refs ?? []) {
+          if (!appendixIds.has(r)) {
+            issue(["phases", phase.id, "steps", step.id, "refs"], `unknown appendix "${r}"`);
+          }
+        }
+      }
     }
     for (const [mode, entry] of Object.entries(flow.entries)) {
-      const resolved = resolvePerTarget(entry, target);
-      if (resolved === undefined || !allStepIds.has(resolved)) {
-        continue;
-      }
-      const entryPhase = phaseOf(resolved);
-      if (inlinePhaseSet.has(entryPhase)) {
-        continue;
-      }
-      const phase = flow.phases.find((p) => p.id === entryPhase);
-      const firstStep = phase?.steps[0];
-      if (firstStep !== undefined && resolved !== `${entryPhase}/${firstStep.id}`) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["entries", mode],
-          message: `split-chain: entry "${mode}" \u2192 "${target}" points mid-phase at "${resolved}"; a sub-skill starts at its first step ("${entryPhase}/${firstStep.id}"). Reorder the phase or inline it.`
-        });
-      }
-    }
-    const reachable = computeReachableSteps(flow, target);
-    for (const phase of flow.phases) {
-      if (inlinePhaseSet.has(phase.id)) {
-        continue;
-      }
-      for (const step of phase.steps) {
-        if (!reachable.has(`${phase.id}/${step.id}`)) {
+      for (const target of targetNames) {
+        const resolved = resolvePerTarget(entry, target);
+        if (resolved === undefined) {
+          issue(["entries", mode], `entry for mode "${mode}" has no value for target "${target}" (and no default)`);
           continue;
         }
-        for (const ref of refsFromStep(step)) {
-          if (inlinePhaseSet.has(phaseOf(ref))) {
-            ctx.addIssue({
-              code: "custom",
-              path: ["phases", phase.id, "steps", step.id],
-              message: `split-chain: step "${phase.id}/${step.id}" routes to "${ref}" in inline phase "${phaseOf(ref)}" (target "${target}"). Sub-skills may not re-enter the orchestrator; make the shared work its own phase.`
-            });
+        if (!allStepIds.has(resolved)) {
+          issue(["entries", mode], `entry "${mode}" \u2192 "${target}" \u2192 unknown step "${resolved}"`);
+        }
+      }
+    }
+    const reachableUnion = new Set;
+    for (const target of targetNames) {
+      for (const id of computeReachableSteps(flow, target)) {
+        reachableUnion.add(id);
+      }
+    }
+    for (const id of allStepIds) {
+      if (!reachableUnion.has(id)) {
+        issue(["phases"], `unreachable step "${id}" in any (mode, target) combination`);
+      }
+    }
+    const inlinePhaseSet = new Set(flow.compile.inlinePhases);
+    const phaseOf = (ref) => ref.split("/")[0];
+    for (const target of targetNames) {
+      if (resolvePerTarget(flow.compile.mode, target) !== "split-chain") {
+        continue;
+      }
+      for (const [mode, entry] of Object.entries(flow.entries)) {
+        const resolved = resolvePerTarget(entry, target);
+        if (resolved === undefined || !allStepIds.has(resolved)) {
+          continue;
+        }
+        const entryPhase = phaseOf(resolved);
+        if (inlinePhaseSet.has(entryPhase)) {
+          continue;
+        }
+        const firstStep = flow.phases.find((p) => p.id === entryPhase)?.steps[0];
+        if (firstStep !== undefined && resolved !== `${entryPhase}/${firstStep.id}`) {
+          issue(["entries", mode], `split-chain: entry "${mode}" \u2192 "${target}" points mid-phase at "${resolved}"; a sub-skill starts at its first step ("${entryPhase}/${firstStep.id}"). Reorder the phase or inline it.`);
+        }
+      }
+      const reachable = computeReachableSteps(flow, target);
+      for (const phase of flow.phases) {
+        if (inlinePhaseSet.has(phase.id)) {
+          continue;
+        }
+        for (const step of phase.steps) {
+          if (!reachable.has(`${phase.id}/${step.id}`)) {
+            continue;
+          }
+          for (const ref of refsFromStep(step)) {
+            if (inlinePhaseSet.has(phaseOf(ref))) {
+              issue(["phases", phase.id, "steps", step.id], `split-chain: step "${phase.id}/${step.id}" routes to "${ref}" in inline phase "${phaseOf(ref)}" (target "${target}"). Sub-skills may not re-enter the orchestrator; make the shared work its own phase.`);
+            }
           }
         }
       }
     }
-  }
-  const toolIds = new Set(Object.keys(flow.tools));
-  for (const phase of flow.phases) {
-    for (const step of phase.steps) {
-      if (step.toolCalls === undefined) {
-        continue;
-      }
-      for (const toolId of step.toolCalls) {
-        if (!toolIds.has(toolId)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["phases", phase.id, "steps", step.id, "toolCalls"],
-            message: `step "${step.id}" calls tool "${toolId}" not declared in flow.tools`
-          });
+    const toolIds = new Set(Object.keys(flow.tools));
+    const commandIds = new Set(Object.keys(flow.commands));
+    const knownTargets = new Set(targetNames);
+    for (const [toolId, tool] of Object.entries(flow.tools)) {
+      for (const t of tool.targets ?? []) {
+        if (!knownTargets.has(t)) {
+          issue(["tools", toolId, "targets"], `tool "${toolId}" lists unknown target "${t}"`);
         }
       }
-    }
-  }
-  const commandIds = new Set(Object.keys(flow.commands));
-  for (const phase of flow.phases) {
-    for (const step of phase.steps) {
-      if (step.commandCalls === undefined) {
-        continue;
-      }
-      for (const cmdId of step.commandCalls) {
-        if (!commandIds.has(cmdId)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["phases", phase.id, "steps", step.id, "commandCalls"],
-            message: `step "${step.id}" calls command "${cmdId}" not declared in flow.commands`
-          });
-        }
-      }
-    }
-  }
-  const COMMAND_PLACEHOLDER_RE = /\{\{command:([a-zA-Z][a-zA-Z0-9_-]*)\}\}/g;
-  const scanForCommandRefs = (value) => {
-    const refs = [];
-    const scan = (text) => {
-      if (!text) {
-        return;
-      }
-      for (const match of text.matchAll(COMMAND_PLACEHOLDER_RE)) {
-        refs.push(match[1]);
-      }
-    };
-    if (value === undefined) {
-      return refs;
-    }
-    if (typeof value === "string") {
-      scan(value);
-      return refs;
-    }
-    scan(value.default);
-    scan(value.claude);
-    scan(value.cursor);
-    scan(value.codex);
-    return refs;
-  };
-  if (commandIds.size > 0) {
-    const allCommandRefs = [];
-    for (const ref of scanForCommandRefs(flow.intro)) {
-      allCommandRefs.push({ ref, location: "flow.intro" });
-    }
-    for (const ref of scanForCommandRefs(flow.emitTemplate)) {
-      allCommandRefs.push({ ref, location: "flow.emitTemplate" });
     }
     for (const phase of flow.phases) {
-      for (const ref of scanForCommandRefs(phase.intro)) {
-        allCommandRefs.push({ ref, location: `phase "${phase.id}" intro` });
-      }
       for (const step of phase.steps) {
-        for (const ref of scanForCommandRefs(step.body)) {
-          allCommandRefs.push({
-            ref,
-            location: `step "${phase.id}/${step.id}"`
-          });
+        for (const toolId of step.toolCalls ?? []) {
+          if (!toolIds.has(toolId)) {
+            issue(["phases", phase.id, "steps", step.id, "toolCalls"], `step "${step.id}" calls tool "${toolId}" not declared in flow.tools`);
+          }
+        }
+        for (const cmdId of step.commandCalls ?? []) {
+          if (!commandIds.has(cmdId)) {
+            issue(["phases", phase.id, "steps", step.id, "commandCalls"], `step "${step.id}" calls command "${cmdId}" not declared in flow.commands`);
+          }
         }
       }
     }
-    for (const appendix of flow.appendices) {
-      for (const ref of scanForCommandRefs(appendix.body)) {
-        allCommandRefs.push({
-          ref,
-          location: `appendix "${appendix.id}"`
-        });
+    for (const { location, text } of flowTexts(flow)) {
+      for (const match of text.matchAll(COMMAND_PLACEHOLDER_RE)) {
+        if (!commandIds.has(match[1])) {
+          issue(["commands"], `{{command:${match[1]}}} in ${location} not declared in flow.commands`);
+        }
       }
-    }
-    for (const { ref, location } of allCommandRefs) {
-      if (!commandIds.has(ref)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["commands"],
-          message: `{{command:${ref}}} in ${location} not declared in flow.commands`
-        });
+      for (const match of text.matchAll(TOOL_PLACEHOLDER_RE)) {
+        if (!toolIds.has(match[1])) {
+          issue(["tools"], `{{tool:${match[1]}}} in ${location} not declared in flow.tools`);
+        }
       }
-    }
-  }
-  const modeNames = new Set(Object.keys(flow.entries));
-  const scanForModeSections = (value, location) => {
-    const scan = (text) => {
-      if (!text) {
-        return;
+      for (const match of text.matchAll(TABLE_PLACEHOLDER_RE)) {
+        if (flow.tables[match[2]] === undefined) {
+          issue(["tables"], `{{${match[1]}:${match[2]}:\u2026}} in ${location} names an undeclared table`);
+        }
       }
       for (const match of text.matchAll(MODE_SECTION_RE)) {
-        const mode = match[2];
-        if (!modeNames.has(mode)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["phases"],
-            message: `{{${match[1]}mode:${mode}}} in ${location} names a mode that does not exist. Declared modes: ${[...modeNames].sort().join(", ")}.`
-          });
+        if (!declaredModeSet.has(match[2])) {
+          issue(["phases"], `{{${match[1]}mode:${match[2]}}} in ${location} names a mode that does not exist. Declared modes: ${[...declaredModeSet].sort().join(", ")}.`);
         }
       }
       for (const match of text.matchAll(MODE_SECTION_CLOSE_RE)) {
-        const mode = match[1];
-        if (!modeNames.has(mode)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["phases"],
-            message: `{{/mode:${mode}}} in ${location} closes a mode that does not exist. Declared modes: ${[...modeNames].sort().join(", ")}.`
-          });
+        if (!declaredModeSet.has(match[1])) {
+          issue(["phases"], `{{/mode:${match[1]}}} in ${location} closes a mode that does not exist. Declared modes: ${[...declaredModeSet].sort().join(", ")}.`);
         }
       }
-    };
-    if (value === undefined) {
-      return;
     }
-    if (typeof value === "string") {
-      scan(value);
-      return;
+    for (const name of Object.keys(flow.variables)) {
+      if (reservedTokenNames.has(name)) {
+        issue(["variables", name], `variable "${name}" collides with the target token of the same name`);
+      }
     }
-    scan(value.default);
-    scan(value.claude);
-    scan(value.cursor);
-    scan(value.codex);
+  });
+}
+function refsFromNext(next) {
+  if (next === null) {
+    return [];
+  }
+  if (typeof next === "string") {
+    return [next];
+  }
+  return Object.values(next.byMode).filter((v) => typeof v === "string");
+}
+function refsFromStep(s) {
+  switch (s.kind) {
+    case "action":
+    case "reference":
+    case "parallel":
+      return refsFromNext(s.next);
+    case "branch":
+      return s.branches.flatMap((b) => refsFromNext(b.next));
+    case "loop":
+      return [s.backTo, s.onExit];
+  }
+}
+function variants(value) {
+  if (value === undefined) {
+    return [];
+  }
+  if (typeof value === "string") {
+    return [value];
+  }
+  return Object.values(value).filter((v) => v !== undefined);
+}
+function flowTexts(flow) {
+  const out = [];
+  const push = (location, value, phaseId) => {
+    for (const text of variants(value)) {
+      out.push({ location, text, phaseId });
+    }
   };
-  scanForModeSections(flow.intro, "flow.intro");
+  push("flow.intro", flow.intro);
+  push("flow.emitTemplate", flow.emitTemplate);
+  for (const inv of flow.invariants) {
+    push("flow.invariants", inv);
+  }
+  for (const [name, value] of Object.entries(flow.variables)) {
+    push(`variable "${name}"`, value);
+  }
   for (const phase of flow.phases) {
-    scanForModeSections(phase.intro, `phase "${phase.id}" intro`);
+    push(`phase "${phase.id}" intro`, phase.intro, phase.id);
+    push(`phase "${phase.id}" outro`, phase.outro, phase.id);
     for (const step of phase.steps) {
-      scanForModeSections(step.body, `step "${phase.id}/${step.id}"`);
+      const where = `step "${phase.id}/${step.id}"`;
+      push(where, step.body, phase.id);
+      if (step.kind === "branch") {
+        for (const branch of step.branches) {
+          push(where, branch.description, phase.id);
+        }
+      }
+      if (step.kind === "parallel") {
+        for (const branch of step.branches) {
+          push(where, branch.body, phase.id);
+        }
+      }
     }
   }
   for (const appendix of flow.appendices) {
-    scanForModeSections(appendix.body, `appendix "${appendix.id}"`);
+    push(`appendix "${appendix.id}"`, appendix.body);
   }
-  const reservedNames = new Set(RESERVED_TOKEN_NAMES);
-  for (const name of Object.keys(flow.variables)) {
-    if (reservedNames.has(name)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["variables", name],
-        message: `variable "${name}" collides with the target token of the same name`
-      });
+  return out;
+}
+function collectCalledToolIds(flow) {
+  const called = new Set;
+  for (const phase of flow.phases) {
+    for (const step of phase.steps) {
+      for (const id of step.toolCalls ?? []) {
+        called.add(id);
+      }
     }
   }
-});
+  for (const { text } of flowTexts(flow)) {
+    for (const match of text.matchAll(TOOL_PLACEHOLDER_RE)) {
+      called.add(match[1]);
+    }
+  }
+  return Object.keys(flow.tools).filter((id) => called.has(id));
+}
 function nextRefsForMode(step, mode) {
   switch (step.kind) {
     case "action":
@@ -18514,7 +18214,1730 @@ function computeModesPerStep(flow, target) {
   }
   return result;
 }
-// ../bitfab-flow/dist/sharedVariables.js
+function branchLabel(branch) {
+  if (branch.option !== undefined) {
+    return `${branch.option.letter} - ${branch.option.label}`;
+  }
+  if (branch.when !== undefined) {
+    return branch.when;
+  }
+  return "(unlabeled branch)";
+}
+function targetableFields(flow) {
+  const out = [];
+  const push = (path, value) => {
+    if (value !== undefined) {
+      out.push({ path, value });
+    }
+  };
+  push(["title"], flow.title);
+  push(["intro"], flow.intro);
+  push(["emitTemplate"], flow.emitTemplate);
+  push(["frontmatter", "description"], flow.frontmatter.description);
+  const hint = flow.frontmatter.argumentHint;
+  if (typeof hint === "object" && hint !== null && "deriveFromModes" in hint) {
+    push(["frontmatter", "argumentHint", "suffix"], hint.suffix);
+  } else {
+    push(["frontmatter", "argumentHint"], hint);
+  }
+  push(["compile", "mode"], flow.compile.mode);
+  for (const [mode, entry] of Object.entries(flow.entries)) {
+    push(["entries", mode], entry);
+  }
+  for (const [mode, value] of Object.entries(flow.modeHints)) {
+    push(["modeHints", mode], value);
+  }
+  for (const [name, value] of Object.entries(flow.variables)) {
+    push(["variables", name], value);
+  }
+  for (const [id, tool] of Object.entries(flow.tools)) {
+    push(["tools", id, "name"], tool.name);
+  }
+  for (const phase of flow.phases) {
+    push(["phases", phase.id, "title"], phase.title);
+    push(["phases", phase.id, "intro"], phase.intro);
+    push(["phases", phase.id, "outro"], phase.outro);
+    for (const step of phase.steps) {
+      const base = ["phases", phase.id, "steps", step.id];
+      push([...base, "title"], step.title);
+      push([...base, "refName"], step.refName);
+      push([...base, "body"], step.body);
+    }
+  }
+  for (const appendix of flow.appendices) {
+    push(["appendices", appendix.id, "title"], appendix.title);
+    push(["appendices", appendix.id, "body"], appendix.body);
+  }
+  return out;
+}
+
+// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/mermaid.js
+function diagramValue(value, target) {
+  const resolved = resolvePerTarget(value, target ?? "default");
+  if (resolved !== undefined || typeof value !== "object" || value === null) {
+    return resolved;
+  }
+  return Object.values(value).find((v) => v !== undefined);
+}
+function diagramString(value, target) {
+  return diagramValue(value, target) ?? "";
+}
+function reachabilityTarget(flow, target) {
+  if (target !== undefined) {
+    return target;
+  }
+  for (const entry of Object.values(flow.entries)) {
+    if (typeof entry === "object" && entry !== null && entry.default === undefined) {
+      const first = Object.keys(entry)[0];
+      if (first !== undefined) {
+        return first;
+      }
+    }
+  }
+  return "default";
+}
+function renderMermaid(flow, options = {}) {
+  const { mode, target } = typeof options === "string" ? { mode: options, target: undefined } : options;
+  const graphTarget = reachabilityTarget(flow, target);
+  const lines = ["flowchart TD"];
+  const stepById = new Map;
+  for (const phase of flow.phases) {
+    for (const step of phase.steps) {
+      stepById.set(`${phase.id}/${step.id}`, step);
+    }
+  }
+  const nodeId = (key) => key.replace(/[^a-zA-Z0-9]/g, "_");
+  const allModes = Object.keys(flow.entries);
+  const activeModes = mode !== undefined ? [mode] : allModes;
+  const reachable = mode !== undefined ? new Set([...computeModesPerStep(flow, graphTarget).entries()].filter(([, modes]) => modes.has(mode)).map(([key]) => key)) : computeReachableSteps(flow, graphTarget);
+  for (const phase of flow.phases) {
+    const phaseSteps = phase.steps.filter((s) => reachable.has(`${phase.id}/${s.id}`));
+    if (phaseSteps.length === 0) {
+      continue;
+    }
+    const phaseTitle = escapeMermaidLabel(diagramString(phase.title, target));
+    lines.push(`  subgraph ${nodeId(phase.id)}["${phaseTitle}"]`);
+    let counter = 1;
+    for (const step of phaseSteps) {
+      const stepKey = `${phase.id}/${step.id}`;
+      const id = nodeId(stepKey);
+      const baseLabel = escapeMermaidLabel(diagramString(step.title, target));
+      const num = step.preamble === true ? 0 : counter;
+      if (step.preamble !== true) {
+        counter += 1;
+      }
+      const label = `${num}. ${baseLabel}`;
+      const fork = forkClass(step);
+      const cls = fork ?? "step";
+      lines.push(`    ${id}["${label}"]:::${cls}`);
+    }
+    lines.push("  end");
+  }
+  const seenLinearEdges = new Set;
+  const isReachable = (ref) => reachable.has(ref);
+  for (const phase of flow.phases) {
+    for (const step of phase.steps) {
+      const src = `${phase.id}/${step.id}`;
+      if (!isReachable(src)) {
+        continue;
+      }
+      if (step.kind === "action" || step.kind === "reference" || step.kind === "parallel") {
+        if (step.next === null || typeof step.next === "string") {
+          if (step.next !== null && isReachable(step.next)) {
+            const edge = `${src}->${step.next}`;
+            if (!seenLinearEdges.has(edge)) {
+              seenLinearEdges.add(edge);
+              lines.push(`  ${nodeId(src)} --> ${nodeId(step.next)}`);
+            }
+          }
+        } else {
+          for (const m of activeModes) {
+            const target = step.next.byMode[m] ?? null;
+            if (target === null || !isReachable(target)) {
+              continue;
+            }
+            if (mode !== undefined) {
+              const edge = `${src}->${target}`;
+              if (!seenLinearEdges.has(edge)) {
+                seenLinearEdges.add(edge);
+                lines.push(`  ${nodeId(src)} --> ${nodeId(target)}`);
+              }
+            } else {
+              lines.push(`  ${nodeId(src)} -->|"${escapeMermaidLabel(m)}"| ${nodeId(target)}`);
+            }
+          }
+        }
+      } else if (step.kind === "branch") {
+        for (const branch of step.branches) {
+          const baseLabel = branchLabel(branch);
+          const labelWithRec = branch.recommended ? `${baseLabel} (recommended)` : baseLabel;
+          if (branch.next === null || typeof branch.next === "string") {
+            if (branch.next !== null && !isReachable(branch.next)) {
+              continue;
+            }
+            const target = branch.next === null ? "flow_end" : nodeId(branch.next);
+            lines.push(`  ${nodeId(src)} -->|"${escapeMermaidLabel(labelWithRec)}"| ${target}`);
+          } else {
+            for (const m of activeModes) {
+              const dest = branch.next.byMode[m] ?? null;
+              if (dest !== null && !isReachable(dest)) {
+                continue;
+              }
+              const target = dest === null ? "flow_end" : nodeId(dest);
+              if (mode !== undefined) {
+                lines.push(`  ${nodeId(src)} -->|"${escapeMermaidLabel(labelWithRec)}"| ${target}`);
+              } else {
+                const modeLabel = `${labelWithRec} [${m}]`;
+                lines.push(`  ${nodeId(src)} -->|"${escapeMermaidLabel(modeLabel)}"| ${target}`);
+              }
+            }
+          }
+        }
+      } else if (step.kind === "loop") {
+        if (isReachable(step.backTo)) {
+          lines.push(`  ${nodeId(src)} -.->|"until ${escapeMermaidLabel(step.exitWhen)}"| ${nodeId(step.backTo)}`);
+        }
+        if (isReachable(step.onExit)) {
+          lines.push(`  ${nodeId(src)} -->|"exit"| ${nodeId(step.onExit)}`);
+        }
+      }
+    }
+  }
+  if (lines.some((l) => l.includes("flow_end"))) {
+    lines.push("  flow_end((end)):::terminal");
+    lines.push("  classDef terminal fill:#3a1f1f,stroke:#d96a6a,color:#ffd7d7");
+  }
+  const entryNodeIds = [];
+  for (const m of activeModes) {
+    const entry = flow.entries[m];
+    if (entry === undefined) {
+      continue;
+    }
+    const resolved = diagramValue(entry, target);
+    if (resolved === undefined) {
+      continue;
+    }
+    const startId = `start_${nodeId(m)}`;
+    const isDefault = flow.defaultMode === m;
+    const label = isDefault ? `${m} (default)` : m;
+    lines.push(`  ${startId}(("${escapeMermaidLabel(label)}")):::entry`);
+    lines.push(`  ${startId} --> ${nodeId(resolved)}`);
+    entryNodeIds.push(startId);
+  }
+  if (entryNodeIds.length > 1) {
+    lines.push(`  ${entryNodeIds.join(" ~~~ ")}`);
+  }
+  lines.push("  classDef entry fill:#1f3a1f,stroke:#5bd58e,color:#d6ffe2");
+  lines.push("  classDef step fill:#262626,stroke:#666,color:#e0e0e0");
+  lines.push("  classDef modeFork fill:#1f2a3a,stroke:#7aa2d9,color:#cfe1ff");
+  lines.push("  classDef userDecision fill:#2a1f3a,stroke:#b58be0,color:#e8d6ff");
+  lines.push("  classDef agentDecision fill:#3a2a1f,stroke:#e0a35b,color:#ffe1c7");
+  return lines.join(`
+`);
+}
+function forkClass(step) {
+  if (step.kind === "branch") {
+    return branchForkClass(step);
+  }
+  if (step.kind === "action" || step.kind === "reference" || step.kind === "parallel") {
+    if (typeof step.next === "object" && step.next !== null) {
+      return "modeFork";
+    }
+  }
+  return null;
+}
+function branchForkClass(step) {
+  const hasOption = step.branches.some((b) => b.option !== undefined);
+  return hasOption ? "userDecision" : "agentDecision";
+}
+function escapeMermaidLabel(s) {
+  return s.replace(/"/g, "&quot;").replace(/\|/g, "&#124;");
+}
+function describeFlow(flow, target) {
+  const lines = [];
+  const title = diagramString(flow.title, target);
+  lines.push(`Flow: ${flow.id} (${title})`);
+  if (flow.defaultMode !== undefined) {
+    lines.push(`Default mode: ${flow.defaultMode}`);
+  }
+  lines.push("Entries:");
+  for (const [mode, entry] of Object.entries(flow.entries)) {
+    const resolved = diagramValue(entry, target);
+    lines.push(`  ${mode} \u2192 ${resolved ?? "<no entry for diagram target>"}`);
+  }
+  lines.push("");
+  for (const phase of flow.phases) {
+    lines.push(`Phase: ${phase.id}`);
+    for (const step of phase.steps) {
+      const key = `${phase.id}/${step.id}`;
+      lines.push(`  ${key} [${step.kind}]`);
+      const modes = Object.keys(flow.entries);
+      for (const mode of modes) {
+        const targets = nextRefsForMode(step, mode);
+        const desc = targets.map((t) => t ?? "<end>").join(", ");
+        lines.push(`    ${mode} \u2192 ${desc}`);
+      }
+    }
+  }
+  return lines.join(`
+`);
+}
+
+// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/render.js
+function s(value, target, label) {
+  return resolveTargetableString(value, target, label);
+}
+function renderFlow(flow, target) {
+  const mode = resolvePerTarget(flow.compile.mode, target.name);
+  if (mode === "split" || mode === "split-chain") {
+    return renderSplit(flow, target, mode === "split-chain");
+  }
+  return [{ slug: "", kind: "monolith", content: renderMarkdown(flow, target) }];
+}
+function usesPhaseReferences(flow, target) {
+  return target.phaseReferences === true && resolvePerTarget(flow.compile.mode, target.name) === "split-chain";
+}
+function makeRenderContext(flow, target) {
+  return {
+    allModes: Object.keys(flow.entries),
+    modesPerStep: computeModesPerStep(flow, target.name),
+    reachable: computeReachableSteps(flow, target.name),
+    emitTemplate: flow.emitTemplate !== undefined ? s(flow.emitTemplate, target.name, "flow.emitTemplate") : undefined
+  };
+}
+function phaseHasReachableSteps(phase, reachable) {
+  return phase.steps.some((step) => reachable.has(`${phase.id}/${step.id}`));
+}
+function renderSplit(flow, target, chain = false) {
+  const ctx = makeRenderContext(flow, target);
+  const inlineSet = new Set(flow.compile.inlinePhases);
+  const subPhases = flow.phases.filter((phase) => !inlineSet.has(phase.id) && phaseHasReachableSteps(phase, ctx.reachable));
+  const files = [
+    {
+      slug: "",
+      kind: "orchestrator",
+      content: renderOrchestrator(flow, target, ctx, inlineSet, subPhases, chain)
+    }
+  ];
+  for (const phase of subPhases) {
+    files.push({
+      slug: phase.id,
+      kind: usesPhaseReferences(flow, target) ? "reference" : "phase",
+      content: renderSubSkill(flow, target, ctx, phase, chain)
+    });
+  }
+  return files;
+}
+function labeledRefsForMode(step, mode) {
+  switch (step.kind) {
+    case "action":
+    case "reference":
+    case "parallel": {
+      const next = step.next;
+      const ref = next === null || typeof next === "string" ? next : next.byMode[mode] ?? null;
+      return [{ label: null, ref }];
+    }
+    case "branch":
+      return step.branches.map((branch) => {
+        const next = branch.next;
+        const ref = next === null || typeof next === "string" ? next : next.byMode[mode] ?? null;
+        return { label: dispatchBranchLabel(branch), ref };
+      });
+    case "loop":
+      return [
+        { label: step.exitWhen, ref: step.onExit },
+        { label: "otherwise", ref: step.backTo }
+      ];
+  }
+}
+function dispatchBranchLabel(branch) {
+  if (branch.option !== undefined) {
+    return `option ${branch.option.letter} (${branch.option.label})`;
+  }
+  return branch.when ?? "branch";
+}
+function computeDispatchEdges(step, stepKey, unitPhases, ctx) {
+  const stepModeSet = modesForStep(stepKey, ctx.modesPerStep, ctx.allModes);
+  const stepModes = ctx.allModes.filter((m) => stepModeSet.has(m));
+  const groups = new Map;
+  const order = [];
+  const labelHasDispatch = new Set;
+  for (const mode of stepModes) {
+    for (const { label, ref } of labeledRefsForMode(step, mode)) {
+      let kind = "done";
+      let targetPhase = null;
+      if (ref !== null) {
+        const phaseId = ref.split("/")[0];
+        if (unitPhases.has(phaseId)) {
+          kind = "continue";
+        } else {
+          kind = "dispatch";
+          targetPhase = phaseId;
+        }
+      }
+      const key = `${label ?? "\x00"}|${kind}|${targetPhase ?? ""}`;
+      const existing = groups.get(key);
+      if (existing !== undefined) {
+        if (!existing.modes.includes(mode)) {
+          existing.modes.push(mode);
+        }
+      } else {
+        groups.set(key, { label, kind, targetPhase, modes: [mode] });
+        order.push(key);
+      }
+      if (kind === "dispatch") {
+        labelHasDispatch.add(label);
+      }
+    }
+  }
+  return order.map((key) => groups.get(key)).filter((edge) => labelHasDispatch.has(edge.label));
+}
+function renderDispatchSuffix(flow, target, edges, allModes, unitPhases) {
+  if (edges.length === 0) {
+    return null;
+  }
+  const singleMode = allModes.length === 1;
+  const lines = edges.map((edge) => {
+    const modeList = edge.modes.map((m) => `\`${m}\``).join(" or ");
+    let prefix = "";
+    if (edge.label !== null) {
+      prefix = singleMode ? titleCase(edge.label) : `${titleCase(edge.label)} (mode ${modeList})`;
+    } else if (!singleMode) {
+      prefix = `Mode ${modeList}`;
+    }
+    let action;
+    switch (edge.kind) {
+      case "done":
+        action = "stop here.";
+        break;
+      case "continue":
+        action = usesPhaseReferences(flow, target) ? "continue below in this file." : "continue below in this skill.";
+        break;
+      case "dispatch": {
+        if (edge.targetPhase === null) {
+          throw new Error("Dispatch edge is missing its target phase");
+        }
+        const destination = phaseDestination(flow, target, edge.targetPhase, unitPhases);
+        const actionVerb = usesPhaseReferences(flow, target) ? "read and follow" : "invoke";
+        const fwd = `, forwarding \`${target.argsToken}\` minus the leading mode keyword (if the user typed one).`;
+        if (singleMode) {
+          action = `${actionVerb} ${destination}${fwd}`;
+        } else if (edge.modes.length === 1) {
+          action = `${actionVerb} ${destination} with mode \`${edge.modes[0]}\`${fwd}`;
+        } else {
+          action = `${actionVerb} ${destination} with the current mode (${modeList})${fwd}`;
+        }
+        break;
+      }
+    }
+    return prefix.length > 0 ? `- ${prefix}: ${action}` : `- ${titleCase(action)}`;
+  });
+  return `**Next:**
+
+${lines.join(`
+`)}`;
+}
+function dispatchSkillRef(target, skillName) {
+  return target.dispatchRef?.(skillName) ?? `\`${skillName}\``;
+}
+function phaseDestination(flow, target, phaseId, unitPhases) {
+  if (!usesPhaseReferences(flow, target)) {
+    return `the ${dispatchSkillRef(target, `${flow.id}-${phaseId}`)} skill`;
+  }
+  const phase = flow.phases.find((candidate) => candidate.id === phaseId);
+  if (phase === undefined) {
+    throw new Error(`Unknown phase "${phaseId}" in flow "${flow.id}"`);
+  }
+  const fromReference = [...unitPhases].some((id) => !flow.compile.inlinePhases.includes(id));
+  const prefix = fromReference ? "./" : "references/";
+  const title = s(phase.title, target.name, `phase[${phaseId}].title`);
+  return `the [${title}](${prefix}${phaseId}.md) reference`;
+}
+function dispatchSuffixForUnit(flow, target, ctx, unitPhases) {
+  return (step, stepKey) => renderDispatchSuffix(flow, target, computeDispatchEdges(step, stepKey, unitPhases, ctx), ctx.allModes, unitPhases);
+}
+function interactiveDefaultDispatchPointer(flow, target) {
+  const action = usesPhaseReferences(flow, target) ? "read and follow that mode's reference" : "invoke that mode's skill";
+  return `**Next:** once the user picks a mode, ${action} from the \`## Dispatch\` section above, forwarding the arguments the user gave with their pick minus the mode keyword. Ignore the dispatch lines' \`${target.argsToken}\` here: this is the no-argument entry, so it is empty and the user's pick is the only source of those arguments.`;
+}
+function orchestratorDispatchSuffix(flow, target, ctx, inlineSet, hasEntryDispatch) {
+  const base = dispatchSuffixForUnit(flow, target, ctx, inlineSet);
+  const defaultEntry = flow.entries.default === undefined ? undefined : resolvePerTarget(flow.entries.default, target.name);
+  return (step, stepKey) => {
+    if (hasEntryDispatch && defaultEntry !== undefined && stepKey === defaultEntry && "next" in step && step.next === null) {
+      return interactiveDefaultDispatchPointer(flow, target);
+    }
+    return base(step, stepKey);
+  };
+}
+function renderEntryDispatch(flow, target, ctx, inlineSet) {
+  const groups = new Map;
+  for (const [mode, entry] of Object.entries(flow.entries)) {
+    const resolved = resolvePerTarget(entry, target.name);
+    if (resolved === undefined) {
+      continue;
+    }
+    const phaseId = resolved.split("/")[0];
+    if (inlineSet.has(phaseId)) {
+      continue;
+    }
+    const modes = groups.get(phaseId) ?? [];
+    modes.push(mode);
+    groups.set(phaseId, modes);
+  }
+  if (groups.size === 0) {
+    return null;
+  }
+  const singleMode = ctx.allModes.length === 1;
+  const lines = [...groups.entries()].map(([phaseId, modes]) => {
+    const destination = phaseDestination(flow, target, phaseId, inlineSet);
+    const action = usesPhaseReferences(flow, target) ? "read and follow" : "invoke";
+    const fwd = `, forwarding \`${target.argsToken}\` minus the leading mode keyword (if the user typed one).`;
+    if (singleMode) {
+      return `- ${titleCase(action)} ${destination}${fwd}`;
+    }
+    const modeList = modes.map((m) => `\`${m}\``).join(" or ");
+    const arg = modes.length === 1 ? `mode \`${modes[0]}\`` : `the current mode (${modeList})`;
+    return `- Mode ${modeList}: ${action} ${destination} with ${arg}${fwd}`;
+  });
+  return `## Dispatch
+
+${lines.join(`
+`)}`;
+}
+function appendicesForUnit(flow, ctx, unitPhases, includeUnreferenced) {
+  const referencingPhases = new Map;
+  for (const phase of flow.phases) {
+    for (const step of phase.steps) {
+      if (!ctx.reachable.has(`${phase.id}/${step.id}`)) {
+        continue;
+      }
+      for (const ref of step.refs ?? []) {
+        const phases = referencingPhases.get(ref) ?? new Set;
+        phases.add(phase.id);
+        referencingPhases.set(ref, phases);
+      }
+    }
+  }
+  return flow.appendices.filter((appendix) => {
+    const phases = referencingPhases.get(appendix.id);
+    if (phases === undefined) {
+      return includeUnreferenced;
+    }
+    return [...phases].some((id) => unitPhases.has(id));
+  });
+}
+function renderOrchestrator(flow, target, ctx, inlineSet, subPhases, chain) {
+  const inlinePhaseIds = flow.phases.filter((phase) => inlineSet.has(phase.id)).map((phase) => phase.id);
+  const sections = [
+    target.frontmatter({
+      flowId: flow.id,
+      description: s(flow.frontmatter.description, target.name, "flow.frontmatter.description"),
+      argumentHint: resolveArgumentHint(flow, target),
+      model: flow.frontmatter.model,
+      allowedTools: orchestratorAllowedTools(flow, target, inlinePhaseIds, subPhases.length > 0)
+    }),
+    `# ${s(flow.title, target.name, "flow.title")}`
+  ];
+  pushIntro(sections, flow, target);
+  if (usesPhaseReferences(flow, target) && subPhases.length > 0) {
+    sections.push("Load phase references only when routing reaches them. Read and follow the linked file in this same session, retaining the current mode, arguments, shared rules, and prior results. Resolve links relative to the file containing them. If an installed shim redirected you here, use this worktree skill's directory, not the shim directory or shell working directory. References are ordinary instruction files, not separately invocable skills.");
+  }
+  if (Object.keys(flow.commands).length > 0) {
+    sections.push(renderCommandsTable(flow, target));
+  }
+  pushInvariants(sections, flow);
+  const modesDispatch = renderModesDispatch(flow, target, true);
+  if (modesDispatch !== null) {
+    sections.push(modesDispatch);
+  }
+  let hasEntryDispatch = false;
+  if (chain) {
+    const entryDispatch = renderEntryDispatch(flow, target, ctx, inlineSet);
+    if (entryDispatch !== null) {
+      sections.push(entryDispatch);
+      hasEntryDispatch = true;
+    }
+  }
+  const subPhaseIds = new Set(subPhases.map((phase) => phase.id));
+  for (const phase of flow.phases) {
+    if (inlineSet.has(phase.id)) {
+      const rendered = renderPhase(phase, target.name, ctx.allModes, ctx.modesPerStep, ctx.reachable, ctx.emitTemplate, true, chain ? orchestratorDispatchSuffix(flow, target, ctx, inlineSet, hasEntryDispatch) : undefined, destinationRenderer(flow, target, inlineSet), 0, chain);
+      if (rendered.length > 0) {
+        sections.push(rendered);
+      }
+    } else if (!chain && subPhaseIds.has(phase.id)) {
+      sections.push(renderDispatch(flow, target, ctx, phase));
+    }
+  }
+  pushAppendices(sections, flow, target, chain ? appendicesForUnit(flow, ctx, inlineSet, true) : flow.appendices);
+  return finalize2(sections, flow, target, inlineSet);
+}
+function renderDispatch(flow, target, ctx, phase) {
+  const title = s(phase.title, target.name, `phase[${phase.id}].title`);
+  const stepKeys = phase.steps.map((step) => `${phase.id}/${step.id}`).filter((key) => ctx.reachable.has(key));
+  const { phaseGate } = precomputePhaseAndStepGates(stepKeys, ctx.modesPerStep, ctx.allModes);
+  const blocks = [`## ${title}`];
+  if (phaseGate !== null) {
+    blocks.push(phaseGate);
+  }
+  blocks.push(`Invoke the \`${flow.id}-${phase.id}\` skill, then return here.`);
+  return blocks.join(`
+
+`);
+}
+function renderSubSkill(flow, target, ctx, phase, chain) {
+  const phaseTitle = s(phase.title, target.name, `phase[${phase.id}].title`);
+  const flowTitle = s(flow.title, target.name, "flow.title");
+  const unitPhases = new Set([phase.id]);
+  const reachableSteps = phase.steps.filter((step) => ctx.reachable.has(`${phase.id}/${step.id}`));
+  const hasDispatch = chain && reachableSteps.some((step) => computeDispatchEdges(step, `${phase.id}/${step.id}`, unitPhases, ctx).some((edge) => edge.kind === "dispatch"));
+  const invokedBy = chain ? `Invoked by the ${flow.id} flow; not run directly` : `Invoked by the ${flow.id} orchestrator; not run directly`;
+  const description = `${phaseTitle} phase of the ${flowTitle} flow. ${invokedBy}`;
+  const sections = [];
+  if (!usesPhaseReferences(flow, target)) {
+    sections.push(target.subSkillFrontmatter({
+      flowId: `${flow.id}-${phase.id}`,
+      description,
+      argumentHint: resolveArgumentHint(flow, target),
+      model: flow.frontmatter.model,
+      allowedTools: subSkillAllowedTools(flow, target, phase.id, hasDispatch)
+    }));
+  }
+  sections.push(`# ${flowTitle}: ${phaseTitle}`);
+  if (chain) {
+    const preface = renderModePreface(ctx, phase, reachableSteps);
+    if (preface !== null) {
+      sections.push(preface);
+    }
+  }
+  const rendered = renderPhase(phase, target.name, ctx.allModes, ctx.modesPerStep, ctx.reachable, ctx.emitTemplate, false, chain ? dispatchSuffixForUnit(flow, target, ctx, unitPhases) : undefined, destinationRenderer(flow, target, unitPhases));
+  if (rendered.length > 0) {
+    sections.push(rendered);
+  }
+  if (chain) {
+    pushAppendices(sections, flow, target, appendicesForUnit(flow, ctx, unitPhases, false));
+  }
+  return finalize2(sections, flow, target, unitPhases);
+}
+function renderModePreface(ctx, phase, reachableSteps) {
+  const phaseModes = new Set;
+  for (const step of reachableSteps) {
+    for (const mode of modesForStep(`${phase.id}/${step.id}`, ctx.modesPerStep, ctx.allModes)) {
+      phaseModes.add(mode);
+    }
+  }
+  if (phaseModes.size < 2) {
+    return null;
+  }
+  const modeList = ctx.allModes.filter((m) => phaseModes.has(m)).map((m) => `\`${m}\``).join(" or ");
+  return `**Mode:** you were dispatched with a mode (${modeList}); which steps apply and where they route below depend on it.`;
+}
+function subSkillAllowedTools(flow, target, phaseId, hasDispatch) {
+  const tools = resolveAllowedToolsForPhases(flow, target, [phaseId]);
+  if (tools === undefined || !hasDispatch) {
+    return tools;
+  }
+  if (target.subSkillTool && !tools.includes(target.subSkillTool)) {
+    return [...tools, target.subSkillTool];
+  }
+  return tools;
+}
+function resolveArgumentHint(flow, target) {
+  const argumentHint = flow.frontmatter.argumentHint;
+  if (argumentHint === undefined) {
+    return;
+  }
+  if (typeof argumentHint !== "object" || !("deriveFromModes" in argumentHint)) {
+    return s(argumentHint, target.name, "frontmatter.argumentHint");
+  }
+  const modes = Object.keys(flow.entries).filter((mode) => mode !== "default" || flow.defaultMode !== "default");
+  const open = flow.defaultMode !== undefined ? "[" : "<";
+  const close = flow.defaultMode !== undefined ? "]" : ">";
+  const modeHint = `${open}${modes.join("|")}${close}`;
+  if (argumentHint.suffix === undefined) {
+    return modeHint;
+  }
+  const suffix = s(argumentHint.suffix, target.name, "frontmatter.argumentHint.suffix");
+  return suffix.length > 0 ? `${modeHint} ${suffix}` : modeHint;
+}
+function pushIntro(sections, flow, target) {
+  if (flow.intro === undefined) {
+    return;
+  }
+  const introStr = s(flow.intro, target.name, "flow.intro");
+  if (introStr.length > 0) {
+    sections.push(introStr);
+  }
+}
+function pushInvariants(sections, flow) {
+  if (flow.invariants.length > 0) {
+    const items = flow.invariants.map((inv) => `- ${inv}`).join(`
+`);
+    sections.push(`## Invariants
+
+${items}`);
+  }
+}
+function pushAppendices(sections, flow, target, appendices = flow.appendices) {
+  for (const appendix of appendices) {
+    const title = s(appendix.title, target.name, `appendix[${appendix.id}].title`);
+    const body = s(appendix.body, target.name, `appendix[${appendix.id}].body`);
+    sections.push(`## ${title}
+
+${body}`);
+  }
+}
+function orchestratorAllowedTools(flow, target, inlinePhaseIds, hasSubSkills) {
+  const tools = resolveAllowedToolsForPhases(flow, target, inlinePhaseIds);
+  if (tools === undefined) {
+    return;
+  }
+  if (hasSubSkills && target.subSkillTool && !tools.includes(target.subSkillTool)) {
+    return [...tools, target.subSkillTool];
+  }
+  return tools;
+}
+function resolveAllowedToolsForPhases(flow, target, phaseIds) {
+  if (Object.keys(flow.tools).length === 0) {
+    return flow.frontmatter.allowedTools;
+  }
+  const ids = collectPhaseToolIds(flow, target, phaseIds).filter((id) => toolAvailableOnTarget(flow.tools[id], target.name));
+  if (ids.length === 0) {
+    return;
+  }
+  return ids.map((id) => fullToolName(flow, id, target));
+}
+var HAS_COMMAND_RE = new RegExp(COMMAND_PLACEHOLDER_RE.source);
+function collectPhaseToolIds(flow, target, phaseIds) {
+  const wanted = new Set(phaseIds);
+  const called = new Set;
+  const runnerId = Object.entries(flow.tools).find(([, tool]) => tool.kind === "builtin" && resolvePerTarget(tool.name, target.name) === target.commandRunnerTool)?.[0];
+  const emitTemplate = flow.emitTemplate !== undefined ? s(flow.emitTemplate, target.name, "flow.emitTemplate") : undefined;
+  const emitUsesCommand = emitTemplate !== undefined && HAS_COMMAND_RE.test(emitTemplate);
+  const scan = (text) => {
+    if (text === undefined) {
+      return;
+    }
+    for (const match of text.matchAll(TOOL_PLACEHOLDER_RE)) {
+      called.add(match[1]);
+    }
+    if (runnerId !== undefined && HAS_COMMAND_RE.test(text)) {
+      called.add(runnerId);
+    }
+  };
+  for (const phase of flow.phases) {
+    if (!wanted.has(phase.id)) {
+      continue;
+    }
+    if (phase.intro !== undefined) {
+      scan(s(phase.intro, target.name, `phase[${phase.id}].intro`));
+    }
+    for (const step of phase.steps) {
+      for (const id of step.toolCalls ?? []) {
+        called.add(id);
+      }
+      if (runnerId !== undefined && ((step.commandCalls?.length ?? 0) > 0 || step.emit !== undefined && emitUsesCommand)) {
+        called.add(runnerId);
+      }
+      scan(s(step.body, target.name, `step[${step.id}].body`));
+    }
+  }
+  return Object.keys(flow.tools).filter((id) => called.has(id));
+}
+function renderMarkdown(flow, target) {
+  const sections = [];
+  const description = s(flow.frontmatter.description, target.name, `flow.frontmatter.description`);
+  const argumentHint = resolveArgumentHint(flow, target);
+  sections.push(target.frontmatter({
+    flowId: flow.id,
+    description,
+    argumentHint,
+    model: flow.frontmatter.model,
+    allowedTools: resolveAllowedTools(flow, target)
+  }));
+  sections.push(`# ${s(flow.title, target.name, "flow.title")}`);
+  if (flow.intro !== undefined) {
+    const introStr = s(flow.intro, target.name, "flow.intro");
+    if (introStr.length > 0) {
+      sections.push(introStr);
+    }
+  }
+  if (Object.keys(flow.commands).length > 0) {
+    sections.push(renderCommandsTable(flow, target));
+  }
+  if (flow.invariants.length > 0) {
+    const items = flow.invariants.map((inv) => `- ${inv}`).join(`
+`);
+    sections.push(`## Invariants
+
+${items}`);
+  }
+  const modesDispatch = renderModesDispatch(flow, target, false);
+  if (modesDispatch !== null) {
+    sections.push(modesDispatch);
+  }
+  const allModes = Object.keys(flow.entries);
+  const modesPerStep = computeModesPerStep(flow, target.name);
+  const reachable = computeReachableSteps(flow, target.name);
+  const emitTemplate = flow.emitTemplate !== undefined ? s(flow.emitTemplate, target.name, "flow.emitTemplate") : undefined;
+  const continuous = flow.compile.continuousStepNumbers === true;
+  let stepNumberOffset = 0;
+  for (const phase of flow.phases) {
+    const rendered = renderPhase(phase, target.name, allModes, modesPerStep, reachable, emitTemplate, true, undefined, destinationRenderer(flow, target), stepNumberOffset);
+    if (continuous) {
+      stepNumberOffset += countNumberedSteps(phase, reachable);
+    }
+    if (rendered.length > 0) {
+      sections.push(rendered);
+    }
+  }
+  if (flow.appendices.length > 0) {
+    for (const appendix of flow.appendices) {
+      const title = s(appendix.title, target.name, `appendix[${appendix.id}].title`);
+      const body = s(appendix.body, target.name, `appendix[${appendix.id}].body`);
+      sections.push(`## ${title}
+
+${body}`);
+    }
+  }
+  return finalize2(sections, flow, target);
+}
+function finalize2(sections, flow, target, unitPhases) {
+  const joined = sections.join(`
+
+`);
+  const afterSections = applyModeSections(applyMustacheSections(joined, target), flow, target.name, unitPhases);
+  const withFlowData = applyFlowPlaceholders(afterSections, flow, target, unitPhases);
+  const substituted = applyTokens(withFlowData, target, flow);
+  return ensureTrailingNewline(substituted);
+}
+function applyFlowPlaceholders(text, flow, target, unitPhases) {
+  let result = text;
+  result = result.replace(/\{\{step-ref:([a-z0-9-]+\/[a-z0-9-]+)\}\}/g, (_match, ref) => {
+    const [phaseId, stepId] = ref.split("/");
+    const step = flow.phases.find((p) => p.id === phaseId)?.steps.find((st) => st.id === stepId);
+    if (step === undefined) {
+      throw new Error(`Step reference {{step-ref:${ref}}} not found in flow "${flow.id}" for target "${target.name}"`);
+    }
+    const name = step.refName ?? step.title;
+    return s(name, target.name, `step[${ref}].refName`);
+  });
+  result = result.replace(/\{\{skill-ref:([a-z0-9-]+)\}\}/g, (_match, phaseId) => {
+    const phase = flow.phases.find((p) => p.id === phaseId);
+    if (phase === undefined) {
+      throw new Error(`Skill reference {{skill-ref:${phaseId}}} not found in flow "${flow.id}" for target "${target.name}"`);
+    }
+    const sameUnit = unitPhases === undefined || unitPhases.has(phaseId);
+    if (sameUnit) {
+      const title = s(phase.title, target.name, `phase[${phaseId}].title`);
+      return `the *${title}* section`;
+    }
+    return phaseDestination(flow, target, phaseId, unitPhases);
+  });
+  result = result.replace(/\{\{dispatch-ref:([a-z0-9-]+)\}\}/g, (_match, phaseId) => {
+    const phase = flow.phases.find((p) => p.id === phaseId);
+    if (phase === undefined) {
+      throw new Error(`Dispatch reference {{dispatch-ref:${phaseId}}} not found in flow "${flow.id}" for target "${target.name}"`);
+    }
+    const sameUnit = unitPhases === undefined || unitPhases.has(phaseId);
+    if (sameUnit) {
+      const title = s(phase.title, target.name, `phase[${phaseId}].title`);
+      return `the *${title}* section`;
+    }
+    const destination = phaseDestination(flow, target, phaseId, unitPhases);
+    return `${destination} with the current mode, forwarding \`${target.argsToken}\` minus the leading mode keyword (if the user typed one)`;
+  });
+  const stepNumbers = computeStepNumbers(flow, target.name, unitPhases === undefined && flow.compile.continuousStepNumbers === true);
+  result = result.replace(/\{\{step:([a-z0-9-]+\/[a-z0-9-]+)\}\}/g, (_match, ref) => {
+    const num = stepNumbers.get(ref);
+    if (num === undefined) {
+      throw new Error(`Step reference {{step:${ref}}} not found in flow "${flow.id}" for target "${target.name}"`);
+    }
+    const refPhase = ref.split("/")[0];
+    if (unitPhases !== undefined && !unitPhases.has(refPhase)) {
+      throw new Error(`Step reference {{step:${ref}}} crosses a split-unit boundary in flow "${flow.id}" (target "${target.name}"): phase "${refPhase}" compiles to its own file, so its step numbers are not visible here. Reference the \`${flow.id}-${refPhase}\` skill by name instead.`);
+    }
+    return String(num);
+  });
+  result = result.replace(/\{\{tool:([a-zA-Z][a-zA-Z0-9_-]*)\}\}/g, (_match, toolId) => `\`${fullToolName(flow, toolId, target)}\``);
+  result = result.replace(/\{\{command:([a-zA-Z][a-zA-Z0-9_-]*)\}\}/g, (_match, commandId) => {
+    const def = flow.commands[commandId];
+    if (def === undefined) {
+      throw new Error(`Command "${commandId}" not declared in flow.commands`);
+    }
+    return target.invokeCommand(def);
+  });
+  result = result.replace(/\{\{(table|list):([a-zA-Z][a-zA-Z0-9_-]*):([a-zA-Z0-9_,-]+)\}\}/g, (_match, kind, tableName, columnsRaw, offset) => {
+    const block = renderTableBlock(flow, kind, tableName, columnsRaw.split(","));
+    return inheritLineIndent(result, offset, block);
+  });
+  return result;
+}
+function computeStepNumbers(flow, target, continuous = false) {
+  const result = new Map;
+  const reachable = computeReachableSteps(flow, target);
+  let counter = 1;
+  for (const phase of flow.phases) {
+    if (!continuous) {
+      counter = 1;
+    }
+    for (const step of phase.steps) {
+      if (!reachable.has(`${phase.id}/${step.id}`)) {
+        continue;
+      }
+      const num = step.preamble === true ? 0 : counter;
+      if (step.preamble !== true) {
+        counter += 1;
+      }
+      result.set(`${phase.id}/${step.id}`, num);
+    }
+  }
+  return result;
+}
+function resolveAllowedTools(flow, target) {
+  if (Object.keys(flow.tools).length === 0) {
+    return flow.frontmatter.allowedTools;
+  }
+  const calledIds = collectCalledToolIds(flow).filter((id) => toolAvailableOnTarget(flow.tools[id], target.name));
+  return calledIds.map((id) => fullToolName(flow, id, target));
+}
+function toolAvailableOnTarget(def, targetName) {
+  return def.targets === undefined || def.targets.includes(targetName);
+}
+function fullToolName(flow, toolId, target) {
+  const def = flow.tools[toolId];
+  if (def === undefined) {
+    throw new Error(`Tool "${toolId}" not declared in flow.tools`);
+  }
+  if (!toolAvailableOnTarget(def, target.name)) {
+    throw new Error(`Tool "${toolId}" is not available on target "${target.name}" (its \`targets\` allowlist is [${def.targets?.join(", ")}]). A {{tool:${toolId}}} reference reached this target's prose - gate it behind a {{#${def.targets?.[0]}}} section so it is stripped for other agents.`);
+  }
+  const name = resolvePerTarget(def.name, target.name);
+  if (name === undefined) {
+    throw new Error(`Tool "${toolId}" has no name for target "${target.name}" (and no default)`);
+  }
+  return def.kind === "mcp" ? `${target.mcpPrefix}${name}` : name;
+}
+function renderModesDispatch(flow, target, dispatches) {
+  const modes = Object.keys(flow.entries);
+  if (modes.length <= 1 || Object.keys(flow.modeHints).length === 0) {
+    return null;
+  }
+  const phaseTitle = (mode) => {
+    const entryRef = flow.entries[mode];
+    if (entryRef === undefined) {
+      return mode;
+    }
+    const entry = resolvePerTarget(entryRef, target.name);
+    if (entry === undefined) {
+      return mode;
+    }
+    const phaseId = entry.split("/")[0];
+    const phase = flow.phases.find((p) => p.id === phaseId);
+    return phase !== undefined ? s(phase.title, target.name, `phase[${phaseId}].title`) : mode;
+  };
+  const rows = modes.map((mode) => {
+    const hint = flow.modeHints[mode];
+    const description = hint !== undefined ? s(hint, target.name, `modeHints.${mode}`) : phaseTitle(mode);
+    const trigger = mode === flow.defaultMode ? mode === "default" ? "(no argument)" : `\`${mode}\` (default)` : `\`${mode}\``;
+    return `| \`${mode}\` | ${trigger} | ${description} |`;
+  });
+  const follow = dispatches ? "Follow only the selected mode's path below." : "Run only that mode's section below and skip the others.";
+  const args = `\`${target.argsToken}\``;
+  const routing = flow.defaultMode !== undefined ? `Read ${args} first. If its first token is exactly one of the mode names below, run that mode. Otherwise, when this skill documents how to route the remaining arguments (see its intro), follow that; if it doesn't, run \`${flow.defaultMode}\` and treat ${args} as its input. ${follow}` : `Read ${args} first. If its first token is exactly one of the mode names below, run that mode; otherwise route it using this skill's argument-routing guidance. ${follow}`;
+  return [
+    "## Modes",
+    "",
+    routing,
+    "",
+    "| Mode | Trigger | What it does |",
+    "|------|---------|--------------|",
+    ...rows
+  ].join(`
+`);
+}
+function renderCommandsTable(flow, target) {
+  const rows = [];
+  for (const def of Object.values(flow.commands)) {
+    const sig = def.args !== undefined ? `${def.file} ${def.args}` : def.file;
+    rows.push(`| \`${sig}\` | ${def.description} |`);
+  }
+  return [
+    target.commandsTableIntro,
+    "",
+    "| Command | Description |",
+    "|---------|-------------|",
+    ...rows
+  ].join(`
+`);
+}
+function renderTableBlock(flow, kind, tableName, columns) {
+  const table = flow.tables[tableName];
+  if (table === undefined) {
+    throw new Error(`Table "${tableName}" not declared in flow.tables`);
+  }
+  if (kind === "list") {
+    if (columns.length !== 1) {
+      throw new Error(`{{list:${tableName}:\u2026}} takes exactly one column, got ${columns.join(",")}`);
+    }
+    const column = columns[0];
+    return table.rows.filter((row) => row.cells[column] !== undefined).map((row) => `- ${row.label ?? row.key}: ${row.cells[column]}`).join(`
+`);
+  }
+  const headers = [
+    table.keyHeader,
+    ...columns.map((c) => table.columns[c] ?? titleCase(c))
+  ];
+  const lines = [
+    `| ${headers.join(" | ")} |`,
+    `|${headers.map(() => "---").join("|")}|`
+  ];
+  for (const row of table.rows) {
+    const cells = columns.map((col) => row.cells[col]);
+    if (cells.every((c) => c !== undefined)) {
+      lines.push(`| ${row.key} | ${cells.join(" | ")} |`);
+    }
+  }
+  return lines.join(`
+`);
+}
+function titleCase(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function inheritLineIndent(text, offset, value) {
+  if (!value.includes(`
+`)) {
+    return value;
+  }
+  const lineStart = text.lastIndexOf(`
+`, offset - 1) + 1;
+  const before = text.slice(lineStart, offset);
+  if (!/^[ \t]*$/.test(before)) {
+    return value;
+  }
+  return value.split(`
+`).map((line, i) => i === 0 || line.length === 0 ? line : before + line).join(`
+`);
+}
+function destinationRenderer(flow, target, unitPhases) {
+  const one = (ref, sourcePhaseId) => {
+    if (ref === null) {
+      return "stop";
+    }
+    const phaseId = ref.split("/")[0];
+    if (unitPhases !== undefined && !unitPhases.has(phaseId)) {
+      if (usesPhaseReferences(flow, target)) {
+        return phaseDestination(flow, target, phaseId, unitPhases);
+      }
+      return `the \`${flow.id}-${phaseId}\` skill`;
+    }
+    if (phaseId === sourcePhaseId) {
+      return `step {{step:${ref}}}`;
+    }
+    const phase = flow.phases.find((p) => p.id === phaseId);
+    const title = phase !== undefined ? s(phase.title, target.name, `phase[${phaseId}].title`) : phaseId;
+    return `step {{step:${ref}}} of the ${title} phase`;
+  };
+  return (next, sourcePhaseId) => {
+    if (next === null || typeof next === "string") {
+      return one(next, sourcePhaseId);
+    }
+    const groups = new Map;
+    for (const [mode, ref] of Object.entries(next.byMode)) {
+      const dest = one(ref, sourcePhaseId);
+      const modes = groups.get(dest) ?? [];
+      modes.push(mode);
+      groups.set(dest, modes);
+    }
+    const entries = [...groups.entries()];
+    if (entries.length === 1) {
+      return entries[0][0];
+    }
+    const describe = ([dest, modes]) => `${dest} (mode ${modes.map((m) => `\`${m}\``).join(" or ")})`;
+    const largest = entries.reduce((a, b) => b[1].length > a[1].length ? b : a);
+    if (largest[1].length < 2) {
+      return entries.map(describe).join("; ");
+    }
+    const rest = entries.filter((e) => e !== largest);
+    return [...rest.map(describe), `otherwise ${largest[0]}`].join("; ");
+  };
+}
+function renderPhase(phase, target, allModes, modesPerStep, reachable, emitTemplate, includePhaseTitle = true, dispatchSuffixFor, destinationFor, stepNumberOffset = 0, foldSingleModeGate = false) {
+  const visibleSteps = phase.steps.filter((step) => reachable.has(`${phase.id}/${step.id}`)).map((step) => ({
+    step,
+    stepKey: `${phase.id}/${step.id}`
+  }));
+  if (visibleSteps.length === 0) {
+    return "";
+  }
+  if (phase.stepStyle === "headers") {
+    return renderPhaseAsHeaders(phase, visibleSteps, allModes, modesPerStep, target, emitTemplate, dispatchSuffixFor, destinationFor, stepNumberOffset, foldSingleModeGate);
+  }
+  return renderPhaseAsList(phase, visibleSteps, allModes, modesPerStep, target, emitTemplate, includePhaseTitle, dispatchSuffixFor, destinationFor, stepNumberOffset);
+}
+function countNumberedSteps(phase, reachable) {
+  return phase.steps.filter((step) => reachable.has(`${phase.id}/${step.id}`) && step.preamble !== true).length;
+}
+function modesForStep(stepKey, modesPerStep, allModes) {
+  return modesPerStep.get(stepKey) ?? new Set(allModes);
+}
+function formatPositiveGate(inModes) {
+  const phrases = inModes.map((m) => `\`${m}\``);
+  const list = phrases.length === 1 ? phrases[0] : `${phrases.slice(0, -1).join(", ")} or ${phrases[phrases.length - 1]}`;
+  return `**Run only when mode is ${list}.**`;
+}
+function precomputePhaseAndStepGates(stepKeys, modesPerStep, allModes) {
+  if (stepKeys.length === 0) {
+    return { phaseGate: null, perStepGates: new Map };
+  }
+  const stepModeSets = stepKeys.map((key) => modesForStep(key, modesPerStep, allModes));
+  const allModesCount = allModes.length;
+  const firstSet = stepModeSets[0];
+  const uniform = stepModeSets.every((s) => s.size === firstSet.size && [...s].every((mode) => firstSet.has(mode)));
+  if (uniform) {
+    if (firstSet.size === allModesCount) {
+      return { phaseGate: null, perStepGates: new Map };
+    }
+    const inModes = allModes.filter((m) => firstSet.has(m));
+    return {
+      phaseGate: formatPositiveGate(inModes),
+      perStepGates: new Map
+    };
+  }
+  const perStepGates = new Map;
+  for (let i = 0;i < stepKeys.length; i++) {
+    const set = stepModeSets[i];
+    if (set.size === allModesCount) {
+      continue;
+    }
+    const inModes = allModes.filter((m) => set.has(m));
+    perStepGates.set(stepKeys[i], formatPositiveGate(inModes));
+  }
+  return { phaseGate: null, perStepGates };
+}
+function renderEmit(step, template) {
+  if (step.emit === undefined || template === undefined) {
+    return null;
+  }
+  let displayName;
+  let action;
+  if (typeof step.emit === "string") {
+    displayName = step.emit;
+    action = "started";
+  } else {
+    displayName = step.emit.displayName;
+    action = step.emit.action;
+  }
+  return template.replace(/\{action\}/g, action).replace(/\{displayName\}/g, displayName);
+}
+function bodyWithModeGate(step, stepKey, perStepGates, target, emitTemplate, dispatchSuffixFor, destinationFor) {
+  const withBranches = expandBranchesPlaceholders(step, stepKey.split("/")[0], target, destinationFor);
+  const parts = [];
+  const gate = perStepGates.get(stepKey);
+  if (gate !== undefined) {
+    parts.push(gate);
+  }
+  const emitted = renderEmit(step, emitTemplate);
+  if (emitted !== null) {
+    parts.push(emitted);
+  }
+  parts.push(withBranches);
+  const dispatchSuffix = dispatchSuffixFor?.(step, stepKey);
+  if (dispatchSuffix !== undefined && dispatchSuffix !== null) {
+    parts.push(dispatchSuffix);
+  }
+  return parts.join(`
+
+`);
+}
+function expandBranchesPlaceholders(step, sourcePhaseId, target, destinationFor) {
+  const body = s(step.body, target, `step[${step.id}].body`);
+  if (step.kind !== "branch") {
+    return body;
+  }
+  return body.replace(/\{\{branches(?::([a-z0-9-]+))?\}\}/g, (_match, promptFilter) => {
+    const lines = [];
+    for (const branch of step.branches) {
+      if (branch.option === undefined) {
+        continue;
+      }
+      if (promptFilter !== undefined && branch.prompt !== promptFilter) {
+        continue;
+      }
+      const { letter, label, description } = branch.option;
+      const recommended = branch.recommended === true ? " *(recommended)*" : "";
+      const desc = description !== undefined ? `: ${description}` : "";
+      const dest = destinationFor !== undefined ? ` \u2192 ${destinationFor(branch.next, sourcePhaseId)}` : "";
+      lines.push(`> ${letter}) **${label}**${desc}${recommended}${dest}`);
+    }
+    return lines.join(`
+`);
+  }).replace(/\{\{whens\}\}/g, () => {
+    const lines = [];
+    for (const branch of step.branches) {
+      if (branch.when === undefined || branch.option !== undefined) {
+        continue;
+      }
+      const action = branch.description ?? (branch.next === null ? "stop the flow" : "continue");
+      const dest = destinationFor !== undefined && branch.next !== null ? ` \u2192 ${destinationFor(branch.next, sourcePhaseId)}` : "";
+      lines.push(`- **${branch.when}**: ${action}${dest}`);
+    }
+    return lines.join(`
+`);
+  });
+}
+function renderPhaseAsHeaders(phase, visibleSteps, allModes, modesPerStep, target, emitTemplate, dispatchSuffixFor, destinationFor, stepNumberOffset = 0, foldSingleModeGate = false) {
+  const blocks = [];
+  const stepKeys = visibleSteps.map((v) => v.stepKey);
+  const { phaseGate, perStepGates } = precomputePhaseAndStepGates(stepKeys, modesPerStep, allModes);
+  if (phaseGate !== null && !foldSingleModeGate) {
+    blocks.push(phaseGate);
+  }
+  if (phase.intro !== undefined) {
+    const intro = s(phase.intro, target, `phase[${phase.id}].intro`);
+    if (intro.length > 0) {
+      blocks.push(intro);
+    }
+  }
+  let counter = 1 + stepNumberOffset;
+  let firstStep = true;
+  for (const { step, stepKey } of visibleSteps) {
+    const number = step.preamble === true ? 0 : counter;
+    if (step.preamble !== true) {
+      counter += 1;
+    }
+    const title = s(step.title, target, `step[${step.id}].title`);
+    let body = bodyWithModeGate(step, stepKey, perStepGates, target, emitTemplate, dispatchSuffixFor, destinationFor);
+    if (firstStep && foldSingleModeGate && phaseGate !== null) {
+      body = `${phaseGate}
+
+${body}`;
+    }
+    firstStep = false;
+    blocks.push(`## ${number}. ${title}
+
+${body}`);
+  }
+  if (phase.outro !== undefined) {
+    const outro = s(phase.outro, target, `phase[${phase.id}].outro`);
+    if (outro.length > 0) {
+      blocks.push(outro);
+    }
+  }
+  return blocks.join(`
+
+`);
+}
+function renderPhaseAsList(phase, visibleSteps, allModes, modesPerStep, target, emitTemplate, includePhaseTitle, dispatchSuffixFor, destinationFor, stepNumberOffset = 0) {
+  const blocks = [];
+  if (includePhaseTitle) {
+    blocks.push(`## ${s(phase.title, target, `phase[${phase.id}].title`)}`);
+  }
+  const stepKeys = visibleSteps.map((v) => v.stepKey);
+  const { phaseGate, perStepGates } = precomputePhaseAndStepGates(stepKeys, modesPerStep, allModes);
+  if (phaseGate !== null) {
+    blocks.push(phaseGate);
+  }
+  if (phase.intro !== undefined) {
+    const intro = s(phase.intro, target, `phase[${phase.id}].intro`);
+    if (intro.length > 0) {
+      blocks.push(intro);
+    }
+  }
+  const items = [];
+  let counter = 1 + stepNumberOffset;
+  for (const { step, stepKey } of visibleSteps) {
+    const number = step.preamble === true ? 0 : counter;
+    if (step.preamble !== true) {
+      counter += 1;
+    }
+    const body = bodyWithModeGate(step, stepKey, perStepGates, target, emitTemplate, dispatchSuffixFor, destinationFor);
+    items.push(`${number}. ${indentBody(body)}`);
+  }
+  blocks.push(items.join(`
+`));
+  if (phase.outro !== undefined) {
+    const outro = s(phase.outro, target, `phase[${phase.id}].outro`);
+    if (outro.length > 0) {
+      blocks.push(outro);
+    }
+  }
+  return blocks.join(`
+
+`);
+}
+function indentBody(body) {
+  const lines = body.split(`
+`);
+  return lines.map((line, i) => i === 0 ? line : line.length > 0 ? `   ${line}` : line).join(`
+`);
+}
+function applyMustacheSections(text, target) {
+  const sectionRegex = /\{\{([#^])([a-z][a-z0-9-]*)\}\}([\s\S]*?)\{\{\/\2\}\}/g;
+  return text.replace(sectionRegex, (_match, kind, name, inner) => {
+    const isMatch = target.sections[name];
+    if (isMatch === undefined) {
+      throw new Error(`Unknown section "${name}". Valid sections: ${Object.keys(target.sections).join(", ")}.`);
+    }
+    const include = kind === "#" ? isMatch : !isMatch;
+    return include ? inner : "";
+  });
+}
+function modesReachingUnit(flow, targetName, unitPhases) {
+  if (unitPhases === undefined) {
+    return new Set(Object.keys(flow.entries));
+  }
+  const reaching = new Set;
+  for (const [stepId, modes] of computeModesPerStep(flow, targetName)) {
+    if (!unitPhases.has(stepId.split("/")[0])) {
+      continue;
+    }
+    for (const mode of modes) {
+      reaching.add(mode);
+    }
+  }
+  return reaching;
+}
+function applyModeSections(text, flow, targetName, unitPhases) {
+  if (!MODE_SECTION_RE.test(text)) {
+    MODE_SECTION_RE.lastIndex = 0;
+    return text;
+  }
+  MODE_SECTION_RE.lastIndex = 0;
+  const reachable = modesReachingUnit(flow, targetName, unitPhases);
+  const sectionRegex = /\{\{([#^])mode:([a-z0-9-]+)\}\}([\s\S]*?)\{\{\/mode:\2\}\}/g;
+  return text.replace(sectionRegex, (_match, kind, mode, inner, offset) => {
+    const body = inner.trim();
+    const applies = reachable.has(mode);
+    const isOnlyMode = applies && reachable.size === 1;
+    if (kind === "#" && !applies) {
+      return "";
+    }
+    if (kind === "^" && isOnlyMode) {
+      return "";
+    }
+    if (kind === "#" && isOnlyMode || kind === "^" && !applies) {
+      return body;
+    }
+    const lineStart = text.lastIndexOf(`
+`, offset - 1) + 1;
+    const before = text.slice(lineStart, offset);
+    const indent = /^[ \t]*$/.test(before) ? before : "";
+    const gate = kind === "#" ? `**Only when the mode is \`${mode}\`:**` : `**Unless the mode is \`${mode}\`:**`;
+    return `${gate}
+
+${indent}${body}`;
+  });
+}
+function applyTokens(text, target, flow) {
+  const pool = {
+    ...target.tokens,
+    argsToken: target.argsToken
+  };
+  for (const [name, value] of Object.entries(flow.variables)) {
+    pool[name] = s(value, target.name, `flow.variables.${name}`);
+  }
+  const tokenRegex = /\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g;
+  const result = text.replace(tokenRegex, (_match, key, offset) => {
+    if (!Object.hasOwn(pool, key)) {
+      throw new Error(`Unresolved placeholder {{${key}}} - not a target token or flow variable. Define it in flow.variables, fix the typo, or remove the placeholder.`);
+    }
+    return inheritLineIndent(text, offset, pool[key]);
+  });
+  const leftovers = result.match(/\{\{[^}]+\}\}/g);
+  if (leftovers) {
+    throw new Error(`Unresolved placeholder(s): ${leftovers.join(", ")}. Check spelling and namespace (step:, step-ref:, skill-ref:, dispatch-ref:, tool:, command:, table:, list:, branches, branches:).`);
+  }
+  return result;
+}
+function ensureTrailingNewline(text) {
+  return text.endsWith(`
+`) ? text : `${text}
+`;
+}
+
+// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/kit.js
+var NAME_RE = /^[a-z][a-z0-9-]*$/;
+function createFlowKit(config) {
+  const targetNames = Object.keys(config.targets);
+  if (targetNames.length === 0) {
+    throw new Error("createFlowKit: at least one target is required");
+  }
+  for (const name of targetNames) {
+    if (!NAME_RE.test(name) || name === "default") {
+      throw new Error(`createFlowKit: invalid target name "${name}" (use lowercase kebab-case; "default" is reserved)`);
+    }
+  }
+  const groups = {};
+  for (const name of targetNames) {
+    groups[name] = [name];
+  }
+  for (const [section, members] of Object.entries(config.sections ?? {})) {
+    if (!NAME_RE.test(section)) {
+      throw new Error(`createFlowKit: invalid section name "${section}"`);
+    }
+    if (section in groups) {
+      throw new Error(`createFlowKit: section "${section}" collides with a target name`);
+    }
+    for (const member of members) {
+      if (!targetNames.includes(member)) {
+        throw new Error(`createFlowKit: section "${section}" lists unknown target "${member}"`);
+      }
+    }
+    groups[section] = members;
+  }
+  const commands = config.commands ?? {};
+  const runnerTool = commands.runnerTool ?? "Bash";
+  const targets = {};
+  for (const name of targetNames) {
+    const spec = config.targets[name];
+    const target = { ...spec, name };
+    const sections = {};
+    for (const [section, members] of Object.entries(groups)) {
+      sections[section] = members.includes(name);
+    }
+    const tableIntro = commands.tableIntro;
+    targets[name] = {
+      ...target,
+      sections,
+      invokeCommand: (command) => commands.invoke?.(command, target) ?? command.file,
+      commandsTableIntro: typeof tableIntro === "function" ? tableIntro(target) : tableIntro ?? `**CLI commands** available via \`${runnerTool}\`:`,
+      commandRunnerTool: runnerTool
+    };
+  }
+  const reservedTokenNames = new Set;
+  for (const name of targetNames) {
+    for (const token of Object.keys(config.targets[name].tokens)) {
+      reservedTokenNames.add(token);
+    }
+  }
+  const schemaOptions = {
+    targetNames,
+    reservedTokenNames: [...reservedTokenNames]
+  };
+  const schema = createFlowSchema(schemaOptions);
+  const getTarget = (name) => {
+    const target = targets[name];
+    if (target === undefined) {
+      throw new Error(`Unknown target "${name}". Known targets: ${targetNames.join(", ")}.`);
+    }
+    return target;
+  };
+  return {
+    targetNames,
+    targets,
+    schema,
+    defineFlow(input) {
+      const result = schema.safeParse(input);
+      if (!result.success) {
+        const id = typeof input === "object" && input !== null && "id" in input ? String(input.id) : "<unknown>";
+        throw new Error(`Invalid flow "${id}":
+${prettifyError(result.error)}`);
+      }
+      return result.data;
+    },
+    render: (flow, name) => renderFlow(flow, getTarget(name)),
+    renderMarkdown: (flow, name) => renderMarkdown(flow, getTarget(name)),
+    renderProject(projects) {
+      const out = [];
+      for (const { flow, outputs } of projects) {
+        for (const name of targetNames) {
+          const output = outputs[name];
+          if (output === undefined) {
+            continue;
+          }
+          for (const file of renderFlow(flow, getTarget(name))) {
+            out.push({
+              flowId: flow.id,
+              target: name,
+              kind: file.kind,
+              path: resolveOutputPath(output, file),
+              content: file.content
+            });
+          }
+        }
+      }
+      return out;
+    },
+    renderMermaid,
+    describeFlow
+  };
+}
+function dirname(path) {
+  const i = path.lastIndexOf("/");
+  return i === -1 ? "." : path.slice(0, i);
+}
+function basename(path) {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+function resolveOutputPath(output, file) {
+  const main = typeof output === "string" ? output : output.main;
+  if (file.slug === "") {
+    return main;
+  }
+  if (file.kind === "reference") {
+    return `${dirname(main)}/references/${file.slug}.md`;
+  }
+  if (typeof output !== "string") {
+    return output.phase.replace(/\{phase\}/g, file.slug);
+  }
+  const skillDir = dirname(main);
+  if (skillDir === ".") {
+    throw new Error(`Cannot derive a sub-skill path for phase "${file.slug}" from "${main}"; use { main, phase } output paths.`);
+  }
+  return `${dirname(skillDir)}/${basename(skillDir)}-${file.slug}/${basename(main)}`;
+}
+// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/targets.js
+function formatAllowedTools(allowedTools) {
+  return `[${allowedTools.map((t) => JSON.stringify(t)).join(", ")}]`;
+}
+function claudeFrontmatter({ description, argumentHint, model, allowedTools }) {
+  const lines = ["---", `description: ${description}`];
+  if (argumentHint !== undefined) {
+    lines.push(`argument-hint: ${JSON.stringify(argumentHint)}`);
+  }
+  if (model !== undefined) {
+    lines.push(`model: ${model}`);
+  }
+  if (allowedTools !== undefined) {
+    lines.push(`allowed-tools: ${formatAllowedTools(allowedTools)}`);
+  }
+  lines.push("---");
+  return lines.join(`
+`);
+}
+function claudeSubSkillFrontmatter({ flowId, description, model, allowedTools }) {
+  const lines = [
+    "---",
+    `name: ${flowId}`,
+    `description: ${description}`,
+    "user-invocable: false"
+  ];
+  if (model !== undefined) {
+    lines.push(`model: ${model}`);
+  }
+  if (allowedTools !== undefined) {
+    lines.push(`allowed-tools: ${formatAllowedTools(allowedTools)}`);
+  }
+  lines.push("---");
+  return lines.join(`
+`);
+}
+function namedFrontmatter(name, description, usage, usageInBody = false) {
+  const frontmatter = [
+    "---",
+    `name: ${name}`,
+    `description: "${description}${usageInBody ? "" : usage}"`,
+    "---"
+  ].join(`
+`);
+  return usageInBody && usage !== "" ? `${frontmatter}
+
+${usage.slice(2)}` : frontmatter;
+}
+var ASK_USER_QUESTION_TOKENS = {
+  askUser: "with `AskUserQuestion` ",
+  askVerb: "use `AskUserQuestion`",
+  askVerbCap: "Use `AskUserQuestion`",
+  askNoun: "AskUserQuestion"
+};
+var PLAIN_PROMPT_TOKENS = {
+  askUser: "",
+  askVerb: "ask the user",
+  askVerbCap: "Ask the user",
+  askNoun: "choice prompt"
+};
+function claudeCode(options) {
+  return {
+    tokens: {
+      cmd: `/${options.plugin}:`,
+      editor: "Claude Code",
+      pluginRoot: "${CLAUDE_PLUGIN_ROOT}",
+      pluginDirLookup: "",
+      ...ASK_USER_QUESTION_TOKENS,
+      ...options.tokens
+    },
+    mcpPrefix: options.mcpPrefix ?? (options.mcpServer !== undefined ? `mcp__plugin_${options.plugin}_${options.mcpServer}__` : ""),
+    argsToken: "$ARGUMENTS",
+    frontmatter: claudeFrontmatter,
+    subSkillFrontmatter: claudeSubSkillFrontmatter,
+    subSkillTool: "Skill"
+  };
+}
+function cursor(options) {
+  const render = ({ flowId, description, argumentHint }) => {
+    const name = `${options.plugin}-${flowId}`;
+    const usage = argumentHint !== undefined ? `. Usage: /${name} ${argumentHint}` : "";
+    return namedFrontmatter(name, description, usage, options.usageInBody);
+  };
+  return {
+    tokens: {
+      cmd: `/${options.plugin}-`,
+      editor: "Cursor",
+      pluginRoot: "${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}",
+      pluginDirLookup: "",
+      ...ASK_USER_QUESTION_TOKENS,
+      ...options.tokens
+    },
+    mcpPrefix: options.mcpPrefix ?? (options.mcpServer !== undefined ? `mcp__${options.mcpServer}__` : ""),
+    argsToken: "$ARGUMENTS",
+    frontmatter: render,
+    subSkillFrontmatter: render
+  };
+}
+function defaultEnvVar(plugin) {
+  return `${plugin.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_PLUGIN_DIR`;
+}
+function codexPluginDirLookup(plugin, { envVar = defaultEnvVar(plugin), markerFile }) {
+  return `\`\`\`bash
+if [ -z "$${envVar}" ]; then
+  ${envVar}=$(
+    hit=$(find "\${CODEX_HOME:-$HOME/.codex}/plugins/cache" -maxdepth 8 -type f \\
+      -path '*/${plugin}/*/${markerFile}' 2>/dev/null | head -1)
+    echo "\${hit%/${markerFile}}"
+  )
+  export ${envVar}
+fi
+test -n "$${envVar}" || { echo "ERROR: ${plugin} plugin not installed"; exit 1; }
+\`\`\``;
+}
+function ampPluginDirLookup(plugin, { envVar = defaultEnvVar(plugin), markerFile }) {
+  return `\`\`\`bash
+if [ -z "$${envVar}" ]; then
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+  for candidate in "$project_root/.amp/plugins/${plugin}" "\${XDG_CONFIG_HOME:-$HOME/.config}/amp/plugins/${plugin}"; do
+    if [ -f "$candidate/${markerFile}" ]; then
+      ${envVar}="$candidate"
+      break
+    fi
+  done
+  export ${envVar}
+fi
+test -n "$${envVar}" || { echo "ERROR: ${plugin} plugin not installed"; exit 1; }
+\`\`\``;
+}
+function pluginDirTokens(plugin, pluginDir, lookup) {
+  if (pluginDir === undefined) {
+    return {};
+  }
+  return {
+    pluginRoot: `\${${pluginDir.envVar ?? defaultEnvVar(plugin)}}`,
+    pluginDirLookup: lookup(plugin, pluginDir)
+  };
+}
+function codex(options) {
+  const render = ({ flowId, description, argumentHint }) => {
+    const usage = argumentHint !== undefined ? `. Invoke with $${options.plugin}:${flowId} ${argumentHint}.` : "";
+    return namedFrontmatter(flowId, description, usage, options.usageInBody);
+  };
+  return {
+    tokens: {
+      cmd: `$${options.plugin}:`,
+      editor: "Codex",
+      ...pluginDirTokens(options.plugin, options.pluginDir, codexPluginDirLookup),
+      ...PLAIN_PROMPT_TOKENS,
+      ...options.tokens
+    },
+    mcpPrefix: options.mcpPrefix ?? (options.mcpServer !== undefined ? `mcp__${options.mcpServer}__` : ""),
+    argsToken: "$ARGUMENTS",
+    frontmatter: render,
+    subSkillFrontmatter: render,
+    dispatchRef: (skillName) => `\`$${options.plugin}:${skillName}\``,
+    phaseReferences: options.phaseReferences ?? true
+  };
+}
+function amp(options) {
+  const render = ({ flowId, description, argumentHint }) => {
+    const usage = argumentHint !== undefined ? `. Invoke as ${options.plugin}:${flowId} ${argumentHint}.` : "";
+    return namedFrontmatter(flowId, description, usage, options.usageInBody);
+  };
+  return {
+    tokens: {
+      cmd: `${options.plugin}:`,
+      editor: "Amp",
+      ...pluginDirTokens(options.plugin, options.pluginDir, ampPluginDirLookup),
+      ...PLAIN_PROMPT_TOKENS,
+      ...options.tokens
+    },
+    mcpPrefix: options.mcpPrefix ?? "",
+    argsToken: "the user's request",
+    frontmatter: render,
+    subSkillFrontmatter: render,
+    subSkillTool: "skill",
+    dispatchRef: (skillName) => `\`${options.plugin}:${skillName}\``
+  };
+}
+// ../bitfab-plugin-lib/dist/retiredAssistant.js
+var RETIRED_ASSISTANT_EXAMPLE_REQUESTS = [
+  "Find the failing traces for generate-email from the last day and tell me why they failed",
+  "Draft assertions for the last three traces in my bugs dataset",
+  "Replay my regression dataset against this prompt change and tell me what got better or worse",
+  "Compare the baseline experiment with the two prompt-variant experiments"
+];
+
+// ../bitfab-plugin-lib/dist/flows/kit.js
+var BITFAB_PLUGIN = "bitfab";
+var MCP_SERVER = "Bitfab";
+var CODEX_RESOLVE_PLUGIN_DIR_BASH = `\`\`\`bash
+if [ -z "$BITFAB_PLUGIN_DIR" ]; then
+  BITFAB_PLUGIN_DIR=$(
+    hit=$(find "\${CODEX_HOME:-$HOME/.codex}/plugins/cache" -maxdepth 6 -type f -name status.js \\
+      \\( -path '*/bitfab-internal/bitfab/local/dist/commands/*' \\
+      -o -path '*/bitfab/bitfab/*/dist/commands/*' \\) 2>/dev/null | head -1)
+    echo "\${hit%/dist/commands/status.js}"
+  )
+  export BITFAB_PLUGIN_DIR
+fi
+test -n "$BITFAB_PLUGIN_DIR" || { echo "ERROR: Bitfab plugin not installed"; exit 1; }
+\`\`\``;
+var AMP_RESOLVE_PLUGIN_DIR_BASH = `\`\`\`bash
+if [ -z "$BITFAB_PLUGIN_DIR" ]; then
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+  for candidate in "$project_root/.amp/plugins/bitfab" "\${XDG_CONFIG_HOME:-$HOME/.config}/amp/plugins/bitfab"; do
+    if [ -f "$candidate/dist/commands/status.js" ]; then
+      BITFAB_PLUGIN_DIR="$candidate"
+      break
+    fi
+  done
+  export BITFAB_PLUGIN_DIR
+fi
+test -n "$BITFAB_PLUGIN_DIR" || { echo "ERROR: Bitfab plugin not installed"; exit 1; }
+\`\`\``;
+var bitfabKit = createFlowKit({
+  targets: {
+    claude: claudeCode({ plugin: BITFAB_PLUGIN, mcpServer: MCP_SERVER }),
+    cursor: cursor({ plugin: BITFAB_PLUGIN, mcpServer: MCP_SERVER }),
+    codex: codex({
+      plugin: BITFAB_PLUGIN,
+      mcpServer: MCP_SERVER,
+      tokens: {
+        pluginRoot: "${BITFAB_PLUGIN_DIR}",
+        pluginDirLookup: CODEX_RESOLVE_PLUGIN_DIR_BASH
+      }
+    }),
+    amp: amp({
+      plugin: BITFAB_PLUGIN,
+      tokens: {
+        pluginRoot: "${BITFAB_PLUGIN_DIR}",
+        pluginDirLookup: AMP_RESOLVE_PLUGIN_DIR_BASH
+      }
+    })
+  },
+  sections: {
+    "ask-user-question": ["claude", "cursor"],
+    "plugin-dir-lookup": ["codex", "amp"],
+    "exec-polling": ["codex", "amp"],
+    "no-startup-banner": ["codex", "amp"],
+    "web-fetch-tool": ["claude", "cursor"]
+  },
+  commands: {
+    invoke: (command) => `node "{{pluginRoot}}/dist/commands/${command.file}"`,
+    tableIntro: "**CLI commands** available via Bash (all paths relative to `{{pluginRoot}}/dist/commands/`):"
+  }
+});
+var TARGET_NAMES = bitfabKit.targetNames;
+var TARGETS = bitfabKit.targets;
 var SHARED_VARIABLES = {
   parallelism: {
     default: "in parallel with",
@@ -18525,18 +19948,11 @@ var SHARED_VARIABLES = {
     codex: "together"
   }
 };
-// ../bitfab-plugin-lib/dist/retiredAssistant.js
-var RETIRED_ASSISTANT_EXAMPLE_REQUESTS = [
-  "Find the failing traces for generate-email from the last day and tell me why they failed",
-  "Draft assertions for the last three traces in my bugs dataset",
-  "Replay my regression dataset against this prompt change and tell me what got better or worse",
-  "Compare the baseline experiment with the two prompt-variant experiments"
-];
 
 // ../bitfab-plugin-lib/dist/flows/assistant.js
 var EXAMPLE_LINES = RETIRED_ASSISTANT_EXAMPLE_REQUESTS.map((request) => `> - "${request}"`).join(`
 `);
-var assistantFlow = Flow.parse({
+var assistantFlow = bitfabKit.defineFlow({
   schemaVersion: 1,
   id: "assistant",
   title: "Bitfab Assistant (retired)",
@@ -18953,7 +20369,7 @@ var REPLAY_REGISTRY_VARIABLES = {
 };
 
 // ../bitfab-plugin-lib/dist/flows/setup.js
-var setupFlow = Flow.parse({
+var setupFlow = bitfabKit.defineFlow({
   schemaVersion: 1,
   id: "setup",
   title: "Bitfab Setup",
@@ -20638,7 +22054,7 @@ If **zero** valid candidates remain, skip to step {{step:analyze-repo/report}} a
 });
 
 // ../bitfab-plugin-lib/dist/flows/update.js
-var updateFlow = Flow.parse({
+var updateFlow = bitfabKit.defineFlow({
   schemaVersion: 1,
   id: "update",
   title: "Bitfab Update",
@@ -20690,45 +22106,58 @@ var updateFlow = Flow.parse({
     plugin: "Update only the Bitfab plugin to the latest version.",
     sdk: "Update only the Bitfab SDK to the latest version."
   },
-  languageColumnHeaders: {
-    detection: "Detection (from workspace/repo)",
-    outdated: "Command (run from workspace dir)",
-    update: "Command"
-  },
-  languages: [
-    {
-      name: "typescript",
-      displayName: "TypeScript",
-      imports: "`import .* from [\"'](?:@bitfab/sdk|bitfab)[\"']` or `require\\([\"'](?:@bitfab/sdk|bitfab)[\"']\\)`",
-      detection: "`pnpm-lock.yaml` at repo root \u2192 pnpm; `yarn.lock` \u2192 yarn; `bun.lock` \u2192 bun; otherwise npm",
-      outdated: "`pnpm outdated @bitfab/sdk --json` / `npm outdated @bitfab/sdk --json` / `yarn outdated @bitfab/sdk` / `bun outdated @bitfab/sdk`",
-      update: "If `renameFrom` is set (legacy `bitfab` package): remove the old package and add the new one in a single command: `pnpm remove bitfab && pnpm add @bitfab/sdk@latest` / `npm uninstall bitfab && npm install @bitfab/sdk@latest` / `yarn remove bitfab && yarn add @bitfab/sdk@latest` / `bun remove bitfab && bun add @bitfab/sdk@latest`. Then update imports in source files from `bitfab` to `@bitfab/sdk`. If no rename: `pnpm update @bitfab/sdk@latest` / `yarn upgrade @bitfab/sdk@latest` / `bun update @bitfab/sdk` / `npm install @bitfab/sdk@latest`"
-    },
-    {
-      name: "python",
-      displayName: "Python",
-      imports: "`^\\s*(from|import) bitfab\\b`",
-      detection: "`uv.lock` \u2192 uv; `poetry.lock` \u2192 poetry; otherwise pip",
-      outdated: "`uv pip list --outdated --format=json` / `poetry show -o bitfab-py` / `pip list --outdated --format=json`",
-      update: "`uv add bitfab-py@latest` / `poetry add bitfab-py@latest` / `pip install -U bitfab-py` (and bump the pin in `requirements.txt` via Edit)"
-    },
-    {
-      name: "ruby",
-      displayName: "Ruby",
-      imports: "`require ['\"]bitfab['\"]`",
-      detection: "`Gemfile.lock`",
-      outdated: "`bundle outdated bitfab --parseable`",
-      update: "`bundle update bitfab`"
-    },
-    {
-      name: "go",
-      displayName: "Go",
-      imports: '`"github.com/Project-White-Rabbit/bitfab-go"`',
-      detection: "`go.mod`",
-      outdated: "`go list -m -u -json github.com/Project-White-Rabbit/bitfab-go`",
-      update: "`go get github.com/Project-White-Rabbit/bitfab-go@latest && go mod tidy`"
+  tables: {
+    languages: {
+      keyHeader: "Language",
+      columns: {
+        detection: "Detection (from workspace/repo)",
+        outdated: "Command (run from workspace dir)",
+        update: "Command"
+      },
+      rows: [
+        {
+          key: "typescript",
+          label: "TypeScript",
+          cells: {
+            imports: "`import .* from [\"'](?:@bitfab/sdk|bitfab)[\"']` or `require\\([\"'](?:@bitfab/sdk|bitfab)[\"']\\)`",
+            detection: "`pnpm-lock.yaml` at repo root \u2192 pnpm; `yarn.lock` \u2192 yarn; `bun.lock` \u2192 bun; otherwise npm",
+            outdated: "`pnpm outdated @bitfab/sdk --json` / `npm outdated @bitfab/sdk --json` / `yarn outdated @bitfab/sdk` / `bun outdated @bitfab/sdk`",
+            update: "If `renameFrom` is set (legacy `bitfab` package): remove the old package and add the new one in a single command: `pnpm remove bitfab && pnpm add @bitfab/sdk@latest` / `npm uninstall bitfab && npm install @bitfab/sdk@latest` / `yarn remove bitfab && yarn add @bitfab/sdk@latest` / `bun remove bitfab && bun add @bitfab/sdk@latest`. Then update imports in source files from `bitfab` to `@bitfab/sdk`. If no rename: `pnpm update @bitfab/sdk@latest` / `yarn upgrade @bitfab/sdk@latest` / `bun update @bitfab/sdk` / `npm install @bitfab/sdk@latest`"
+          }
+        },
+        {
+          key: "python",
+          label: "Python",
+          cells: {
+            imports: "`^\\s*(from|import) bitfab\\b`",
+            detection: "`uv.lock` \u2192 uv; `poetry.lock` \u2192 poetry; otherwise pip",
+            outdated: "`uv pip list --outdated --format=json` / `poetry show -o bitfab-py` / `pip list --outdated --format=json`",
+            update: "`uv add bitfab-py@latest` / `poetry add bitfab-py@latest` / `pip install -U bitfab-py` (and bump the pin in `requirements.txt` via Edit)"
+          }
+        },
+        {
+          key: "ruby",
+          label: "Ruby",
+          cells: {
+            imports: "`require ['\"]bitfab['\"]`",
+            detection: "`Gemfile.lock`",
+            outdated: "`bundle outdated bitfab --parseable`",
+            update: "`bundle update bitfab`"
+          }
+        },
+        {
+          key: "go",
+          label: "Go",
+          cells: {
+            imports: '`"github.com/Project-White-Rabbit/bitfab-go"`',
+            detection: "`go.mod`",
+            outdated: "`go list -m -u -json github.com/Project-White-Rabbit/bitfab-go`",
+            update: "`go get github.com/Project-White-Rabbit/bitfab-go@latest && go mod tidy`"
+          }
+        }
+      ]
     }
-  ],
+  },
   phases: [
     {
       id: "setup",
@@ -20836,7 +22265,7 @@ If there are **no lines** inside \`<bitfab-sdk-status>\`, the programmatic check
           body: `The programmatic detection is regex-based and only knows the workspace formats we hand-coded (pnpm/npm/yarn workspaces, uv workspaces, go.work). It can miss unusual monorepo layouts, vendored SDKs, or projects using package managers we don't parse. **Always run this verification** before offering updates.
 
 - Grep the project for SDK imports (run these in parallel):
-{{languages:imports}}
+  {{list:languages:imports}}
 - For each import, find its workspace directory by walking up to the nearest \`package.json\` / \`pyproject.toml\` / \`Gemfile\` / \`go.mod\`.
 - Compare that set against the \`workspacePath\` values in \`<bitfab-sdk-status>\`.
 - For each workspace that has imports but **no** corresponding status entry, treat it as a missed detection: ask the user which package manager that workspace uses, then go to step {{step:sdk/agent-fallback}} for it (same flow as \`remoteCheckFailed: true\`).
@@ -20850,7 +22279,7 @@ If there are **no lines** inside \`<bitfab-sdk-status>\`, the programmatic check
           title: "Agent fallback for `remoteCheckFailed` or detection gaps",
           body: `For each entry where \`remoteCheckFailed: true\`, or any workspace discovered only in step {{step:sdk/verify-with-agent}}, run the package manager's native outdated command from the workspace directory. The command is authoritative, it respects private registries, mirrors, and offline caches.
 
-{{languages:detection,outdated}}
+{{table:languages:detection,outdated}}
 
 Use the real latest from the command's output in place of \`latest\` when deciding whether to offer an upgrade.`,
           next: "sdk/ask-batch"
@@ -20934,7 +22363,7 @@ When no outdated workspaces remain, exit and acknowledge.`,
           title: "Run the update for the chosen workspace",
           body: `Detect the package manager from the lockfiles and run the update **from the workspace directory** (not repo root, matters in monorepos):
 
-{{languages:update}}
+{{table:languages:update}}
 
 After the update, Read the manifest to verify the new version and confirm to the user. If a rename was performed (\`renameFrom\` was set), also grep the workspace for old import paths and update them (e.g. \`from "bitfab"\` to \`from "@bitfab/sdk"\`). Then return to the per-workspace prompt for the next workspace.`,
           next: "sdk/ask-per-workspace"
@@ -20946,7 +22375,7 @@ After the update, Read the manifest to verify the new version and confirm to the
           title: "Run updates for every outdated workspace",
           body: `For every workspace with \`updateAvailable: true\`, detect the package manager from the lockfiles and run the update **from each workspace directory** (not repo root):
 
-{{languages:update}}
+{{table:languages:update}}
 
 After each update, Read the manifest to verify the new version and confirm to the user. If a rename was performed (\`renameFrom\` was set), also grep the workspace for old import paths and update them (e.g. \`from "bitfab"\` to \`from "@bitfab/sdk"\`).`,
           next: null
@@ -21151,7 +22580,7 @@ var SUPPORTED_COMMANDS = new Set([
   "switchOrg",
   "update"
 ]);
-var setupV2Flow = Flow.parse({
+var setupV2Flow = bitfabKit.defineFlow({
   ...setupFlow,
   id: "setup-v2",
   title: "Bitfab Terminal Setup",
