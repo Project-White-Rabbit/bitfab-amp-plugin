@@ -8479,7 +8479,7 @@ var require_ajv = __commonJS(function(exports, module) {
   } });
 });
 
-// ../node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/formats.js
+// ../node_modules/.pnpm/ajv-formats@3.0.1/node_modules/ajv-formats/dist/formats.js
 var require_formats = __commonJS(function(exports) {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.formatNames = exports.fastFormats = exports.fullFormats = undefined;
@@ -8656,7 +8656,7 @@ var require_formats = __commonJS(function(exports) {
   }
 });
 
-// ../node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/limit.js
+// ../node_modules/.pnpm/ajv-formats@3.0.1/node_modules/ajv-formats/dist/limit.js
 var require_limit = __commonJS(function(exports) {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.formatLimitDefinition = undefined;
@@ -8725,7 +8725,7 @@ var require_limit = __commonJS(function(exports) {
   exports.default = formatLimitPlugin;
 });
 
-// ../node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/index.js
+// ../node_modules/.pnpm/ajv-formats@3.0.1/node_modules/ajv-formats/dist/index.js
 var require_dist = __commonJS(function(exports, module) {
   Object.defineProperty(exports, "__esModule", { value: true });
   var formats_1 = require_formats();
@@ -17084,8 +17084,8 @@ var semver2 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.68.1",
-  python: "0.68.1",
+  typescript: "0.68.2",
+  python: "0.68.2",
   ruby: "0.67.0",
   go: "0.67.0"
 };
@@ -20141,20 +20141,44 @@ var FRAMEWORKS = [
       py: "get_langchain_callback_handler"
     },
     experimentalToolReplay: {
+      spans: "ToolNode tool spans",
       factory: {
         ts: "getLangGraphIntegration",
         py: "get_langgraph_integration"
       },
       invoker: {
-        ts: "createInvoker",
-        py: "create_invoker",
-        pyAsync: "create_async_invoker"
+        ts: "instrument",
+        py: "instrument"
       }
     },
     autoCapture: { modelCall: "observed", child: "observed" },
     signals: {
       ts: "`@langchain/langgraph`, `@langchain/core`",
       py: "`langgraph`, `langchain`, `langchain_core`"
+    }
+  },
+  {
+    id: "deep-agents",
+    label: "LangChain Deep Agents",
+    docsPath: "/frameworks/deep-agents",
+    handlerKind: "callbackHandler",
+    handlerNoun: "integration",
+    handler: {
+      ts: "getDeepAgentsIntegration",
+      py: "get_deep_agents_integration"
+    },
+    experimentalToolReplay: {
+      spans: "Tool spans of the main agent (including `task`) and of declarative subagents, for an agent built with the integration's `createDeepAgent({...})` / `create_deep_agent(...)` (same arguments as Deep Agents' own; async in TypeScript)",
+      factory: {
+        ts: "getDeepAgentsIntegration",
+        py: "get_deep_agents_integration"
+      },
+      invoker: { ts: "createDeepAgent", py: "create_deep_agent" }
+    },
+    autoCapture: { modelCall: "observed", child: "observed" },
+    signals: {
+      ts: "`deepagents`, `createDeepAgent` (takes precedence over LangGraph / LangChain when present)",
+      py: "`deepagents`, `create_deep_agent` (takes precedence over LangGraph / LangChain when present)"
     }
   },
   {
@@ -20221,6 +20245,8 @@ var FRAMEWORKS = [
   }
 ];
 var code = (s) => `\`${s}\``;
+var preferredName = (names) => names.ts === undefined ? names.py : names.py ?? names.ts;
+var namePair = (names) => [names.ts, names.py].filter((name) => name !== undefined).map(code).join(" / ");
 var docsUrl = (docsPath) => `${docsPath}.md`;
 var handlerRoots = FRAMEWORKS.filter((f) => f.handlerKind !== "wrapper");
 var keyedReplayHandlers = FRAMEWORKS.flatMap((f) => {
@@ -20246,6 +20272,9 @@ function frameworkDocsPaths() {
 }
 function frameworkDetectionBullets() {
   return FRAMEWORKS.map((f) => {
+    if (f.signals.ts === undefined) {
+      return `- **${f.label}**: Python: ${f.signals.py} (Python only)`;
+    }
     const py = f.signals.py ? `; Python: ${f.signals.py}` : " (TypeScript only)";
     return `- **${f.label}**: TS: ${f.signals.ts}${py}`;
   }).join(`
@@ -20253,29 +20282,26 @@ function frameworkDetectionBullets() {
 }
 function frameworkReferenceList() {
   return FRAMEWORKS.map((f) => {
-    const methods = f.handler.py ? `${code(f.handler.ts)} / ${code(f.handler.py)}` : code(f.handler.ts);
-    const alias = f.aliasHandler ? `; in a LangChain-only project, prefer the identical aliases ${code(f.aliasHandler.ts)} / ${code(f.aliasHandler.py ?? f.aliasHandler.ts)} so the code reads naturally` : "";
-    const wrapper = f.rootWrapper ? `, plus the replayable run wrapper ${code(f.rootWrapper.ts)} / ${code(f.rootWrapper.py ?? f.rootWrapper.ts)} (drop-in for the run call)` : "";
-    const toolReplay = f.experimentalToolReplay ? `; Experimental (alpha) tool replay: ${code(f.experimentalToolReplay.factory.ts)} / ${code(f.experimentalToolReplay.factory.py ?? f.experimentalToolReplay.factory.ts)} with ${code(f.experimentalToolReplay.invoker.ts)} / ${code(f.experimentalToolReplay.invoker.py ?? f.experimentalToolReplay.invoker.ts)}${f.experimentalToolReplay.invoker.pyAsync ? ` / ${code(f.experimentalToolReplay.invoker.pyAsync)}` : ""}` : "";
+    const methods = namePair(f.handler);
+    const alias = f.aliasHandler ? `; in a LangChain-only project, prefer the identical aliases ${namePair(f.aliasHandler)} so the code reads naturally` : "";
+    const wrapper = f.rootWrapper ? `, plus the replayable run wrapper ${namePair(f.rootWrapper)} (drop-in for the run call)` : "";
+    const toolReplay = f.experimentalToolReplay ? `; Experimental (alpha) tool replay: ${namePair(f.experimentalToolReplay.factory)} with ${namePair(f.experimentalToolReplay.invoker)}` : "";
     const underTraceRoot = f.recordedUnderTraceRoot ? `; beneath an opt-out ${code("withTrace")} / ${code("trace")} root its calls are recorded as ${code("llm")} spans with no ${methods}, so add that ${f.handlerNoun} only under opt-in ${code("withSpan")} / ${code("@span")} code, and configure one call with ${code("withNode")} / ${code("node()")} on the bound method` : "";
     return `${f.label} \u2192 ${code(docsUrl(f.docsPath))} (${methods}${alias}${wrapper}${toolReplay}${underTraceRoot})`;
   }).join("; ");
 }
 function handlerFrameworksWithMethods() {
-  return handlerRoots.map((f) => {
-    const methods = f.handler.py ? `${code(f.handler.ts)} / ${code(f.handler.py)}` : code(f.handler.ts);
-    return `${f.label} via ${methods}`;
-  }).join(", ");
+  return handlerRoots.map((f) => `${f.label} via ${namePair(f.handler)}`).join(", ");
 }
 function handlerFrameworkNames() {
   return joinOr(handlerRoots.map((f) => f.label));
 }
 function keyedHandlerKeyRefs() {
-  const refs = keyedReplayHandlers.map((k) => code(`${k.method.py ?? k.method.ts}("key")`));
+  const refs = keyedReplayHandlers.map((k) => code(`${preferredName(k.method)}("key")`));
   return `${refs.join(", ")}, or the TS equivalents`;
 }
 function keyedHandlerExamples() {
-  return keyedReplayHandlers.map((k) => `${k.framework.label} ${code(k.method.py ?? k.method.ts)}`).join(", ");
+  return keyedReplayHandlers.map((k) => `${k.framework.label} ${code(preferredName(k.method))}`).join(", ");
 }
 function replayableRootHandlerNames() {
   return joinOr(keyedReplayHandlers.map((k) => k.framework.label));
@@ -20287,10 +20313,7 @@ function traceProcessorNames() {
   return joinOr(FRAMEWORKS.filter((f) => f.handlerKind === "traceProcessor").map((f) => f.label));
 }
 function traceProcessorRootWrappers() {
-  return FRAMEWORKS.filter((f) => f.handlerKind === "traceProcessor" && f.rootWrapper).map((f) => {
-    const w = f.rootWrapper;
-    return w.py ? `${code(w.ts)} / ${code(w.py)}` : code(w.ts);
-  }).join(", ");
+  return FRAMEWORKS.filter((f) => f.handlerKind === "traceProcessor" && f.rootWrapper).map((f) => namePair(f.rootWrapper)).join(", ");
 }
 var AUTO_CAPTURE_ROLE_LABEL = {
   modelCall: "model-call",
@@ -20309,7 +20332,7 @@ function frameworkMockabilityBullets() {
       clauses.push(`${wrapped.join(" and ")} spans run through \`withSpan\` via its ${f.handlerNoun}, so they ARE mockable (though re-run live by default)`);
     }
     if (f.experimentalToolReplay) {
-      clauses.push(`ToolNode tool spans configured through its Experimental (alpha) ${code(f.experimentalToolReplay.factory.ts)} / ${code(f.experimentalToolReplay.factory.py ?? f.experimentalToolReplay.factory.ts)} integration ARE mockable; callback-only tool spans remain NOT mockable`);
+      clauses.push(`${f.experimentalToolReplay.spans} configured through its Experimental (alpha) ${namePair(f.experimentalToolReplay.factory)} integration ARE mockable; callback-only tool spans remain NOT mockable`);
     }
     return `- **${f.label}**: ${clauses.join("; ")}.`;
   }).join(`
@@ -20321,10 +20344,10 @@ function handlerNounList() {
 function buildSdkPatterns() {
   const base = '`getFunction("key")`, `get_function("key")`, `bitfab_function "key"`, `WithFunctionName("key")`';
   const keyed = keyedReplayHandlers.map(({ framework, method }) => {
-    const pair = method.py ? `${code(`${method.ts}("key")`)} / ${code(`${method.py}("key")`)}` : code(`${method.ts}("key")`);
+    const pair = [method.ts, method.py].filter((name) => name !== undefined).map((name) => code(`${name}("key")`)).join(" / ");
     return framework.aliasHandler ? `${pair} (or the LangChain-named aliases)` : pair;
   }).join(" and ");
-  const processors = FRAMEWORKS.filter((f) => f.handlerKind === "traceProcessor").map((f) => `${code(`${f.handler.ts}()`)} / ${code(`${f.handler.py}()`)}`).join(" and ");
+  const processors = FRAMEWORKS.filter((f) => f.handlerKind === "traceProcessor").map((f) => [f.handler.ts, f.handler.py].filter((name) => name !== undefined).map((name) => code(`${name}()`)).join(" / ")).join(" and ");
   return `${base}, plus keyed framework handlers: ${keyed}; plus trace-processor registrations (unkeyed in code, the key is derived server-side from the workflow name): ${processors}`;
 }
 function handlerReplayBlock(verb) {
@@ -22886,7 +22909,7 @@ Building datasets:
 
 Use \`${platform.setupHint}\` to instrument new code, set up replay or cloud replay, log in, or switch organization. Use \`${platform.updateHint}\` to update the plugin or SDK.`;
 }
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
 var JSONRPC_VERSION = "2.0";
 var AssertObjectSchema = custom((v) => v !== null && (typeof v === "object" || typeof v === "function"));
@@ -23689,17 +23712,17 @@ var ServerResultSchema = union([
 var ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
 // ../node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@4.6.7/node_modules/zod-to-json-schema/dist/esm/parsers/string.js
 var ALPHA_NUMERIC = new Set("ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvxyz0123456789");
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
 var import_ajv_formats = __toESM(require_dist(), 1);
 
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
 var COMPLETABLE_SYMBOL = Symbol.for("mcp.completable");
 var McpZodTypeKind;
 (function(McpZodTypeKind) {
   McpZodTypeKind["Completable"] = "McpCompletable";
 })(McpZodTypeKind || (McpZodTypeKind = {}));
 
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
 var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
 // src/platform.ts
 var platform = {
