@@ -17642,7 +17642,7 @@ function formatSdkUpdateLine(status) {
   const rename = status.renameFrom ? ` (rename: ${status.renameFrom} \u2192 ${status.packageName})` : "";
   return `${prefix}${status.language} (${status.packageName}) ${current} \u2192 ${status.latest}${rename}`;
 }
-// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/commands.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/commands.js
 function defineCommandCatalog(catalog) {
   return {
     defineCommands(defs) {
@@ -17663,7 +17663,7 @@ function defineCommandCatalog(catalog) {
     }
   };
 }
-// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/schema.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/schema.js
 var StepIdRef = string2().regex(/^[a-z0-9-]+\/[a-z0-9-]+$/, {
   message: "Step references must use the form 'phase-id/step-id'"
 });
@@ -18271,7 +18271,7 @@ function targetableFields(flow) {
   return out;
 }
 
-// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/mermaid.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/mermaid.js
 function diagramValue(value, target) {
   const resolved = resolvePerTarget(value, target ?? "default");
   if (resolved !== undefined || typeof value !== "object" || value === null) {
@@ -18483,7 +18483,7 @@ function describeFlow(flow, target) {
 `);
 }
 
-// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/render.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/render.js
 function s(value, target, label) {
   return resolveTargetableString(value, target, label);
 }
@@ -19557,7 +19557,7 @@ function ensureTrailingNewline(text) {
 `;
 }
 
-// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/kit.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/kit.js
 var NAME_RE = /^[a-z][a-z0-9-]*$/;
 function createFlowKit(config) {
   const targetNames = Object.keys(config.targets);
@@ -19688,7 +19688,7 @@ function resolveOutputPath(output, file) {
   }
   return `${dirname(skillDir)}/${basename(skillDir)}-${file.slug}/${basename(main)}`;
 }
-// ../node_modules/.pnpm/@agent-flows+core@0.1.1_zod@4.6.7/node_modules/@agent-flows/core/dist/targets.js
+// ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/targets.js
 function formatAllowedTools(allowedTools) {
   return `[${allowedTools.map((t) => JSON.stringify(t)).join(", ")}]`;
 }
@@ -19742,6 +19742,13 @@ var ASK_USER_QUESTION_TOKENS = {
   askVerbCap: "Use `AskUserQuestion`",
   askNoun: "AskUserQuestion"
 };
+var ASK_QUESTION_FALLBACK = "in plain text with lettered options";
+var CURSOR_ASK_QUESTION_TOKENS = {
+  askUser: `with \`AskQuestion\` (or ${ASK_QUESTION_FALLBACK} if it is not available) `,
+  askVerb: `use \`AskQuestion\` (or, if it is not available, ask ${ASK_QUESTION_FALLBACK})`,
+  askVerbCap: `Use \`AskQuestion\` (or, if it is not available, ask ${ASK_QUESTION_FALLBACK})`,
+  askNoun: "AskQuestion"
+};
 var PLAIN_PROMPT_TOKENS = {
   askUser: "",
   askVerb: "ask the user",
@@ -19777,7 +19784,7 @@ function cursor(options) {
       editor: "Cursor",
       pluginRoot: "${CURSOR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}",
       pluginDirLookup: "",
-      ...ASK_USER_QUESTION_TOKENS,
+      ...CURSOR_ASK_QUESTION_TOKENS,
       ...options.tokens
     },
     mcpPrefix: options.mcpPrefix ?? (options.mcpServer !== undefined ? `mcp__${options.mcpServer}__` : ""),
@@ -20457,7 +20464,7 @@ var setupFlow = bitfabKit.defineFlow({
     getTemplate: { kind: "mcp", name: "get_template" },
     saveTemplate: { kind: "mcp", name: "save_template" }
   },
-  intro: `{{#ask-user-question}}**Always use \`AskUserQuestion\` when asking questions or presenting choices** (one exception: a step that explicitly says its answer is free-form, such as asking which file or function to instrument once the user has said they know, asks in plain chat and waits, because a menu there would stand between the user and the answer only they hold). Never print a question as text and wait.{{/ask-user-question}}{{^ask-user-question}}**When the flow branches, always present the options clearly and wait for the user's answer before proceeding.** Number or letter the options so the user can pick by reference.{{/ask-user-question}} Rules:
+  intro: `{{#ask-user-question}}**Always {{askVerb}} when asking questions or presenting choices** (one exception: a step that explicitly says its answer is free-form, such as asking which file or function to instrument once the user has said they know, asks in plain chat and waits, because a menu there would stand between the user and the answer only they hold). Never print a question as text and wait.{{/ask-user-question}}{{^ask-user-question}}**When the flow branches, always present the options clearly and wait for the user's answer before proceeding.** Number or letter the options so the user can pick by reference.{{/ask-user-question}} Rules:
 - Recommend an option first, explain why in one line
 - Present 2-5 concrete options
 - One decision per question, never batch
@@ -20552,7 +20559,7 @@ If the block prints \`ERROR: Bitfab plugin not installed\`, the user hasn't inst
 
 2. **Present the plan verbatim** to the user, in the same format above.
 
-3. **{{#ask-user-question}}AskUserQuestion{{/ask-user-question}}{{^ask-user-question}}Ask the user{{/ask-user-question}}** with exactly two options:
+3. **{{askVerbCap}}** with exactly two options:
    - **"Apply refactor"**: proceed to write the changes
    - **"Cancel"**: return to the previous {{askNoun}} (Instrument's workflow-selection (a)/(b)/(c), or Replay's non-replayable-root three-option prompt) so the user can pick a different resolution
 
@@ -20732,7 +20739,7 @@ Save the answer (replace \`CONSENT\` with \`true\` or \`false\`):
           id: "overview",
           kind: "action",
           title: "Explain the primitives, and in `explain` mode the modes too",
-          body: `Render the block below **verbatim** as a single message, as formatted markdown (do **not** wrap it in a code fence, do **not** reword it, and do **not** add a summary or an ASCII diagram). This is the education the rest of setup depends on: a user who does not understand \`withTrace\`, \`withNode\`, and \`replay\` cannot make the capture and replay decisions instrumentation asks of them. Do **not** authenticate, scan the codebase, {{#ask-user-question}}use AskUserQuestion{{/ask-user-question}}{{^ask-user-question}}ask any questions{{/ask-user-question}}, or edit anything here, in either mode.
+          body: `Render the block below **verbatim** as a single message, as formatted markdown (do **not** wrap it in a code fence, do **not** reword it, and do **not** add a summary or an ASCII diagram). This is the education the rest of setup depends on: a user who does not understand \`withTrace\`, \`withNode\`, and \`replay\` cannot make the capture and replay decisions instrumentation asks of them. Do **not** authenticate, scan the codebase, {{#ask-user-question}}use {{askNoun}}{{/ask-user-question}}{{^ask-user-question}}ask any questions{{/ask-user-question}}, or edit anything here, in either mode.
 
 \`\`\`markdown
 **Purpose**
@@ -22613,7 +22620,7 @@ var setupV2Flow = bitfabKit.defineFlow({
   },
   intro: `Run the selected setup mode entirely in this terminal.
 
-- Use AskUserQuestion for every user choice or clarification; never print a question and wait.
+- {{askVerbCap}} for every user choice or clarification; never print a question and wait.
 - Recommend one option first and ask one decision at a time.
 - Take agent-decision branches only from directly observed repository or Bitfab state.
 - Render diffs, diagnostics, and templates inline. Product UI review is not part of this flow.
