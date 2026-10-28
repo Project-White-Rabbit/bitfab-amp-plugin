@@ -16171,18 +16171,6 @@ function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
       });
     };
   }
-  async function handleSaveExperiment(args) {
-    const { experimentId, name, notes, experimentGroupId } = args;
-    if (name === undefined && notes === undefined && experimentGroupId === undefined) {
-      return errorResult("Error saving experiment: provide name, notes, and/or experimentGroupId.");
-    }
-    return proxyToolCall("save_experiment", {
-      experimentId,
-      name,
-      notes,
-      experimentGroupId
-    });
-  }
   async function handleSaveExperimentGroup(args) {
     const { experimentGroupId, experimentIds, name, notes } = args;
     if (experimentGroupId === undefined && experimentIds === undefined) {
@@ -16221,7 +16209,6 @@ function createBitfabToolHandlers(platform, getConfig, pluginVersion) {
   const specialHandlers = {
     [saveAgentVerdicts.name]: handleSaveAgentVerdictsAs(saveAgentVerdicts.name),
     [saveAgentLabels.name]: handleSaveAgentVerdictsAs(saveAgentLabels.name),
-    [saveExperiment.name]: handleSaveExperiment,
     [saveExperimentGroup.name]: handleSaveExperimentGroup,
     [saveScenario.name]: handleSaveScenario
   };
