@@ -15394,7 +15394,7 @@ var listDatasets = {
 var addTracesToDataset = {
   name: "add_traces_to_dataset",
   title: "Add Traces to Dataset",
-  description: "Add one or more traces to a dataset. Idempotent: re-adding a trace already in the dataset is a no-op. Traces are validated against the dataset's traceFunctionKey; ids that don't belong to this organization, or to the dataset's trace function, are silently skipped (the response reports how many were added vs skipped).",
+  description: "Add one or more traces to a dataset. Idempotent: re-adding a trace already in the dataset is a no-op. Traces are validated against the dataset's traceFunctionKey; ids that don't belong to this organization, or to the dataset's trace function, are silently skipped (the response reports how many were added vs skipped). A replay trace (one an experiment produced) is refused and nothing is added: a dataset holds original traces, and the error names the original to add instead.",
   inputSchema: {
     datasetId: uuid2().describe("The dataset id (from save_dataset or list_datasets)"),
     traceIds: preprocess(parseJsonString, array(uuid2()).min(1).max(100)).describe("Trace ids to add (1-100)")
