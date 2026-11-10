@@ -17095,7 +17095,7 @@ var semver2 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.76.8",
+  typescript: "0.76.9",
   python: "0.76.8",
   ruby: "0.75.5",
   go: "0.75.5"
