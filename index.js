@@ -15528,7 +15528,7 @@ var listExperimentTraces = {
 var getReplayStatus = {
   name: "get_replay_status",
   title: "Get Replay Status",
-  description: "Read an experiment's replay progress: status, local to server replay trace IDs, and finished and remaining trace attempts. Call it while a replay runs, or after one crashes to check `resumable` before rerunning with `--resume <experimentId>`.",
+  description: "Read an experiment's replay progress: status, local to server replay trace IDs, and finished and remaining trace attempts. Call it while a replay runs, or after one crashes to check `resumable` before rerunning with `--resume <experimentId>`. To wait for a replay to finish, do not poll this tool or end your turn: run the Bitfab plugin's waitForExperiment command in the foreground, as the server instructions describe.",
   inputSchema: {
     experimentId: uuid2().describe("The experiment ID to get status for")
   }
@@ -16430,6 +16430,12 @@ function localOffsetPath(sessionId) {
 }
 function ampTranscriptPath(sessionId) {
   return path3.join(sessionsDir(), `${sessionId}.transcript.jsonl`);
+}
+function replayWaitsPath(sessionId) {
+  return path3.join(sessionsDir(), `${sessionId}.replay-waits.json`);
+}
+function replayLaunchesPath(sessionId) {
+  return path3.join(sessionsDir(), `${sessionId}.replay-launches.jsonl`);
 }
 var BITFAB_MCP_PREFIXES = [
   "mcp__plugin_bitfab_Bitfab__",
@@ -17674,6 +17680,26 @@ function formatSdkUpdateLine(status) {
   const prefix = status.workspacePath && status.workspacePath !== "." ? `${status.workspacePath} ` : "";
   const rename = status.renameFrom ? ` (rename: ${status.renameFrom} \u2192 ${status.packageName})` : "";
   return `${prefix}${status.language} (${status.packageName}) ${current} \u2192 ${status.latest}${rename}`;
+}
+// ../bitfab-plugin-lib/dist/commands/waitForExperiment.js
+var LOOKUP_TIMEOUT_MS = 30000;
+function tagLabel(tag) {
+  return `${tag.key}=${tag.value}`;
+}
+function isExperimentWithStatus(value) {
+  return typeof value === "object" && value !== null && typeof value.id === "string" && typeof value.status === "string";
+}
+async function listTaggedExperiments(serviceUrl, headers, tag, limit, timeoutMs = LOOKUP_TIMEOUT_MS) {
+  const params = new URLSearchParams({
+    metadata: JSON.stringify({ [tag.key]: tag.value }),
+    limit: String(limit)
+  });
+  const response = await fetch(`${serviceUrl}/api/sdk/experiments?${params.toString()}`, { headers, signal: AbortSignal.timeout(timeoutMs) });
+  if (!response.ok) {
+    throw new Error(`Bitfab returned ${response.status} looking up experiments tagged ${tagLabel(tag)}`);
+  }
+  const body = await response.json();
+  return (body.experiments ?? []).filter(isExperimentWithStatus).map((e) => ({ experimentId: e.id, status: e.status }));
 }
 // ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/commands.js
 function defineCommandCatalog(catalog) {
@@ -20150,6 +20176,15 @@ runUpdate(getVersion(), platform, mode).catch((err) => {
   process.exit(1)
 })`
     }
+  },
+  {
+    name: "waitForExperiment",
+    sharedImports: ["runWaitForExperiment"],
+    localImports: ["platform", "version"],
+    body: `runWaitForExperiment(platform, getVersion()).catch((err) => {
+  console.error("Failed to wait for the experiment:", err.message)
+  process.exit(1)
+})`
   }
 ];
 function commandFilesFromWrappers(wrappers) {
@@ -20468,6 +20503,10 @@ var setupFlow = bitfabKit.defineFlow({
       description: "Print a link to experiments.",
       args: "<experimentIds>"
     },
+    waitForExperiment: {
+      description: "Wait in the foreground until experiments finish, printing their progress; exits after about nine minutes and says to run it again.",
+      args: "<experimentIds> or --metadata <key=value> [--count N]"
+    },
     startDataset: {
       description: "Print a dataset link.",
       args: "<key> <datasetId>"
@@ -20509,6 +20548,8 @@ var setupFlow = bitfabKit.defineFlow({
     listFunctions: { kind: "mcp", name: "list_trace_functions" },
     dbConnectionStatus: { kind: "mcp", name: "get_database_connection_status" },
     searchTraces: { kind: "mcp", name: "search_traces" },
+    getExperiment: { kind: "mcp", name: "get_experiment" },
+    listExperimentTraces: { kind: "mcp", name: "list_experiment_traces" },
     getTemplateReference: { kind: "mcp", name: "get_template_reference" },
     getTemplate: { kind: "mcp", name: "get_template" },
     saveTemplate: { kind: "mcp", name: "save_template" }
@@ -20668,7 +20709,11 @@ Each replay pushes a temporary bitfab-replay/<UUID> branch. For each push-trigge
 
 Verify with the replay command the user already runs. First add --cloud --cloud-preview, which pushes nothing and lists the changed and new files the snapshot would carry; review them for anything that should not leave the machine, since filename screening is not a secret scanner, and have the user gitignore it. Once the workflow is merged and secrets are set, and remote runs are authorized, run the same command with --cloud --dry-run: a real run that replays nothing but receives the secrets, stops on any empty secret, runs the --check command, and resolves the traces. Then, only when a replay is authorized, run with --cloud alone.
 
-From an agent session always add --cloud-detach, since a replay can run for hours, and follow it with --cloud-watch <UUID> (prints the replay's progress and result summary and exits with its code), --cloud-status, --cloud-cancel, or --cloud-cleanup. --cloud-timeout <minutes> stops one replay early and keeps finished traces. --cloud-env NAME=VALUE (repeatable) sets a non-secret environment variable for one replay; secrets go in the workflow's env and --cloud-secrets. When the snapshot refuses a credential-like file the user confirms is safe to upload, such as a test certificate, --cloud-allow-file <path> (repeatable, private repositories only) lets it in. Report separately whether the workflow is written, secrets are set, the workflow is merged, the preview was reviewed, the dry run passed, and a real replay completed.`,
+From an agent session always add --cloud-detach and --metadata bitfab-wait=<new UUID>, since a replay can run for hours and a single tool call stops after about ten minutes. Then wait in the foreground, never as a background command, so you show as working until it finishes:
+
+{{command:waitForExperiment}} --metadata bitfab-wait=<UUID>
+
+When several replays run at once, start every one with the same tag and add --count <number of replays>, so one command waits for them all. It prints progress and exits when every experiment finishes or after about nine minutes. Run it again each time it prints STILL RUNNING, and do not end your turn while the replay runs; once it prints FINISHED, read the results with {{tool:getExperiment}} and {{tool:listExperimentTraces}} in the same turn. --cloud-status <execution UUID> shows whether a GitHub run failed before its experiment appeared; --cloud-cancel and --cloud-cleanup stop and clean up a run. --cloud-timeout <minutes> stops one replay early and keeps finished traces. --cloud-env NAME=VALUE (repeatable) sets a non-secret environment variable for one replay; secrets go in the workflow's env and --cloud-secrets. When the snapshot refuses a credential-like file the user confirms is safe to upload, such as a test certificate, --cloud-allow-file <path> (repeatable, private repositories only) lets it in. Report separately whether the workflow is written, secrets are set, the workflow is merged, the preview was reviewed, the dry run passed, and a real replay completed.`,
           next: "cleanup/finish"
         }
       ]
@@ -22657,7 +22702,8 @@ var SUPPORTED_COMMANDS = new Set([
   "sessionLogConsent",
   "status",
   "switchOrg",
-  "update"
+  "update",
+  "waitForExperiment"
 ]);
 var setupV2Flow = bitfabKit.defineFlow({
   ...setupFlow,
@@ -22788,10 +22834,279 @@ function appendAmpMessages(threadId, messages) {
 }
 
 // ../bitfab-plugin-lib/dist/hooks/captureHook.js
+import fs12 from "fs";
+
+// ../bitfab-plugin-lib/dist/hooks/replayStopGuard.js
+import fs11 from "fs";
+import path9 from "path";
+
+// ../bitfab-plugin-lib/dist/mcpInstructions.js
 import fs10 from "fs";
+import path8 from "path";
+var MCP_INSTRUCTIONS_LIMIT = 4096;
+var WAIT_COMMAND_FILE = "waitForExperiment.js";
+var WAIT_COMMAND_FALLBACK = `<plugin dir>/dist/commands/${WAIT_COMMAND_FILE}`;
+function findWaitCommand(serverEntry) {
+  if (serverEntry === undefined) {
+    return WAIT_COMMAND_FALLBACK;
+  }
+  let dir = path8.dirname(path8.resolve(serverEntry));
+  while (true) {
+    const candidate = path8.join(dir, "commands", WAIT_COMMAND_FILE);
+    if (fs10.existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = path8.dirname(dir);
+    if (parent === dir) {
+      return WAIT_COMMAND_FALLBACK;
+    }
+    dir = parent;
+  }
+}
+function buildMcpInstructions(platform, waitCommand = WAIT_COMMAND_FALLBACK) {
+  const instructions = renderMcpInstructions(platform, waitCommand);
+  if (instructions.length <= MCP_INSTRUCTIONS_LIMIT) {
+    return instructions;
+  }
+  return renderMcpInstructions(platform, WAIT_COMMAND_FALLBACK);
+}
+function renderMcpInstructions(platform, waitCommand) {
+  return `Bitfab records traces of AI agent runs and helps the user improve the code that produced them.
+There is no special command for this work. Do what the user asks directly with these tools and the SDK's commands.
+
+Replaying traces against the current code:
+- A replay runs a trace's recorded inputs through the current code. It runs through the \`bitfab-replay\` command that the Bitfab SDK installs. These tools do not start replays.
+- It needs the project's replay registry module. Look for \`scripts/replayRegistry.*\`, \`scripts/replay_registry.*\`, or \`cmd/registry/main.go\`. If none exists, \`${platform.setupHint}\` creates one.
+- Run it from the project directory. TypeScript: \`pnpm exec bitfab-replay --registry <registry-path> <trace-function-key> --dataset-id <dataset-id>\`. Python: \`uv run\` or \`poetry run bitfab-replay ...\`. Ruby: \`bundle exec bitfab-replay ...\`. Go: \`go run ./cmd/registry <trace-function-key> ...\`.
+- Every replay needs \`--code-change\`: \`working-tree\` (uncommitted), \`last-branch\`, \`default-branch\`, \`ref\` with \`--code-change-base <branch|sha>\`, \`skip\`, or \`manual\` with \`--code-change-file <path>\`. Ask if unclear.
+- \`--trace-ids <id>,<id>\` replays specific traces instead of \`--dataset-id\`. \`--name <name>\` names the run; \`--attempts <n>\` replays each trace n times when results vary. \`--cloud\` runs it on GitHub Actions once \`${platform.setupHint}\` sets up cloud replay. \`--help\` lists every option.
+- Each replay creates an experiment. ${getReplayStatus.name} reports its progress. If it stopped early and is resumable, resume it with the same command plus \`--resume <experiment-id>\`. Leave out \`--dataset-id\` and \`--trace-ids\`: a resume reuses the experiment's traces.
+
+Recording a fresh run of a trace:
+- \`bitfab-seed --registry <registry-path> <trace-function-key> --from-trace <trace-id>\` runs the function again on a trace's inputs and records the result under the same trace ID. It runs side effects for real, so warn the user first. It does not create an experiment.
+
+Waiting for replays:
+- Keep your turn open until your replays finish. Start each in the background, logging to a file, all with one \`--metadata bitfab-wait=<new-uuid>\` (plus \`--cloud-detach\` with \`--cloud\`). Then wait for them all in the foreground, never the background: \`node ${waitCommand} --metadata bitfab-wait=<uuid> --count <replays>\`. It exits when they end or after 9 minutes; rerun it until it prints FINISHED, then read the results in this turn.
+
+Comparing experiments:
+- Put runs you compare in one group with ${saveExperimentGroup.name} and pass \`--experiment-group-id\`. When a run tests a change against an earlier run, pass \`--baseline-experiment-id <experiment-id>\`, or set \`baselineExperimentId\` with ${saveExperiment.name}.
+- Read results with ${listExperiments.name}, ${listExperimentGroups.name}, ${getExperiment.name}, and ${listExperimentTraces.name}. Report what improved and what regressed against the originals or the baseline.
+
+Finding out what happened:
+- Find the traced function with ${listTraceFunctions.name}. Find its traces with ${searchTraces.name}. It filters by status, environment, keyword, and dataset. Read them with ${getTraces.name}, and read a long value with ${getSpanField.name}.
+
+Writing down what should happen:
+- An assertion says what should happen when one trace is replayed. Draft them with ${generateTraceAssertions.name} or write them with ${saveTraceAssertions.name}. Retire one with ${archiveTraceAssertions.name}.
+- A verdict says whether a run passed one assertion. Read a trace's assertions with ${getTraceAssertions.name}, then record verdicts with ${saveAgentVerdicts.name}. Use ${saveHumanVerdicts.name} only when the user gives the verdict.
+- A scenario describes the situation one run was in. Read it with ${getScenario.name} and build it with ${saveScenario.name}.
+
+Building datasets:
+- A dataset is a saved set of traces to replay together. Use ${listDatasets.name}, ${saveDataset.name}, and ${addTracesToDataset.name}.
+
+Use \`${platform.setupHint}\` to instrument new code, set up replay or cloud replay, log in, or switch organization. Use \`${platform.updateHint}\` to update the plugin or SDK.`;
+}
+
+// ../bitfab-plugin-lib/dist/hooks/replayStopGuard.js
+var WAIT_TAG_KEY = "bitfab-wait";
+var GUARD_MAX_MINUTES = 60;
+var GUARD_MAX_BLOCKS = 6;
+var GUARD_LOOKUP_TIMEOUT_MS = 5000;
+var MAX_TRACKED_REPLAYS = 100;
+var REPLAY_TAG_RE = new RegExp(`--metadata(?:=|\\s+)["']?${WAIT_TAG_KEY}=([A-Za-z0-9._:-]+)`);
+function commandText(toolInput) {
+  if (typeof toolInput !== "object" || toolInput === null) {
+    return "";
+  }
+  const command = toolInput.command;
+  if (typeof command === "string") {
+    return command;
+  }
+  if (Array.isArray(command)) {
+    return command.filter((part) => typeof part === "string").join(" ");
+  }
+  return "";
+}
+function findReplayTags(toolInput) {
+  return commandText(toolInput).split("bitfab-replay").slice(1).filter((launch) => !launch.includes("--resume")).map((launch) => REPLAY_TAG_RE.exec(launch)?.[1]).filter((tag) => tag !== undefined);
+}
+function trackedFromLaunches(launches, state) {
+  const byTag = new Map;
+  for (const launch of launches) {
+    byTag.set(launch.tag, [...byTag.get(launch.tag) ?? [], launch]);
+  }
+  const tracked = [];
+  for (const [tag, tagLaunches] of byTag) {
+    const cleared = state[tag]?.clearedLaunches ?? 0;
+    const uncleared = tagLaunches.slice(cleared);
+    if (uncleared.length === 0) {
+      continue;
+    }
+    tracked.push({
+      tag,
+      replays: Math.min(tagLaunches.length, MAX_TRACKED_REPLAYS),
+      firstSeenMs: Math.min(...uncleared.map((launch) => launch.atMs)),
+      blocks: state[tag]?.blocks ?? 0
+    });
+  }
+  return tracked;
+}
+function nextGuardState(state, launches, tracked, remaining) {
+  const next = { ...state };
+  for (const entry of tracked) {
+    const kept = remaining.find((r) => r.tag === entry.tag);
+    next[entry.tag] = kept ? {
+      blocks: kept.blocks,
+      clearedLaunches: state[entry.tag]?.clearedLaunches ?? 0
+    } : {
+      blocks: 0,
+      clearedLaunches: launches.filter((l) => l.tag === entry.tag).length
+    };
+  }
+  return next;
+}
+function isPastGuardLimits(entry, nowMs) {
+  return nowMs - entry.firstSeenMs > GUARD_MAX_MINUTES * 60 * 1000 || entry.blocks >= GUARD_MAX_BLOCKS;
+}
+async function countUnfinished(entry, deps) {
+  try {
+    const found = await deps.listTagged({ key: WAIT_TAG_KEY, value: entry.tag }, entry.replays);
+    const pending = found.filter((e) => e.status === "pending").length;
+    return pending + Math.max(0, entry.replays - found.length);
+  } catch {
+    return null;
+  }
+}
+function blockMessage(stillRunning, waitCommand) {
+  const commands = stillRunning.map(({ entry }) => {
+    const count = entry.replays > 1 ? ` --count ${entry.replays}` : "";
+    return `node ${waitCommand} --metadata ${WAIT_TAG_KEY}=${entry.tag}${count}`;
+  });
+  const unfinished = stillRunning.reduce((sum, s) => sum + s.unfinished, 0);
+  return [
+    `${unfinished} Bitfab replay(s) you started have not finished. Do not end your turn yet.`,
+    `Wait for them in the foreground, never the background: ${commands.join(" ; then ")}.`,
+    "Rerun it until it prints FINISHED, then read the results in this turn."
+  ].join(" ");
+}
+async function evaluateStop(tracked, waitCommand, deps) {
+  const nowMs = deps.nowMs();
+  const remaining = [];
+  const stillRunning = [];
+  for (const entry of tracked) {
+    if (isPastGuardLimits(entry, nowMs)) {
+      continue;
+    }
+    const unfinished = await countUnfinished(entry, deps);
+    if (unfinished === 0) {
+      continue;
+    }
+    if (unfinished === null) {
+      remaining.push(entry);
+      continue;
+    }
+    const blocked = { ...entry, blocks: entry.blocks + 1 };
+    remaining.push(blocked);
+    stillRunning.push({ entry: blocked, unfinished });
+  }
+  return {
+    message: stillRunning.length === 0 ? null : blockMessage(stillRunning, waitCommand),
+    remaining
+  };
+}
+function stopHookOutput(agent, message) {
+  if (agent === "cursor") {
+    return { followup_message: message };
+  }
+  return { decision: "block", reason: message };
+}
+function isReplayLaunch(value) {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const launch = value;
+  return typeof launch.tag === "string" && typeof launch.atMs === "number";
+}
+function isTagGuardState(value) {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const entry = value;
+  return typeof entry.blocks === "number" && typeof entry.clearedLaunches === "number";
+}
+function parseLaunchLine(line) {
+  try {
+    const parsed = JSON.parse(line);
+    return isReplayLaunch(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function readLaunches(sessionId) {
+  try {
+    return fs11.readFileSync(replayLaunchesPath(sessionId), "utf-8").split(`
+`).map(parseLaunchLine).filter((launch) => launch !== null);
+  } catch {
+    return [];
+  }
+}
+function readGuardState(sessionId) {
+  try {
+    const parsed = JSON.parse(fs11.readFileSync(replayWaitsPath(sessionId), "utf-8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(Object.entries(parsed).filter(([, entry]) => isTagGuardState(entry)));
+  } catch {
+    return {};
+  }
+}
+function writeGuardState(sessionId, state) {
+  const file = replayWaitsPath(sessionId);
+  fs11.mkdirSync(path9.dirname(file), { recursive: true });
+  fs11.writeFileSync(file, JSON.stringify(state));
+}
+function recordReplayLaunches(sessionId, toolInput) {
+  const tags = findReplayTags(toolInput);
+  if (tags.length === 0) {
+    return;
+  }
+  const file = replayLaunchesPath(sessionId);
+  const atMs = Date.now();
+  fs11.mkdirSync(path9.dirname(file), { recursive: true });
+  fs11.appendFileSync(file, tags.map((tag) => `${JSON.stringify({ tag, atMs })}
+`).join(""));
+}
+async function guardStop(sessionId, agent, hookEntry) {
+  const launches = readLaunches(sessionId);
+  const state = readGuardState(sessionId);
+  const tracked = trackedFromLaunches(launches, state);
+  if (tracked.length === 0) {
+    return null;
+  }
+  const config = getConfig();
+  if (!config.apiKey) {
+    writeGuardState(sessionId, nextGuardState(state, launches, tracked, []));
+    return null;
+  }
+  const apiKey = config.apiKey;
+  const serviceUrl = config.serviceUrl.replace(/\/$/, "");
+  const result = await evaluateStop(tracked, findWaitCommand(hookEntry), {
+    listTagged: (tag, limit) => listTaggedExperiments(serviceUrl, { Authorization: `Bearer ${apiKey}` }, tag, limit, GUARD_LOOKUP_TIMEOUT_MS),
+    nowMs: () => Date.now()
+  });
+  writeGuardState(sessionId, nextGuardState(state, launches, tracked, result.remaining));
+  return result.message === null ? null : stopHookOutput(agent, result.message);
+}
+
+// ../bitfab-plugin-lib/dist/hooks/captureHook.js
+var HOSTS_THAT_KEEP_THE_TURN_OPEN = new Set([
+  "claude-code",
+  "codex",
+  "cursor"
+]);
 function readHookStdin() {
   try {
-    const raw = fs10.readFileSync(0, "utf-8").trim();
+    const raw = fs12.readFileSync(0, "utf-8").trim();
     if (!raw) {
       return null;
     }
@@ -22800,21 +23115,42 @@ function readHookStdin() {
     return null;
   }
 }
+function recordLaunches(hookType, input, agent) {
+  if (hookType !== "PreToolUse" || !HOSTS_THAT_KEEP_THE_TURN_OPEN.has(agent)) {
+    return;
+  }
+  try {
+    recordReplayLaunches(input.session_id, input.tool_input);
+  } catch {}
+}
+async function guardTurnEnd(hookType, input, agent) {
+  if (hookType !== "Stop" || !HOSTS_THAT_KEEP_THE_TURN_OPEN.has(agent)) {
+    return;
+  }
+  const output = await guardStop(input.session_id, agent, process.argv[1]);
+  if (output !== null) {
+    process.stdout.write(JSON.stringify(output));
+  }
+}
 async function runCaptureHook(hookType, agent = "claude-code", preParsedInput, pluginVersion) {
   const input = preParsedInput ?? readHookStdin();
   if (!input?.session_id) {
     return;
   }
-  try {
-    await captureFromHook(hookType, input, agent, pluginVersion);
-  } catch {}
+  recordLaunches(hookType, input, agent);
+  await captureFromHook(hookType, input, agent, pluginVersion).catch(() => {
+    return;
+  });
+  await guardTurnEnd(hookType, input, agent).catch(() => {
+    return;
+  });
 }
 
 // ../bitfab-plugin-lib/dist/hooks/userPromptSubmit.js
-import fs11 from "fs";
+import fs13 from "fs";
 function readHookInput() {
   try {
-    const stdin = fs11.readFileSync(0, "utf-8");
+    const stdin = fs13.readFileSync(0, "utf-8");
     if (!stdin.trim()) {
       return null;
     }
@@ -22931,39 +23267,6 @@ async function collectSessionStartMessages(currentVersion, platform, pluginRoot,
     }
   } catch {}
   return messages;
-}
-// ../bitfab-plugin-lib/dist/mcpInstructions.js
-function buildMcpInstructions(platform) {
-  return `Bitfab records traces of AI agent runs and helps the user improve the code that produced them.
-There is no special command for this work. Do what the user asks directly with these tools and the SDK's commands.
-
-Replaying traces against the current code:
-- A replay runs a trace's historical inputs through the current code. Use it to check a fix, compare prompt or model changes, or test a dataset before release. It runs through the \`bitfab-replay\` command that the Bitfab SDK installs. These tools do not start replays.
-- It needs the project's replay registry module. Look for \`scripts/replayRegistry.*\`, \`scripts/replay_registry.*\`, or \`cmd/registry/main.go\`. If none exists, \`${platform.setupHint}\` creates one.
-- Run it from the project directory with the project's package runner. TypeScript: \`pnpm exec bitfab-replay --registry <registry-path> <trace-function-key> --dataset-id <dataset-id>\`. Python: \`uv run bitfab-replay ...\` or \`poetry run bitfab-replay ...\`. Ruby: \`bundle exec bitfab-replay ...\`. Go: \`go run ./cmd/registry <trace-function-key> ...\`.
-- Every replay needs \`--code-change\`: \`working-tree\` (uncommitted), \`last-branch\`, \`default-branch\`, \`ref\` with \`--code-change-base <branch|sha>\`, \`skip\`, or \`manual\` with \`--code-change-file <path>\`. Ask if unclear.
-- Pass \`--trace-ids <id>,<id>\` instead of \`--dataset-id\` to replay specific traces. Pass \`--name <name>\` to name the run, and \`--attempts <n>\` to replay each trace more than once when results vary. Pass \`--cloud\` to run it on GitHub Actions once \`${platform.setupHint}\` has set up cloud replay. Run the command with \`--help\` for every option.
-- Each replay creates an experiment and prints its ID. ${getReplayStatus.name} reports its progress. If it stopped early and is resumable, resume it with the same command plus \`--resume <experiment-id>\`. Leave out \`--dataset-id\` and \`--trace-ids\`, because a resume reuses the experiment's own traces.
-
-Recording a fresh run of a trace:
-- \`bitfab-seed --registry <registry-path> <trace-function-key> --from-trace <trace-id>\` runs the function again on a trace's inputs and records the result under the same trace ID. It runs side effects for real, so warn the user first. It does not create an experiment.
-
-Comparing experiments:
-- Put runs you compare in one group with ${saveExperimentGroup.name} and pass \`--experiment-group-id\`. When a run tests a change against an earlier run, pass \`--baseline-experiment-id <experiment-id>\`, or set \`baselineExperimentId\` with ${saveExperiment.name}.
-- Read results with ${listExperiments.name}, ${listExperimentGroups.name}, ${getExperiment.name}, and ${listExperimentTraces.name}. Report what got better and what got worse against the original traces or the baseline.
-
-Finding out what happened:
-- Find the traced function with ${listTraceFunctions.name}. Find its traces with ${searchTraces.name}, such as the failing ones from the last day or the production run behind a bug report. It filters by status, environment, keyword, and dataset, so it also lists the traces in a dataset. Read them with ${getTraces.name}, and read a long value with ${getSpanField.name}.
-
-Writing down what should happen:
-- An assertion says what should happen when one trace is replayed. Draft them from what the trace did with ${generateTraceAssertions.name}, or write them with ${saveTraceAssertions.name}. They wait for review until approved. Retire one with ${archiveTraceAssertions.name}.
-- A verdict says whether a run passed one assertion. Read a trace's assertions with ${getTraceAssertions.name}, then record your verdicts with ${saveAgentVerdicts.name}. Use ${saveHumanVerdicts.name} only when the user gives the verdict.
-- A scenario describes the situation one run was in. Read it with ${getScenario.name} and build it with ${saveScenario.name}.
-
-Building datasets:
-- A dataset is a saved set of traces to replay together, such as a regression set or the bugs for one feature. Use ${listDatasets.name}, ${saveDataset.name}, and ${addTracesToDataset.name}.
-
-Use \`${platform.setupHint}\` to instrument new code, set up replay or cloud replay, log in, or switch organization. Use \`${platform.updateHint}\` to update the plugin or SDK.`;
 }
 // ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
@@ -23798,18 +24101,18 @@ var platform = {
 };
 
 // src/version.ts
-import fs12 from "fs";
-import path8 from "path";
+import fs14 from "fs";
+import path10 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 function readPluginVersion() {
-  const moduleDir = path8.dirname(fileURLToPath2(import.meta.url));
+  const moduleDir = path10.dirname(fileURLToPath2(import.meta.url));
   const candidates = [
-    path8.join(moduleDir, "..", "package.json"),
-    path8.join(moduleDir, "package.json")
+    path10.join(moduleDir, "..", "package.json"),
+    path10.join(moduleDir, "package.json")
   ];
   for (const candidate of candidates) {
     try {
-      return JSON.parse(fs12.readFileSync(candidate, "utf-8")).version;
+      return JSON.parse(fs14.readFileSync(candidate, "utf-8")).version;
     } catch {}
   }
   throw new Error(`bitfab-amp-plugin package.json not found from ${moduleDir}. Looked in: ${candidates.join(", ")}`);
