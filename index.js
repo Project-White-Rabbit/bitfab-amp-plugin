@@ -33,13 +33,41 @@ var __toESM = (mod, isNodeMode, target) => {
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/constants.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/internal/constants.js
 var require_constants = __commonJS(function(exports, module) {
   var SEMVER_SPEC_VERSION = "2.0.0";
   var MAX_LENGTH = 256;
   var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER || 9007199254740991;
   var MAX_SAFE_COMPONENT_LENGTH = 16;
   var MAX_SAFE_BUILD_LENGTH = MAX_LENGTH - 6;
+  var WHITESPACE_CHARACTERS = [
+    "\t",
+    `
+`,
+    "\v",
+    "\f",
+    "\r",
+    " ",
+    "\xA0",
+    "\u1680",
+    "\u2000",
+    "\u2001",
+    "\u2002",
+    "\u2003",
+    "\u2004",
+    "\u2005",
+    "\u2006",
+    "\u2007",
+    "\u2008",
+    "\u2009",
+    "\u200A",
+    "\u2028",
+    "\u2029",
+    "\u202F",
+    "\u205F",
+    "\u3000",
+    "\uFEFF"
+  ];
   var RELEASE_TYPES = [
     "major",
     "premajor",
@@ -54,6 +82,7 @@ var require_constants = __commonJS(function(exports, module) {
     MAX_SAFE_COMPONENT_LENGTH,
     MAX_SAFE_BUILD_LENGTH,
     MAX_SAFE_INTEGER,
+    WHITESPACE_CHARACTERS,
     RELEASE_TYPES,
     SEMVER_SPEC_VERSION,
     FLAG_INCLUDE_PRERELEASE: 1,
@@ -61,13 +90,13 @@ var require_constants = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/debug.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/internal/debug.js
 var require_debug = __commonJS(function(exports, module) {
   var debug = typeof process === "object" && process.env && process.env.NODE_DEBUG && /\bsemver\b/i.test(process.env.NODE_DEBUG) ? (...args) => console.error("SEMVER", ...args) : () => {};
   module.exports = debug;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/re.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/internal/re.js
 var require_re = __commonJS(function(exports, module) {
   var {
     MAX_SAFE_COMPONENT_LENGTH,
@@ -152,7 +181,7 @@ var require_re = __commonJS(function(exports, module) {
   createToken("GTE0PRE", "^\\s*>=\\s*0\\.0\\.0-0\\s*$");
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/parse-options.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/internal/parse-options.js
 var require_parse_options = __commonJS(function(exports, module) {
   var looseOption = Object.freeze({ loose: true });
   var emptyOpts = Object.freeze({});
@@ -168,7 +197,7 @@ var require_parse_options = __commonJS(function(exports, module) {
   module.exports = parseOptions;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/identifiers.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/internal/identifiers.js
 var require_identifiers = __commonJS(function(exports, module) {
   var numeric = /^[0-9]+$/;
   var compareIdentifiers = (a, b) => {
@@ -190,7 +219,7 @@ var require_identifiers = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/semver.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/classes/semver.js
 var require_semver = __commonJS(function(exports, module) {
   var debug = require_debug();
   var { MAX_LENGTH, MAX_SAFE_INTEGER } = require_constants();
@@ -472,7 +501,7 @@ var require_semver = __commonJS(function(exports, module) {
   module.exports = SemVer;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/parse.js
 var require_parse = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var parse = (version, options, throwErrors = false) => {
@@ -491,7 +520,7 @@ var require_parse = __commonJS(function(exports, module) {
   module.exports = parse;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/valid.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/valid.js
 var require_valid = __commonJS(function(exports, module) {
   var parse = require_parse();
   var valid = (version, options) => {
@@ -501,7 +530,7 @@ var require_valid = __commonJS(function(exports, module) {
   module.exports = valid;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/clean.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/clean.js
 var require_clean = __commonJS(function(exports, module) {
   var parse = require_parse();
   var clean = (version, options) => {
@@ -511,7 +540,7 @@ var require_clean = __commonJS(function(exports, module) {
   module.exports = clean;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/inc.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/inc.js
 var require_inc = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var inc = (version, release, options, identifier, identifierBase) => {
@@ -529,7 +558,7 @@ var require_inc = __commonJS(function(exports, module) {
   module.exports = inc;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/diff.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/diff.js
 var require_diff = __commonJS(function(exports, module) {
   var parse = require_parse();
   var diff = (version1, version2) => {
@@ -570,28 +599,28 @@ var require_diff = __commonJS(function(exports, module) {
   module.exports = diff;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/major.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/major.js
 var require_major = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var major = (a, loose) => new SemVer(a, loose).major;
   module.exports = major;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/minor.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/minor.js
 var require_minor = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var minor = (a, loose) => new SemVer(a, loose).minor;
   module.exports = minor;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/patch.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/patch.js
 var require_patch = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var patch = (a, loose) => new SemVer(a, loose).patch;
   module.exports = patch;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/prerelease.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/prerelease.js
 var require_prerelease = __commonJS(function(exports, module) {
   var parse = require_parse();
   var prerelease = (version, options) => {
@@ -601,28 +630,28 @@ var require_prerelease = __commonJS(function(exports, module) {
   module.exports = prerelease;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/compare.js
 var require_compare = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var compare = (a, b, loose) => new SemVer(a, loose).compare(new SemVer(b, loose));
   module.exports = compare;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rcompare.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/rcompare.js
 var require_rcompare = __commonJS(function(exports, module) {
   var compare = require_compare();
   var rcompare = (a, b, loose) => compare(b, a, loose);
   module.exports = rcompare;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-loose.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/compare-loose.js
 var require_compare_loose = __commonJS(function(exports, module) {
   var compare = require_compare();
   var compareLoose = (a, b) => compare(a, b, true);
   module.exports = compareLoose;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/compare-build.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/compare-build.js
 var require_compare_build = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var compareBuild = (a, b, loose) => {
@@ -633,63 +662,63 @@ var require_compare_build = __commonJS(function(exports, module) {
   module.exports = compareBuild;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/sort.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/sort.js
 var require_sort = __commonJS(function(exports, module) {
   var compareBuild = require_compare_build();
   var sort = (list, loose) => list.sort((a, b) => compareBuild(a, b, loose));
   module.exports = sort;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/rsort.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/rsort.js
 var require_rsort = __commonJS(function(exports, module) {
   var compareBuild = require_compare_build();
   var rsort = (list, loose) => list.sort((a, b) => compareBuild(b, a, loose));
   module.exports = rsort;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gt.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/gt.js
 var require_gt = __commonJS(function(exports, module) {
   var compare = require_compare();
   var gt = (a, b, loose) => compare(a, b, loose) > 0;
   module.exports = gt;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lt.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/lt.js
 var require_lt = __commonJS(function(exports, module) {
   var compare = require_compare();
   var lt = (a, b, loose) => compare(a, b, loose) < 0;
   module.exports = lt;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/eq.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/eq.js
 var require_eq = __commonJS(function(exports, module) {
   var compare = require_compare();
   var eq = (a, b, loose) => compare(a, b, loose) === 0;
   module.exports = eq;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/neq.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/neq.js
 var require_neq = __commonJS(function(exports, module) {
   var compare = require_compare();
   var neq = (a, b, loose) => compare(a, b, loose) !== 0;
   module.exports = neq;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/gte.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/gte.js
 var require_gte = __commonJS(function(exports, module) {
   var compare = require_compare();
   var gte = (a, b, loose) => compare(a, b, loose) >= 0;
   module.exports = gte;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/lte.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/lte.js
 var require_lte = __commonJS(function(exports, module) {
   var compare = require_compare();
   var lte = (a, b, loose) => compare(a, b, loose) <= 0;
   module.exports = lte;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/cmp.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/cmp.js
 var require_cmp = __commonJS(function(exports, module) {
   var eq = require_eq();
   var neq = require_neq();
@@ -736,7 +765,7 @@ var require_cmp = __commonJS(function(exports, module) {
   module.exports = cmp;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/coerce.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/coerce.js
 var require_coerce = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var parse = require_parse();
@@ -779,7 +808,7 @@ var require_coerce = __commonJS(function(exports, module) {
   module.exports = coerce;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/truncate.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/truncate.js
 var require_truncate = __commonJS(function(exports, module) {
   var parse = require_parse();
   var constants = require_constants();
@@ -817,7 +846,7 @@ var require_truncate = __commonJS(function(exports, module) {
   module.exports = truncate;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/internal/lrucache.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/internal/lrucache.js
 var require_lrucache = __commonJS(function(exports, module) {
   class LRUCache {
     constructor() {
@@ -852,7 +881,195 @@ var require_lrucache = __commonJS(function(exports, module) {
   module.exports = LRUCache;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/range.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/internal/trim-comparator-whitespace.js
+var require_trim_comparator_whitespace = __commonJS(function(exports, module) {
+  var {
+    MAX_LENGTH,
+    MAX_SAFE_BUILD_LENGTH,
+    WHITESPACE_CHARACTERS
+  } = require_constants();
+  var whitespace = new Uint8Array(65536);
+  for (const char of WHITESPACE_CHARACTERS) {
+    whitespace[char.charCodeAt(0)] = 1;
+  }
+  var isWhitespace = (char) => char !== undefined && whitespace[char.charCodeAt(0)] === 1;
+  var isVersionPrefix = (char) => char === "v" || char === "=" || isWhitespace(char);
+  var isDigit = (char) => char !== undefined && char >= "0" && char <= "9";
+  var isLetter = (char) => char !== undefined && (char >= "a" && char <= "z" || char >= "A" && char <= "Z");
+  var isIdentifierCharacter = (char) => isDigit(char) || isLetter(char) || char === "-";
+  var isVersionStart = (char) => isDigit(char) || char === "x" || char === "X" || char === "*";
+  var findDigitsEndIndex = (range, start, limit, digitRuns) => {
+    if (!isDigit(range[start])) {
+      return start;
+    }
+    if (start >= digitRuns.start && start < digitRuns.end) {
+      return Math.min(start + limit, digitRuns.end);
+    }
+    if (start >= digitRuns.previousStart && start < digitRuns.previousEnd) {
+      return Math.min(start + limit, digitRuns.previousEnd);
+    }
+    let end = start + 1;
+    while (isDigit(range[end])) {
+      end++;
+    }
+    digitRuns.previousStart = digitRuns.start;
+    digitRuns.previousEnd = digitRuns.end;
+    digitRuns.start = start;
+    digitRuns.end = end;
+    return Math.min(start + limit, end);
+  };
+  var findVersionNumberEndIndex = (range, start, loose, digitRuns) => {
+    if (!loose && range[start] === "0") {
+      return start + 1;
+    }
+    return findDigitsEndIndex(range, start, loose ? MAX_LENGTH : MAX_LENGTH + 1, digitRuns);
+  };
+  var findPrereleaseIdentifierEndIndex = (range, start, loose, digitRuns) => {
+    const digitsEnd = findDigitsEndIndex(range, start, MAX_LENGTH, digitRuns);
+    if (isLetter(range[digitsEnd]) || range[digitsEnd] === "-") {
+      let end = digitsEnd + 1;
+      const limit = end + MAX_SAFE_BUILD_LENGTH;
+      while (end < limit && isIdentifierCharacter(range[end])) {
+        end++;
+      }
+      return end;
+    }
+    return findVersionNumberEndIndex(range, start, loose, digitRuns);
+  };
+  var findPrereleaseEndIndex = (range, start, loose, digitRuns) => {
+    const hyphen = range[start] === "-";
+    if (!loose && !hyphen) {
+      return start;
+    }
+    const identifierStart = start + (hyphen ? 1 : 0);
+    let end = findPrereleaseIdentifierEndIndex(range, identifierStart, loose, digitRuns);
+    if (end === identifierStart) {
+      if (!loose || !hyphen) {
+        return start;
+      }
+      end = findPrereleaseIdentifierEndIndex(range, start, loose, digitRuns);
+    }
+    while (range[end] === ".") {
+      const next = findPrereleaseIdentifierEndIndex(range, end + 1, loose, digitRuns);
+      if (next === end + 1) {
+        break;
+      }
+      end = next;
+    }
+    return end;
+  };
+  var findBuildIdentifierEndIndex = (range, start) => {
+    let end = start;
+    while (end - start < MAX_SAFE_BUILD_LENGTH && isIdentifierCharacter(range[end])) {
+      end++;
+    }
+    return end;
+  };
+  var findBuildEndIndex = (range, start) => {
+    if (range[start] !== "+") {
+      return start;
+    }
+    let end = findBuildIdentifierEndIndex(range, start + 1);
+    if (end === start + 1) {
+      return start;
+    }
+    while (range[end] === ".") {
+      const next = findBuildIdentifierEndIndex(range, end + 1);
+      if (next === end + 1) {
+        break;
+      }
+      end = next;
+    }
+    return end;
+  };
+  var findLooseFullVersionEndIndex = (range, start, digitRuns) => {
+    let end = start;
+    for (let component = 0;component < 3; component++) {
+      const next = findVersionNumberEndIndex(range, end, true, digitRuns);
+      if (next === end) {
+        return start;
+      }
+      end = next;
+      if (component < 2) {
+        if (range[end] !== ".") {
+          return start;
+        }
+        end++;
+      }
+    }
+    const prereleaseEnd = findPrereleaseEndIndex(range, end, true, digitRuns);
+    return findBuildEndIndex(range, prereleaseEnd);
+  };
+  var findPartialVersionComponentEndIndex = (range, start, digitRuns) => {
+    if (isDigit(range[start])) {
+      return findVersionNumberEndIndex(range, start, false, digitRuns);
+    }
+    return isVersionStart(range[start]) ? start + 1 : start;
+  };
+  var findPartialVersionEndIndex = (range, start, digitRuns) => {
+    let end = findPartialVersionComponentEndIndex(range, start, digitRuns);
+    for (let component = 0;component < 2; component++) {
+      if (range[end] !== ".") {
+        return end;
+      }
+      const next = findPartialVersionComponentEndIndex(range, end + 1, digitRuns);
+      if (next === end + 1) {
+        return end;
+      }
+      end = next;
+    }
+    const prereleaseEnd = findPrereleaseEndIndex(range, end, false, digitRuns);
+    return findBuildEndIndex(range, prereleaseEnd);
+  };
+  var findVersionEndIndex = (range, start, digitRuns) => {
+    const fullVersionEnd = findLooseFullVersionEndIndex(range, start, digitRuns);
+    return fullVersionEnd !== start ? fullVersionEnd : findPartialVersionEndIndex(range, start, digitRuns);
+  };
+  var findRemovableWhitespaceIndex = (range, matchStart) => {
+    let position = matchStart;
+    if (isWhitespace(range[position])) {
+      position++;
+    }
+    if (range[position] === "<" || range[position] === ">") {
+      position++;
+    }
+    if (range[position] === "=") {
+      position++;
+    }
+    return isWhitespace(range[position]) ? position : -1;
+  };
+  var trimComparatorWhitespace = (range) => {
+    let result = "";
+    let copyFrom = 0;
+    let cursor = 0;
+    const digitRuns = { start: -1, end: -1, previousStart: -1, previousEnd: -1 };
+    while (cursor < range.length) {
+      const matchStart = cursor;
+      if (range[cursor] === "<" || range[cursor] === ">") {
+        cursor++;
+      } else if (!isVersionPrefix(range[cursor]) && !isVersionStart(range[cursor])) {
+        cursor++;
+        continue;
+      }
+      while (cursor < range.length && isVersionPrefix(range[cursor])) {
+        cursor++;
+      }
+      if (!isVersionStart(range[cursor])) {
+        continue;
+      }
+      const whitespacePosition = findRemovableWhitespaceIndex(range, matchStart);
+      if (whitespacePosition !== -1) {
+        result += range.slice(copyFrom, whitespacePosition);
+        copyFrom = whitespacePosition + 1;
+      }
+      cursor = findVersionEndIndex(range, cursor, digitRuns);
+    }
+    return result + range.slice(copyFrom);
+  };
+  module.exports = trimComparatorWhitespace;
+});
+
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/classes/range.js
 var require_range = __commonJS(function(exports, module) {
   var SPACE_CHARACTERS = /\s+/g;
 
@@ -932,7 +1149,7 @@ var require_range = __commonJS(function(exports, module) {
       const hr = loose ? re[t.HYPHENRANGELOOSE] : re[t.HYPHENRANGE];
       range = range.replace(hr, hyphenReplace(this.options.includePrerelease));
       debug("hyphen replace", range);
-      range = range.replace(re[t.COMPARATORTRIM], comparatorTrimReplace);
+      range = trimComparatorWhitespace(range);
       debug("comparator trim", range);
       range = range.replace(re[t.TILDETRIM], tildeTrimReplace);
       debug("tilde trim", range);
@@ -1001,11 +1218,11 @@ var require_range = __commonJS(function(exports, module) {
   var Comparator = require_comparator();
   var debug = require_debug();
   var SemVer = require_semver();
+  var trimComparatorWhitespace = require_trim_comparator_whitespace();
   var {
     safeRe: re,
     src,
     t,
-    comparatorTrimReplace,
     tildeTrimReplace,
     caretTrimReplace
   } = require_re();
@@ -1234,7 +1451,7 @@ var require_range = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/classes/comparator.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/classes/comparator.js
 var require_comparator = __commonJS(function(exports, module) {
   var ANY = Symbol("SemVer ANY");
 
@@ -1345,7 +1562,7 @@ var require_comparator = __commonJS(function(exports, module) {
   var Range = require_range();
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/satisfies.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/functions/satisfies.js
 var require_satisfies = __commonJS(function(exports, module) {
   var Range = require_range();
   var satisfies = (version, range, options) => {
@@ -1359,14 +1576,14 @@ var require_satisfies = __commonJS(function(exports, module) {
   module.exports = satisfies;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/to-comparators.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/to-comparators.js
 var require_to_comparators = __commonJS(function(exports, module) {
   var Range = require_range();
   var toComparators = (range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
   module.exports = toComparators;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/max-satisfying.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/max-satisfying.js
 var require_max_satisfying = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var Range = require_range();
@@ -1392,7 +1609,7 @@ var require_max_satisfying = __commonJS(function(exports, module) {
   module.exports = maxSatisfying;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-satisfying.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/min-satisfying.js
 var require_min_satisfying = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var Range = require_range();
@@ -1418,7 +1635,7 @@ var require_min_satisfying = __commonJS(function(exports, module) {
   module.exports = minSatisfying;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/min-version.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/min-version.js
 var require_min_version = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var Range = require_range();
@@ -1472,7 +1689,7 @@ var require_min_version = __commonJS(function(exports, module) {
   module.exports = minVersion;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/valid.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/valid.js
 var require_valid2 = __commonJS(function(exports, module) {
   var Range = require_range();
   var validRange = (range, options) => {
@@ -1485,7 +1702,7 @@ var require_valid2 = __commonJS(function(exports, module) {
   module.exports = validRange;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/outside.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/outside.js
 var require_outside = __commonJS(function(exports, module) {
   var SemVer = require_semver();
   var Comparator = require_comparator();
@@ -1551,21 +1768,21 @@ var require_outside = __commonJS(function(exports, module) {
   module.exports = outside;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/gtr.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/gtr.js
 var require_gtr = __commonJS(function(exports, module) {
   var outside = require_outside();
   var gtr = (version, range, options) => outside(version, range, ">", options);
   module.exports = gtr;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/ltr.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/ltr.js
 var require_ltr = __commonJS(function(exports, module) {
   var outside = require_outside();
   var ltr = (version, range, options) => outside(version, range, "<", options);
   module.exports = ltr;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/intersects.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/intersects.js
 var require_intersects = __commonJS(function(exports, module) {
   var Range = require_range();
   var intersects = (r1, r2, options) => {
@@ -1576,7 +1793,7 @@ var require_intersects = __commonJS(function(exports, module) {
   module.exports = intersects;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/simplify.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/simplify.js
 var require_simplify = __commonJS(function(exports, module) {
   var satisfies = require_satisfies();
   var compare = require_compare();
@@ -1623,7 +1840,7 @@ var require_simplify = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/ranges/subset.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/ranges/subset.js
 var require_subset = __commonJS(function(exports, module) {
   var Range = require_range();
   var Comparator = require_comparator();
@@ -1783,7 +2000,7 @@ var require_subset = __commonJS(function(exports, module) {
   module.exports = subset;
 });
 
-// ../node_modules/.pnpm/semver@7.8.5/node_modules/semver/index.js
+// ../node_modules/.pnpm/semver@7.8.6/node_modules/semver/index.js
 var require_semver2 = __commonJS(function(exports, module) {
   var internalRe = require_re();
   var constants = require_constants();
@@ -4879,7 +5096,7 @@ var require_data = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/utils.js
+// ../node_modules/.pnpm/fast-uri@3.1.9/node_modules/fast-uri/lib/utils.js
 var require_utils = __commonJS(function(exports, module) {
   var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
   var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
@@ -5128,6 +5345,37 @@ var require_utils = __commonJS(function(exports, module) {
       }
     }
     return output.join("");
+  }
+  function removeDotSegmentsRelative(path) {
+    if (path === "" || path[0] === "/") {
+      return removeDotSegments(path);
+    }
+    const segments = path.split("/");
+    const last = segments.length - 1;
+    const output = [];
+    let trailingDirectory = false;
+    for (let i = 0;i <= last; i++) {
+      const segment = segments[i];
+      if (segment === "." || segment === "..") {
+        if (segment === "..") {
+          if (output.length !== 0 && output[output.length - 1] !== "..") {
+            output.pop();
+          } else {
+            output.push("..");
+          }
+        }
+        trailingDirectory = i === last;
+      } else {
+        output.push(segment);
+      }
+    }
+    if (trailingDirectory && output[output.length - 1] !== "..") {
+      output.push("");
+    }
+    if (output.length === 0 || output[0] === "" || output[0].includes(":")) {
+      output.unshift(".");
+    }
+    return output.join("/");
   }
   var HOST_DELIMS = { "@": "%40", "/": "%2F", "?": "%3F", "#": "%23", ":": "%3A" };
   var HOST_DELIM_RE = /[@/?#:]/g;
@@ -5389,6 +5637,7 @@ var require_utils = __commonJS(function(exports, module) {
     encodeFragment,
     escapePreservingEscapes,
     removeDotSegments,
+    removeDotSegmentsRelative,
     isIPv4,
     isUUID,
     normalizeIPv6,
@@ -5396,7 +5645,7 @@ var require_utils = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/schemes.js
+// ../node_modules/.pnpm/fast-uri@3.1.9/node_modules/fast-uri/lib/schemes.js
 var require_schemes = __commonJS(function(exports, module) {
   var { isUUID } = require_utils();
   var URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
@@ -5571,18 +5820,20 @@ var require_schemes = __commonJS(function(exports, module) {
   };
 });
 
-// ../node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/index.js
+// ../node_modules/.pnpm/fast-uri@3.1.9/node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS(function(exports, module) {
-  var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
+  var { normalizeIPv6, removeDotSegments, removeDotSegmentsRelative, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
   var { SCHEMES, getSchemeHandler } = require_schemes();
   var VALID_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
   var MALFORMED_SCHEME_ERROR = "URI scheme is malformed.";
-  function decodeValidScheme(scheme) {
-    const decodedScheme = unescape(String(scheme));
-    if (!VALID_SCHEME.test(decodedScheme)) {
+  var MALFORMED_HOST_ERROR = "URI host is malformed.";
+  var FORBIDDEN_DOMAIN_HOST_CHARACTER = /[\0-\x20"#/:<>?@[\\\]^`{|}\x7F]/u;
+  function validateScheme(scheme) {
+    const stringScheme = String(scheme);
+    if (!VALID_SCHEME.test(stringScheme)) {
       throw new TypeError(MALFORMED_SCHEME_ERROR);
     }
-    return decodedScheme;
+    return stringScheme;
   }
   function normalize(uri, options) {
     if (typeof uri === "string") {
@@ -5617,6 +5868,9 @@ var require_fast_uri = __commonJS(function(exports, module) {
     const resolvedSchemeHandler = getSchemeHandler(options && options.scheme || resolved.scheme);
     const resolvedHost = resolved.host;
     const resolvedHostIsIP = resolvedHost !== undefined && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
+    if (hasForbiddenDomainHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP)) {
+      throw new Error(MALFORMED_HOST_ERROR);
+    }
     canonicalizeHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP);
     const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !/\P{ASCII}/u.test(resolvedHost);
     if (resolved.error && !encodedASCIIHost) {
@@ -5658,14 +5912,15 @@ var require_fast_uri = __commonJS(function(exports, module) {
           if (relative.path[0] === "/") {
             target.path = removeDotSegments(relative.path);
           } else {
-            if ((base.userinfo !== undefined || base.host !== undefined || base.port !== undefined) && !base.path) {
+            const baseHasAuthority = base.userinfo !== undefined || base.host !== undefined || base.port !== undefined;
+            if (baseHasAuthority && !base.path) {
               target.path = "/" + relative.path;
             } else if (!base.path) {
               target.path = relative.path;
             } else {
               target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
             }
-            target.path = removeDotSegments(target.path);
+            target.path = base.scheme === undefined && !baseHasAuthority && target.path[0] !== "/" ? removeDotSegmentsRelative(target.path) : removeDotSegments(target.path);
           }
           target.query = relative.query;
         }
@@ -5703,13 +5958,14 @@ var require_fast_uri = __commonJS(function(exports, module) {
     const options = Object.assign({}, opts);
     const uriTokens = [];
     if (component.scheme) {
-      component.scheme = decodeValidScheme(component.scheme);
+      component.scheme = validateScheme(component.scheme);
     }
     const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
     if (schemeHandler && schemeHandler.serialize)
       schemeHandler.serialize(component, options);
     const hasAuthority = component.userinfo !== undefined || component.host !== undefined || component.port !== undefined;
-    const pathNoScheme = !options.skipEscape && component.scheme === undefined && !hasAuthority;
+    const schemelessReference = (component.scheme === undefined || options.reference === "suffix") && !hasAuthority;
+    const pathNoScheme = !options.skipEscape && schemelessReference;
     if (component.path !== undefined) {
       if (!options.skipEscape) {
         component.path = serializePathEncoding(component.path, pathNoScheme);
@@ -5718,7 +5974,7 @@ var require_fast_uri = __commonJS(function(exports, module) {
       }
     }
     if (options.reference !== "suffix" && component.scheme) {
-      component.scheme = decodeValidScheme(component.scheme);
+      component.scheme = validateScheme(component.scheme);
       uriTokens.push(component.scheme, ":");
     }
     const authority = recomposeAuthority(component);
@@ -5734,9 +5990,9 @@ var require_fast_uri = __commonJS(function(exports, module) {
     if (component.path !== undefined) {
       let s = component.path;
       if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
-        s = removeDotSegments(s);
+        s = schemelessReference && s[0] !== "/" ? removeDotSegmentsRelative(s) : removeDotSegments(s);
       }
-      if (pathNoScheme) {
+      if (schemelessReference) {
         s = serializePathEncoding(s, true);
       }
       if (authority === undefined && s[0] === "/" && s[1] === "/") {
@@ -5784,15 +6040,31 @@ var require_fast_uri = __commonJS(function(exports, module) {
     return hasMalformedPercentEncoding(matches[3]) || host !== undefined && !isIPLiteral(host) && hasMalformedPercentEncoding(host) || hasMalformedPercentEncoding(matches[6]) || hasMalformedPercentEncoding(matches[7]) || hasMalformedPercentEncoding(matches[8]);
   }
   function canonicalizeHost(parsed, options, schemeHandler, isIP) {
+    if (hasForbiddenDomainHost(parsed, options, schemeHandler, isIP)) {
+      parsed.error = parsed.error || MALFORMED_HOST_ERROR;
+      return true;
+    }
     if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport) && parsed.host && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
+      let url;
       try {
-        parsed.host = new URL("http://" + parsed.host).hostname;
+        url = new URL("http://" + parsed.host);
       } catch (e) {
         parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
         return true;
       }
+      if (!isHostOnlyURL(url)) {
+        parsed.error = parsed.error || MALFORMED_HOST_ERROR;
+        return true;
+      }
+      parsed.host = url.hostname;
     }
     return false;
+  }
+  function hasForbiddenDomainHost(parsed, options, schemeHandler, isIP) {
+    return Boolean(parsed.host && isIP === false && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && FORBIDDEN_DOMAIN_HOST_CHARACTER.test(parsed.host));
+  }
+  function isHostOnlyURL(url) {
+    return url.username === "" && url.password === "" && url.port === "" && url.pathname === "/" && url.search === "" && url.hash === "" && url.hostname !== "";
   }
   function parseWithStatus(uri, opts) {
     const options = Object.assign({}, opts);
@@ -5848,9 +6120,8 @@ var require_fast_uri = __commonJS(function(exports, module) {
       parsed.query = matches[7];
       parsed.fragment = matches[8];
       if (parsed.scheme !== undefined) {
-        const decodedScheme = unescape(parsed.scheme);
-        if (VALID_SCHEME.test(decodedScheme)) {
-          parsed.scheme = decodedScheme.toLowerCase();
+        if (VALID_SCHEME.test(parsed.scheme)) {
+          parsed.scheme = parsed.scheme.toLowerCase();
         } else {
           parsed.error = parsed.error || MALFORMED_SCHEME_ERROR;
           malformedScheme = true;
@@ -5878,7 +6149,7 @@ var require_fast_uri = __commonJS(function(exports, module) {
           malformedIPLiteral = hasIPLiteralBracket && (!bracketedIPLiteral || ipv6result.error === true);
           parsed.host = isIP ? ipv6result.host : ipv6result.host.toLowerCase();
           if (malformedIPLiteral) {
-            parsed.error = parsed.error || "URI host is malformed.";
+            parsed.error = parsed.error || MALFORMED_HOST_ERROR;
             malformedAuthorityOrPort = true;
           }
         } else {
@@ -5906,7 +6177,7 @@ var require_fast_uri = __commonJS(function(exports, module) {
         if (!isIP) {
           host = normalizePercentEncoding(host.toLowerCase());
         }
-        parsed.host = reescapeHostDelimiters(host, isIP);
+        parsed.host = isIP || options.scheme !== "null" ? reescapeHostDelimiters(host, isIP) : host;
       }
       if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
         if (parsed.path) {
@@ -17154,7 +17425,7 @@ var semver2 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.80.0",
+  typescript: "0.80.1",
   python: "0.80.0",
   ruby: "0.78.0",
   go: "0.78.0"
@@ -23316,7 +23587,7 @@ async function collectSessionStartMessages(currentVersion, platform, pluginRoot,
   } catch {}
   return messages;
 }
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.2_@cfworker+json-schema@4.1.6_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
 var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
 var JSONRPC_VERSION = "2.0";
 var AssertObjectSchema = custom((v) => v !== null && (typeof v === "object" || typeof v === "function"));
@@ -24119,17 +24390,17 @@ var ServerResultSchema = union([
 var ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
 // ../node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@4.6.7/node_modules/zod-to-json-schema/dist/esm/parsers/string.js
 var ALPHA_NUMERIC = new Set("ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvxyz0123456789");
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.2_@cfworker+json-schema@4.1.6_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
 var import_ajv_formats = __toESM(require_dist(), 1);
 
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.2_@cfworker+json-schema@4.1.6_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
 var COMPLETABLE_SYMBOL = Symbol.for("mcp.completable");
 var McpZodTypeKind;
 (function(McpZodTypeKind) {
   McpZodTypeKind["Completable"] = "McpCompletable";
 })(McpZodTypeKind || (McpZodTypeKind = {}));
 
-// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.1_@cfworker+json-schema@4.1.1_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
+// ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.2_@cfworker+json-schema@4.1.6_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
 var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
 // src/platform.ts
 var platform = {
