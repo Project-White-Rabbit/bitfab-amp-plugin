@@ -17420,10 +17420,10 @@ var semver2 = __toESM(require_semver2(), 1);
 
 // ../bitfab-plugin-lib/dist/bakedSdkVersions.js
 var BAKED_SDK_VERSIONS = {
-  typescript: "0.81.0",
-  python: "0.81.0",
-  ruby: "0.78.1",
-  go: "0.78.1"
+  typescript: "0.81.1",
+  python: "0.81.1",
+  ruby: "0.78.2",
+  go: "0.78.2"
 };
 
 // ../bitfab-plugin-lib/dist/installedSdk.js
@@ -17980,11 +17980,13 @@ function formatSdkUpdateLine(status) {
 }
 // ../bitfab-plugin-lib/dist/commands/watchRunningExperiments.js
 var STALL_AFTER_MS = 10 * 60000;
+var LAUNCH_LOOKUP_MAX_MS = 60 * 60000;
 var NEVER2 = new Promise(() => {});
 var EXPERIMENT_EVENT_TYPES = new Set([
   "experiment:updated",
   "experiment-stats:updated"
 ]);
+var SESSION_FOLDER_MAX_AGE_MS = 7 * 24 * 60 * 60000;
 // ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/commands.js
 function defineCommandCatalog(catalog) {
   return {
@@ -20989,7 +20991,7 @@ Each replay pushes a temporary bitfab-replay/<UUID> branch. For each push-trigge
 
 Verify with the replay command the user already runs. First add --cloud --cloud-preview, which pushes nothing and lists the changed and new files the snapshot would carry; review them for anything that should not leave the machine, since filename screening is not a secret scanner, and have the user gitignore it. Once the workflow is merged and secrets are set, and remote runs are authorized, run the same command with --cloud --dry-run: a real run that replays nothing but receives the secrets, stops on any empty secret, runs the --check command, and resolves the traces. Then, only when a replay is authorized, run with --cloud alone.
 
-From an agent session always add --cloud-detach, since a replay can run for hours and a single tool call stops after about ten minutes: it prints the experiment's link and returns while the replay runs on GitHub. Once it finishes, read the results with {{tool:getExperiment}} and {{tool:listExperimentTraces}}.{{#claude}} The Bitfab plugin starts a new turn when this session's experiments finish, so end your turn rather than waiting.{{/claude}} --cloud-status <execution UUID> shows whether a GitHub run failed before its experiment appeared; --cloud-cancel and --cloud-cleanup stop and clean up a run. --cloud-timeout <minutes> stops one replay early and keeps finished traces. --cloud-env NAME=VALUE (repeatable) sets a non-secret environment variable for one replay; secrets go in the workflow's env and --cloud-secrets. When the snapshot refuses a credential-like file the user confirms is safe to upload, such as a test certificate, --cloud-allow-file <path> (repeatable, private repositories only) lets it in. Report separately whether the workflow is written, secrets are set, the workflow is merged, the preview was reviewed, the dry run passed, and a real replay completed.`,
+From an agent session always add --cloud-detach, since a replay can run for hours and a single tool call stops after about ten minutes: it prints the experiment's link and returns while the replay runs on GitHub. Once it finishes, read the results with {{tool:getExperiment}} and {{tool:listExperimentTraces}}. --cloud-status <execution UUID> shows whether a GitHub run failed before its experiment appeared; --cloud-cancel and --cloud-cleanup stop and clean up a run. --cloud-timeout <minutes> stops one replay early and keeps finished traces. --cloud-env NAME=VALUE (repeatable) sets a non-secret environment variable for one replay; secrets go in the workflow's env and --cloud-secrets. When the snapshot refuses a credential-like file the user confirms is safe to upload, such as a test certificate, --cloud-allow-file <path> (repeatable, private repositories only) lets it in. Report separately whether the workflow is written, secrets are set, the workflow is merged, the preview was reviewed, the dry run passed, and a real replay completed.`,
           next: "cleanup/finish"
         }
       ]
@@ -23290,7 +23292,7 @@ Recording a fresh run of a trace:
 - \`bitfab-seed --registry <registry-path> <trace-function-key> --from-trace <trace-id>\` reruns the function on a trace's inputs under the same trace ID. It runs side effects for real, so warn the user first.
 
 Waiting for replays:
-- A replay run in the foreground ends with its results. Start a long one, or one with \`--cloud\` (add \`--cloud-detach\`), in the background instead, and read its results with ${getExperiment.name} and ${listExperimentTraces.name} once it finishes. In Claude Code the Bitfab plugin starts a new turn when this session's experiments finish.
+- A replay run in the foreground ends with its results. Start a long one, or one with \`--cloud\` (add \`--cloud-detach\`), in the background instead, and read its results with ${getExperiment.name} and ${listExperimentTraces.name} once it finishes.
 
 Fixing a dataset's failing traces:
 - After a dataset replay, ${listExperimentTraces.name} ends with the flags that rerun only the failing traces as a subset.
