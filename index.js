@@ -17609,6 +17609,14 @@ function readFileSafe(filePath) {
 function stripRange(raw) {
   return semver.coerce(raw, { includePrerelease: true })?.version ?? "";
 }
+function isLegacySdkVersion(raw) {
+  const version = stripRange(raw);
+  return version === "" || semver.major(version) === 0;
+}
+function legacySdkSpec(deps) {
+  const raw = deps?.[TS_PACKAGE_LEGACY];
+  return raw !== undefined && isLegacySdkVersion(raw) ? raw : undefined;
+}
 function readTsDeclared(cwd) {
   const manifestPath = path7.join(cwd, "package.json");
   const content = readFileSafe(manifestPath);
@@ -17618,7 +17626,7 @@ function readTsDeclared(cwd) {
   try {
     const pkg = JSON.parse(content);
     const raw = pkg.dependencies?.[TS_PACKAGE] ?? pkg.devDependencies?.[TS_PACKAGE] ?? pkg.peerDependencies?.[TS_PACKAGE];
-    const legacyRaw = pkg.dependencies?.[TS_PACKAGE_LEGACY] ?? pkg.devDependencies?.[TS_PACKAGE_LEGACY] ?? pkg.peerDependencies?.[TS_PACKAGE_LEGACY];
+    const legacyRaw = legacySdkSpec(pkg.dependencies) ?? legacySdkSpec(pkg.devDependencies) ?? legacySdkSpec(pkg.peerDependencies);
     if (raw) {
       return {
         version: stripRange(raw) || null,
@@ -17646,7 +17654,7 @@ function readTsFromPnpm(cwd) {
   if (!content) {
     return null;
   }
-  const match = content.match(/['"/\s](?:@bitfab\/sdk|bitfab)@(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/);
+  const match = content.match(/['"/\s](?:@bitfab\/sdk|bitfab(?=@0\.))@(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/);
   return match ? { version: match[1], path: p } : null;
 }
 function readTsFromNpm(cwd) {
@@ -17659,7 +17667,7 @@ function readTsFromNpm(cwd) {
     const pkg = JSON.parse(content);
     for (const name of [TS_PACKAGE, TS_PACKAGE_LEGACY]) {
       const v = pkg.packages?.[`node_modules/${name}`]?.version ?? pkg.dependencies?.[name]?.version;
-      if (v) {
+      if (v && (name === TS_PACKAGE || isLegacySdkVersion(v))) {
         return { version: v, path: p };
       }
     }
@@ -17678,7 +17686,7 @@ function readTsFromYarn(cwd) {
   if (classic) {
     return { version: classic[1], path: p };
   }
-  const berry = content.match(/^\s*resolution:\s*"(?:@bitfab\/sdk|bitfab)@npm:([0-9][\w.\-+]*)"/m);
+  const berry = content.match(/^\s*resolution:\s*"(?:@bitfab\/sdk|bitfab(?=@npm:0\.))@npm:([0-9][\w.\-+]*)"/m);
   return berry ? { version: berry[1], path: p } : null;
 }
 function readTsFromBun(cwd) {
@@ -17687,7 +17695,7 @@ function readTsFromBun(cwd) {
   if (!content) {
     return null;
   }
-  const match = content.match(/"(?:@bitfab\/sdk|bitfab)@(\d+\.\d+\.\d+(?:[-+][\w.]+)?)"/);
+  const match = content.match(/"(?:@bitfab\/sdk|bitfab(?=@0\.))@(\d+\.\d+\.\d+(?:[-+][\w.]+)?)"/);
   return match ? { version: match[1], path: p } : null;
 }
 function readTsFromNodeModules(cwd) {
@@ -17699,7 +17707,7 @@ function readTsFromNodeModules(cwd) {
     }
     try {
       const pkg = JSON.parse(content);
-      if (pkg.version) {
+      if (pkg.version && (name === TS_PACKAGE || isLegacySdkVersion(pkg.version))) {
         return { version: pkg.version, path: p };
       }
     } catch {}
@@ -24147,7 +24155,7 @@ var platform = {
   marketplaceName: "bitfab",
   pluginName: "bitfab",
   marketplacePreRegistered: false,
-  pluginUpdateCommands: ["npx bitfab-cli update --editor amp plugin"]
+  pluginUpdateCommands: ["npx bitfab update --editor amp plugin"]
 };
 
 // src/version.ts

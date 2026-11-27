@@ -11,5 +11,5 @@ export const platform = {
     marketplaceName: "bitfab",
     pluginName: "bitfab",
     marketplacePreRegistered: false,
-    pluginUpdateCommands: ["npx bitfab-cli update --editor amp plugin"],
+    pluginUpdateCommands: ["npx bitfab update --editor amp plugin"],
 };

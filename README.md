@@ -11,7 +11,7 @@ ship, built on Amp's plugin API.
 ## Install
 
 ```bash
-npx bitfab-cli init --editor amp
+npx bitfab init --editor amp
 ```
 
 That clones this repository into Amp's plugin directory
@@ -20,7 +20,7 @@ That clones this repository into Amp's plugin directory
 To install without signing in:
 
 ```bash
-npx bitfab-cli plugin-install --editor amp
+npx bitfab plugin-install --editor amp
 ```
 
 By hand:
@@ -56,7 +56,7 @@ so you can ask Amp to query your traces without invoking a skill.
 ## Update
 
 ```bash
-npx bitfab-cli update --editor amp plugin
+npx bitfab update --editor amp plugin
 ```
 
 Or `git -C ~/.config/amp/plugins/bitfab pull`, then `plugins: reload`.

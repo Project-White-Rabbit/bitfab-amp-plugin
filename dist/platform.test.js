@@ -9,7 +9,7 @@ describe("platform", () => {
     });
     it("updates through the CLI, since amp plugins update skips git-clone installs", () => {
         expect(platform.pluginUpdateCommands).toEqual([
-            "npx bitfab-cli update --editor amp plugin",
+            "npx bitfab update --editor amp plugin",
         ]);
     });
     it("offers no auto-update setting, since Amp has none to point at", () => {
