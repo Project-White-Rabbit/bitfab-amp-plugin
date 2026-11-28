@@ -16,7 +16,12 @@ async function registeredHandlers() {
     const handlers = new Map();
     const amp = {
         logger: { log: vi.fn() },
-        helpers: { isPluginUINotAvailableError: () => false },
+        helpers: {
+            isPluginUINotAvailableError: () => false,
+            shellCommandFromToolCall: (event) => event.tool === "Bash" && typeof event.input.cmd === "string"
+                ? { command: event.input.cmd }
+                : null,
+        },
         on: (event, handler) => {
             handlers.set(event, handler);
             return { dispose: vi.fn() };
@@ -52,6 +57,7 @@ describe("Amp event handlers", () => {
             "agent.end",
             "agent.start",
             "session.start",
+            "tool.call",
         ]);
     });
 });
@@ -91,5 +97,38 @@ describe("session start notices", () => {
         handlers.get("session.start")?.({ thread: { id: "T-3" } }, { ui: { notify } });
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(notify).not.toHaveBeenCalled();
+    });
+});
+describe("replay tagging", () => {
+    async function toolCall(tool, input) {
+        const handlers = await registeredHandlers();
+        return handlers.get("tool.call")?.({
+            toolUseID: "toolu_1",
+            tool,
+            input,
+            thread: { id: "T-0f3c" },
+        });
+    }
+    it.skipIf(process.platform === "win32")("exports the thread id before a replay command", async () => {
+        expect(await toolCall("Bash", {
+            cmd: "pnpm exec bitfab-replay --registry r.ts summarize",
+            cwd: "/repo",
+        })).toEqual({
+            action: "modify",
+            input: {
+                cmd: "export AGENT_SESSION_ID='T-0f3c'; pnpm exec bitfab-replay --registry r.ts summarize",
+                cwd: "/repo",
+            },
+        });
+    });
+    it("lets other shell commands run unchanged", async () => {
+        expect(await toolCall("Bash", { cmd: "pnpm test" })).toEqual({
+            action: "allow",
+        });
+    });
+    it("lets tools that are not shell commands run unchanged", async () => {
+        expect(await toolCall("Read", { path: "bitfab-replay.ts" })).toEqual({
+            action: "allow",
+        });
     });
 });

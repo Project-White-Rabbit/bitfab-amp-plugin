@@ -17302,6 +17302,24 @@ function readGitBranch(cwd) {
     return null;
   }
 }
+// ../bitfab-plugin-lib/dist/codexExperimentWaker.js
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+// ../bitfab-plugin-lib/dist/commands/watchRunningExperiments.js
+var STALL_AFTER_MS = 10 * 60000;
+var LAUNCH_LOOKUP_MAX_MS = 60 * 60000;
+var NEVER2 = new Promise(() => {});
+var EXPERIMENT_EVENT_TYPES = new Set([
+  "experiment:updated",
+  "experiment-stats:updated"
+]);
+var SESSION_FOLDER_MAX_AGE_MS = 7 * 24 * 60 * 60000;
+
+// ../bitfab-plugin-lib/dist/codexExperimentWaker.js
+var run = promisify(execFile);
+var CODEX_IDLE_STOP_MS = 24 * 60 * 60000;
+var ROLLOUT_TAIL_BYTES = 256 * 1024;
 // ../bitfab-plugin-lib/dist/commands/startTemplatePreview.js
 var ticketResponseSchema = object({ id: uuid2() });
 // ../bitfab-plugin-lib/dist/updates.js
@@ -17986,15 +18004,6 @@ function formatSdkUpdateLine(status) {
   const rename = status.renameFrom ? ` (rename: ${status.renameFrom} \u2192 ${status.packageName})` : "";
   return `${prefix}${status.language} (${status.packageName}) ${current} \u2192 ${status.latest}${rename}`;
 }
-// ../bitfab-plugin-lib/dist/commands/watchRunningExperiments.js
-var STALL_AFTER_MS = 10 * 60000;
-var LAUNCH_LOOKUP_MAX_MS = 60 * 60000;
-var NEVER2 = new Promise(() => {});
-var EXPERIMENT_EVENT_TYPES = new Set([
-  "experiment:updated",
-  "experiment-stats:updated"
-]);
-var SESSION_FOLDER_MAX_AGE_MS = 7 * 24 * 60 * 60000;
 // ../node_modules/.pnpm/@agent-flows+core@0.1.2_zod@4.6.7/node_modules/@agent-flows/core/dist/commands.js
 function defineCommandCatalog(catalog) {
   return {
@@ -23284,6 +23293,7 @@ async function collectSessionStartMessages(currentVersion, platform, pluginRoot,
 function buildMcpInstructions(platform) {
   return renderMcpInstructions(platform);
 }
+var REPLAY_SESSION_ID_LINE = "- Start every replay command with `AGENT_SESSION_ID=<agent_session_id> `, the id in this session's context, so its experiment is tied to this chat.\n";
 function renderMcpInstructions(platform) {
   return `Bitfab records traces of AI agent runs and helps the user improve the code that produced them.
 There is no special command for this work: use these tools and the SDK's commands.
@@ -23294,7 +23304,7 @@ Replaying traces against the current code:
 - Run it from the project directory. TypeScript: \`pnpm exec bitfab-replay --registry <registry-path> <trace-function-key> --dataset-id <dataset-id>\`. Python: \`uv run\` or \`poetry run bitfab-replay ...\`. Ruby: \`bundle exec bitfab-replay ...\`. Go: \`go run ./cmd/registry <trace-function-key> ...\`.
 - Every replay needs \`--code-change\`: \`working-tree\`, \`last-branch\`, \`default-branch\`, \`ref\` with \`--code-change-base <branch|sha>\`, \`skip\`, or \`manual\` with \`--code-change-file <path>\`. Ask if unclear.
 - \`--trace-ids <id>,<id>\` replays specific traces; with \`--dataset-id\`, as a subset of that dataset. \`--attempts <n>\` repeats each trace. \`--cloud\` runs it on GitHub Actions. \`--help\` lists every option.
-- Each replay creates an experiment. ${getReplayStatus.name} reports its progress. If it stopped early, resume it with the same command plus \`--resume <experiment-id>\`, minus the flags that pick traces.
+${platform.replaysNeedSessionIdFromContext ? REPLAY_SESSION_ID_LINE : ""}- Each replay creates an experiment. ${getReplayStatus.name} reports its progress. If it stopped early, resume it with the same command plus \`--resume <experiment-id>\`, minus the flags that pick traces.
 
 Recording a fresh run of a trace:
 - \`bitfab-seed --registry <registry-path> <trace-function-key> --from-trace <trace-id>\` reruns the function on a trace's inputs under the same trace ID. It runs side effects for real, so warn the user first.
@@ -24141,6 +24151,151 @@ var McpZodTypeKind;
 
 // ../node_modules/.pnpm/@modelcontextprotocol+sdk@1.32.2_@cfworker+json-schema@4.1.6_supports-color@8.1.1_zod@4.6.7/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
 var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
+// ../bitfab-plugin-lib/dist/cloudReplay/constants.js
+var PREFIX = "bitfab-replay/";
+var API_KEY_ENV = "BITFAB_REPLAY_BITFAB_API_KEY";
+var LEGACY_KEY_SECRET_REFERENCE = new RegExp(`^[ \\t]*"?${API_KEY_ENV}"?[ \\t]*:[ \\t]*["']?\\$\\{\\{\\s*secrets\\[\\s*format\\(.*$`);
+var SAFE_AGENT_SESSION_ID = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+var OUTPUT_LIMIT = 16 * 1024 * 1024;
+var DISK_LIMIT = 1024 * 1024 * 1024;
+var NEW_FILES_LIMIT = 20 * 1024 * 1024;
+var PUSH_SUBJECT = "Bitfab replay started on push";
+var PUSH_CONDITION = `github.event_name != 'push' || !startsWith(github.ref_name, '${PREFIX}') || startsWith(github.event.head_commit.message, '${PUSH_SUBJECT}')`;
+var FOLLOW_FLAGS = [
+  "--cloud-status",
+  "--cloud-watch",
+  "--cloud-cancel",
+  "--cloud-cleanup"
+];
+var CLOUD_VALUE_FLAGS = [
+  ...FOLLOW_FLAGS,
+  "--cloud-request-id",
+  "--cloud-timeout",
+  "--cloud-ref"
+];
+var MINIMUM_NODE_MAJOR = 18;
+var NO_GITHUB = "Cloud replay needs access to GitHub. Any one of these works: " + "log in with the GitHub CLI (gh auth login); " + "set GH_TOKEN to a token that can push to the repository and run its Actions; " + "or push to github.com over https once, so git stores a credential for it";
+var HELP = `Cloud replay: run the replay you run locally on GitHub Actions by adding --cloud.
+
+  bitfab-replay --registry scripts/replay.ts classify --trace-ids UUID --cloud
+
+Every replay option works as it does locally, including --dry-run and --fail-on-error,
+and your SDK checks them before anything is uploaded. The runner replays a snapshot of
+your working tree (changed files, plus new files git does not ignore) from the same
+directory, and this command prints the replay's output and exits with its exit code.
+The experiment records your branch, the commit the snapshot was taken on, and the
+snapshot's changed files as its code change, as it would for a local replay.
+Credential-like files that are not on GitHub yet are refused unless you name them with
+--cloud-allow-file. Requires git and Node.js ${MINIMUM_NODE_MAJOR}+ on macOS or Linux, with a github.com
+origin.
+
+The replay's stderr comes back as it printed it. Its stdout result comes back as a
+short summary instead of every item: the experiment ID and URL, how many traces were
+replayed, same, changed, and errored, each errored trace with its error, and the exit
+code. Every item's input and output are saved in the experiment in Bitfab, where the
+Bitfab MCP tools read them, so by default the job log holds no trace data.
+
+Options added by --cloud:
+  --cloud-preview        List what the snapshot would contain and push nothing.
+  --cloud-detach         Return after dispatch instead of waiting.
+  --cloud-full-output    Print the replay's whole stdout result, every item included,
+                         instead of the summary. The result passes through the
+                         GitHub job log, so it is refused on a public repository,
+                         and large runs can exceed what the log holds.
+  --cloud-timeout MIN    Stop the replay after MIN minutes (1..7200).
+  --cloud-env NAME=VALUE Set an environment variable for this replay only; repeat it
+                         for more. NAME alone copies the value from your shell. The
+                         value is stored in the snapshot commit on GitHub, so this is
+                         for settings, never secrets: names that look like secrets,
+                         and names the workflow reads from a secret, are refused.
+  --cloud-allow-file PATH
+                         Upload PATH even though it looks like a credential, such as
+                         a test certificate; repeat it for more. Refused on a public
+                         repository, where anyone can read the snapshot branch.
+  --cloud-request-id ID  Recover a submission whose response was lost.
+  --cloud-ref BRANCH     Replay BRANCH as it is on GitHub, with no snapshot of your
+                         working tree, and record the experiment on BRANCH. Meant for
+                         CI jobs, such as a nightly replay of dev. Runs from a
+                         checkout of the repository, with GitHub access that can
+                         read it and run Actions (a job token needs contents: read
+                         and actions: write, passed as GH_TOKEN), and a workflow on
+                         BRANCH that declares a request input. With no snapshot,
+                         --code-change default-branch and ref fetch their base on
+                         the runner with the run's GitHub token, which the
+                         workflow passes as BITFAB_REPLAY_GIT_TOKEN and the
+                         replay never sees; working-tree and last-branch are
+                         refused, as they are on a dispatched run.
+
+A workflow can also dispatch bitfab-replay.yml itself on any branch other than a
+bitfab-replay/ snapshot branch, passing the replay as JSON in the request input:
+
+  {"args": ["--registry", "scripts/replay.ts", "classify", "--dataset-ids", "UUID"],
+   "cwd": "web", "timeoutMinutes": 60, "env": {"LOG_LEVEL": "debug"}}
+
+args are the replay options without --cloud. cwd is the directory to replay from,
+relative to the repository root, and defaults to the root. timeoutMinutes and
+fullOutput (true) match --cloud-timeout and --cloud-full-output, and env holds the
+values --cloud-env sets. version and id are optional: version names the request
+format (4 when env is set, otherwise 3; 2 is still accepted), and id is the
+execution UUID, which must match an execution_id input when the workflow has one.
+
+The replay runs as the person who started it, so the experiment is recorded as
+yours. Before dispatch, the replay's registry is loaded locally to read its
+client's key, which asks Bitfab for a one-time token passed as the key_id input,
+tied to the repository, branch, and workflow of the run. The runner trades that
+token, together with the GitHub Actions OIDC token of its own run, for a key that
+works only until the replay ends, so only that run can use it; the token alone
+opens nothing. With no key resolved locally, a token Bitfab will not issue or
+trade, or a workflow that declares no key_id input or does not grant
+id-token: write, the run uses the workflow's BITFAB_API_KEY secret instead.
+
+The runner's job exits with the replay's exit code, so the Actions run fails when
+the replay does. Traces that errored fail it only under --fail-on-error.
+
+Follow a replay by the execution UUID it prints:
+  --cloud-watch ID | --cloud-status ID | --cloud-cancel ID | --cloud-cleanup ID
+--cloud-cleanup removes the snapshot branch once the run completed, or when GitHub
+shows no run for it, such as after a dispatch that failed.
+
+Set up once:
+  --cloud-init [--secret NAME ...] [--environment NAME] [--run COMMAND]
+               [--runs-on LABEL] [--secret-prefix PREFIX] [--check COMMAND]
+      Writes .github/workflows/bitfab-replay.yml, the only file cloud replay keeps
+      in the repository, and lists what is left to do. On an existing workflow it
+      adds only the lines a newer SDK needs, such as the push trigger that lets a
+      replay run without GitHub access, and lists what it changed.
+  --cloud-update [same options] [--remove-old-key-secrets]
+      The same command as --cloud-init, for bringing an existing setup up to date.
+      It also lists BITFAB_REPLAY_KEY_* secrets an older SDK left in the
+      repository, each a copy of someone's Bitfab API key, and with
+      --remove-old-key-secrets deletes them.
+  --cloud-secrets --env-file FILE [NAME ...] [--environment NAME] [--dry-run]
+      Copies local values into the GitHub secrets the workflow reads.
+
+GitHub access comes from the GitHub CLI when it is logged in, otherwise from GH_TOKEN
+or GITHUB_TOKEN, otherwise from the github.com credential git already stores. Without
+the GitHub CLI, --cloud-secrets lists the secrets to create by hand and where.
+
+Without GitHub access, or with access that cannot read or push to the repository, a
+replay still runs when git can push the snapshot branch and the workflow also starts
+on a push to a bitfab-replay/ branch, as one written or updated by --cloud-init does.
+This command then warns, prints where to watch the run, and returns once the branch
+is pushed, with no updates and exit code 0. The run uses the workflow's BITFAB_API_KEY
+secret, and --cloud-full-output and --cloud-allow-file are refused, since only GitHub
+access can confirm the repository is private. Delete the snapshot branch once the run
+finishes. With access, a replay starts through the GitHub API as before, and its
+snapshot commit asks GitHub not to start any workflow on the push.
+`;
+
+// ../bitfab-plugin-lib/dist/replaySessionTag.js
+var REPLAY_COMMAND = /bitfab[-_ .]?replay|\bcmd\/registry\b/i;
+var ALREADY_TAGGED = /AGENT_SESSION_ID|--agent-session-id/;
+function tagReplayCommand(command, agentSessionId) {
+  if (!REPLAY_COMMAND.test(command) || ALREADY_TAGGED.test(command) || !SAFE_AGENT_SESSION_ID.test(agentSessionId)) {
+    return null;
+  }
+  return `export AGENT_SESSION_ID='${agentSessionId}'; ${command}`;
+}
 // src/platform.ts
 var platform = {
   authPath: "amp",
@@ -24247,6 +24402,25 @@ function registerSessionCapture(amp, pluginVersion) {
     });
   });
 }
+function tagReplayToolCall(amp, event) {
+  if (process.platform === "win32") {
+    return { action: "allow" };
+  }
+  try {
+    const shell = amp.helpers.shellCommandFromToolCall(event);
+    if (shell === null) {
+      return { action: "allow" };
+    }
+    const tagged = tagReplayCommand(shell.command, String(event.thread.id));
+    const key = Object.keys(event.input).find((name) => event.input[name] === shell.command);
+    if (tagged === null || key === undefined) {
+      return { action: "allow" };
+    }
+    return { action: "modify", input: { ...event.input, [key]: tagged } };
+  } catch {
+    return { action: "allow" };
+  }
+}
 async function bitfab(amp) {
   const version = getVersion();
   for (const skill of SKILLS) {
@@ -24274,9 +24448,11 @@ async function bitfab(amp) {
     });
   }
   registerSessionCapture(amp, version);
+  amp.on("tool.call", (event) => tagReplayToolCall(amp, event));
   amp.logger.log(`Bitfab ${version} loaded: ${handlers.length} tools`);
 }
 export {
   bitfab as default,
-  description
+  description,
+  tagReplayToolCall
 };

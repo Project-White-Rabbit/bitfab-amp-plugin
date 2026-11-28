@@ -1,4 +1,4 @@
-import { buildMcpInstructions, captureAmpAgentEnd, captureAmpAgentStart, captureAmpBitfabToolCall, captureAmpSessionStart, collectSessionStartMessages, createBitfabToolHandlers, getConfig, } from "bitfab-plugin-lib";
+import { buildMcpInstructions, captureAmpAgentEnd, captureAmpAgentStart, captureAmpBitfabToolCall, captureAmpSessionStart, collectSessionStartMessages, createBitfabToolHandlers, getConfig, tagReplayCommand, } from "bitfab-plugin-lib";
 import { z } from "zod";
 import { platform } from "./platform.js";
 import { getVersion } from "./version.js";
@@ -69,6 +69,26 @@ function registerSessionCapture(amp, pluginVersion) {
         });
     });
 }
+export function tagReplayToolCall(amp, event) {
+    if (process.platform === "win32") {
+        return { action: "allow" };
+    }
+    try {
+        const shell = amp.helpers.shellCommandFromToolCall(event);
+        if (shell === null) {
+            return { action: "allow" };
+        }
+        const tagged = tagReplayCommand(shell.command, String(event.thread.id));
+        const key = Object.keys(event.input).find((name) => event.input[name] === shell.command);
+        if (tagged === null || key === undefined) {
+            return { action: "allow" };
+        }
+        return { action: "modify", input: { ...event.input, [key]: tagged } };
+    }
+    catch {
+        return { action: "allow" };
+    }
+}
 export default async function bitfab(amp) {
     const version = getVersion();
     for (const skill of SKILLS) {
@@ -96,5 +116,6 @@ export default async function bitfab(amp) {
         });
     }
     registerSessionCapture(amp, version);
+    amp.on("tool.call", (event) => tagReplayToolCall(amp, event));
     amp.logger.log(`Bitfab ${version} loaded: ${handlers.length} tools`);
 }
